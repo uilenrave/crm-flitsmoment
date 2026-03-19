@@ -6,6 +6,7 @@ use App\Scopes\AccountScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class Booking extends Model
@@ -61,7 +62,7 @@ class Booking extends Model
 
         static::creating(function (self $model) {
             if (! $model->account_id) {
-                $model->account_id = session('account_id');
+                $model->account_id = auth()->user()?->account_id;
             }
             if (! $model->booking_number) {
                 $model->booking_number = static::generateBookingNumber($model->account_id);
@@ -83,20 +84,23 @@ class Booking extends Model
 
     public static function generateBookingNumber(int $accountId): string
     {
-        $account    = Account::find($accountId);
-        $currentYear = (int) date('Y');
-        $shortYear   = date('y'); // bijv. "26"
+        return DB::transaction(function () use ($accountId) {
+            // lockForUpdate() voorkomt race conditions bij gelijktijdige boekingen
+            $account     = Account::lockForUpdate()->find($accountId);
+            $currentYear = (int) date('Y');
+            $shortYear   = date('y'); // bijv. "26"
 
-        // Reset sequence als het een nieuw jaar is
-        if ($account->booking_sequence_year !== $currentYear) {
-            $account->booking_sequence      = 0;
-            $account->booking_sequence_year = $currentYear;
-        }
+            // Reset sequence als het een nieuw jaar is
+            if ($account->booking_sequence_year !== $currentYear) {
+                $account->booking_sequence      = 0;
+                $account->booking_sequence_year = $currentYear;
+            }
 
-        $account->booking_sequence += 1;
-        $account->saveQuietly();
+            $account->booking_sequence += 1;
+            $account->saveQuietly();
 
-        return $shortYear . '-' . str_pad($account->booking_sequence, 3, '0', STR_PAD_LEFT);
+            return $shortYear . '-' . str_pad($account->booking_sequence, 3, '0', STR_PAD_LEFT);
+        });
     }
 
     /** Zet telefoonnummer om naar WhatsApp-formaat (+31...) */

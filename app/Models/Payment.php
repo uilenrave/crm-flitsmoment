@@ -26,7 +26,7 @@ class Payment extends Model
 
         static::creating(function (self $model) {
             if (! $model->account_id) {
-                $model->account_id = session('account_id');
+                $model->account_id = auth()->user()?->account_id;
             }
         });
     }

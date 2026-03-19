@@ -720,7 +720,7 @@ class BookingController extends Controller
 
     public function destroy(Booking $booking): RedirectResponse
     {
-        abort_if($booking->account_id !== session('account_id'), 403);
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
         $booking->delete();
         return redirect()->route('bookings.index')->with('success', 'Boeking verwijderd.');
     }

@@ -42,7 +42,7 @@ class Lead extends Model
 
         static::creating(function (self $model) {
             if (! $model->account_id) {
-                $model->account_id = session('account_id');
+                $model->account_id = auth()->user()?->account_id;
             }
             if (! $model->lead_number) {
                 $model->lead_number = static::generateLeadNumber($model->account_id);
