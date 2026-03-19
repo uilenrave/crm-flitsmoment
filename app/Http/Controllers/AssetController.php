@@ -69,6 +69,7 @@ class AssetController extends Controller
 
     public function destroy(Asset $asset): RedirectResponse
     {
+        abort_if($asset->account_id !== session('account_id'), 403);
         $asset->delete();
 
         return redirect()->route('assets.index')->with('success', 'Product verwijderd.');

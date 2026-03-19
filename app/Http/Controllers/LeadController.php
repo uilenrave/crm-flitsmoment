@@ -179,6 +179,7 @@ class LeadController extends Controller
 
     public function destroy(Lead $lead): RedirectResponse
     {
+        abort_if($lead->account_id !== session('account_id'), 403);
         $lead->delete();
         return redirect()->route('leads.index')->with('success', 'Lead verwijderd.');
     }

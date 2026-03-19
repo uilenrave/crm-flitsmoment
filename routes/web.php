@@ -14,29 +14,33 @@ use App\Http\Controllers\PortalController;
 use App\Http\Controllers\TravelCostController;
 use Illuminate\Support\Facades\Route;
 
-// Publieke klantportaal (geen auth)
-Route::get('/boeking/{token}', [PortalController::class, 'show'])->name('portal.show');
-Route::post('/boeking/{token}/betalen', [PortalController::class, 'startPayment'])->name('portal.payment-start');
-Route::get('/boeking/{token}/betaling-return', [PortalController::class, 'paymentReturn'])->name('portal.payment-return');
+// Publieke klantportaal (geen auth) — max 60 requests/minuut per IP
+Route::middleware('throttle:60,1')->group(function () {
+    Route::get('/boeking/{token}', [PortalController::class, 'show'])->name('portal.show');
+    Route::post('/boeking/{token}/betalen', [PortalController::class, 'startPayment'])->name('portal.payment-start');
+    Route::get('/boeking/{token}/betaling-return', [PortalController::class, 'paymentReturn'])->name('portal.payment-return');
+    Route::get('/boeking/{token}/ontwerp', [PortalController::class, 'stripDesignView'])->name('portal.strip-design');
+    Route::post('/boeking/{token}/ontwerp-feedback', [PortalController::class, 'submitStripFeedback'])->name('portal.strip-feedback');
+    Route::post('/boeking/{token}/strip-review', [PortalController::class, 'stripReview'])->name('portal.strip-review');
+    Route::post('/boeking/{token}/strip-input', [PortalController::class, 'submitStripInput'])->name('portal.strip-input');
+    Route::get('/boeking/{token}/factuur', [PortalController::class, 'factuurDownload'])->name('portal.factuur-download');
+
+    // Intake flow (klant vult in na bevestiging)
+    Route::get('/boeking/{token}/intake', [IntakeController::class, 'show'])->name('portal.intake');
+    Route::post('/boeking/{token}/intake/{step}', [IntakeController::class, 'saveStep'])->name('portal.intake.save');
+
+    // Publieke offertepagina
+    Route::get('/offerte/{token}', [OfferPublicController::class, 'show'])->name('offer.show');
+    Route::post('/offerte/{token}/accept', [OfferPublicController::class, 'accept'])->name('offer.accept');
+});
+
+// Betaling webhook — geen CSRF, geen throttle (Mollie server-to-server)
 Route::post('/boeking/{token}/betaling-webhook', [PortalController::class, 'paymentWebhook'])->name('portal.payment-webhook');
-Route::get('/boeking/{token}/ontwerp', [PortalController::class, 'stripDesignView'])->name('portal.strip-design');
-Route::post('/boeking/{token}/ontwerp-feedback', [PortalController::class, 'submitStripFeedback'])->name('portal.strip-feedback');
-Route::post('/boeking/{token}/strip-review', [PortalController::class, 'stripReview'])->name('portal.strip-review');
-Route::post('/boeking/{token}/strip-input', [PortalController::class, 'submitStripInput'])->name('portal.strip-input');
-Route::get('/boeking/{token}/factuur', [PortalController::class, 'factuurDownload'])->name('portal.factuur-download');
 
-// Intake flow (klant vult in na bevestiging)
-Route::get('/boeking/{token}/intake', [IntakeController::class, 'show'])->name('portal.intake');
-Route::post('/boeking/{token}/intake/{step}', [IntakeController::class, 'saveStep'])->name('portal.intake.save');
-
-// Publieke offertepagina (geen auth)
-Route::get('/offerte/{token}', [OfferPublicController::class, 'show'])->name('offer.show');
-Route::post('/offerte/{token}/accept', [OfferPublicController::class, 'accept'])->name('offer.accept');
-
-// Inloggen
+// Inloggen — max 5 pogingen per minuut per IP
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 });
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');

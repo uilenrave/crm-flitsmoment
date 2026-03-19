@@ -120,7 +120,7 @@
         <img src="/logo.png" alt="Flitsmoment Logo" class="logo-img">
         @php $vestiging = str_replace('Flitsmoment', '', auth()->user()->account->name); @endphp
         @if(trim($vestiging))
-        <span style="font-size:.7rem;color:#94a3b8;letter-spacing:.05em;text-transform:lowercase;">{{ trim($vestiging) }}</span>
+        <span style="font-size:.7rem;color:#475569;letter-spacing:.05em;text-transform:lowercase;">{{ trim($vestiging) }}</span>
         @endif
     </div>
     <nav class="sidebar-nav">

@@ -96,7 +96,7 @@ class IntakeController extends Controller
             1 => $request->validate([
                 'design_choice' => ['required', 'in:self_input,template'],
                 'branding_files' => ['nullable', 'array', 'max:5'],
-                'branding_files.*' => ['file', 'mimes:jpg,jpeg,png,gif,webp,pdf,ai,psd,svg', 'max:20480'],
+                'branding_files.*' => ['file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:20480'],
             ]),
             2 => $request->validate([
                 'delivery_time_preference' => ['nullable', 'string', 'max:500'],

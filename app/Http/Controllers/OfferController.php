@@ -136,6 +136,7 @@ class OfferController extends Controller
 
     public function destroy(Offer $offer): RedirectResponse
     {
+        abort_if($offer->account_id !== session('account_id'), 403);
         if (in_array($offer->status, ['accepted'])) {
             return redirect()->route('offers.show', $offer)->with('error', 'Geaccepteerde offertes kunnen niet worden verwijderd.');
         }
