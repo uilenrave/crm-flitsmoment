@@ -14,13 +14,20 @@ set -e  # stop bij elke fout
 SSH_HOST="212.107.16.104"
 SSH_PORT="65002"
 SSH_USER="u493340040"
-SSH_PASS="gF%#irdVon84N6"
 REMOTE_BASE="/home/u493340040/domains/crm.flitsmoment.nl/laravel"
 PHP="/opt/alt/php84/usr/bin/php"
 
 DB_NAME="u493340040_crm_fm"
 DB_USER="u493340040_crm_fm"
-DB_PASS="^rg!HKaX8~"
+
+# Laad wachtwoorden uit .deploy.env (staat niet in git)
+DEPLOY_ENV="$(dirname "$0")/.deploy.env"
+if [ -f "$DEPLOY_ENV" ]; then
+    source "$DEPLOY_ENV"
+else
+    echo "❌ Maak een .deploy.env aan met SSH_PASS en DB_PASS (zie .deploy.env.example)"
+    exit 1
+fi
 
 LOCAL_PROJECT="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$LOCAL_PROJECT/.backups"
