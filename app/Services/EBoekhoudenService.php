@@ -730,13 +730,18 @@ class EBoekhoudenService
     }
 
     /**
-     * Haal de betaalstatus op van een factuur
-     * Geeft de volledige factuurdata terug inclusief status
+     * Haal de betaalstatus op van een factuur.
+     * De e-boekhouden REST API heeft geen status-veld op de factuur zelf.
+     * Betaling wordt bepaald via de mutaties: type 3 (Ontvangst) = betaald.
+     *
+     * Geeft array terug met 'isPaid' boolean en overige factuurdata.
      */
     public function getInvoiceStatus(string $invoiceId): ?array
     {
         try {
             $token = $this->getSessionToken();
+
+            // Stap 1: haal factuurdetails op om het factuurnummer te weten
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $token,
             ])->get(config('services.eboekhouden.api_url') . '/v1/invoice/' . $invoiceId);
@@ -749,7 +754,41 @@ class EBoekhoudenService
                 return null;
             }
 
-            return $response->json();
+            $data = $response->json();
+            $invoiceNumber = $data['invoiceNumber'] ?? null;
+
+            // Stap 2: controleer mutaties voor dit factuurnummer
+            // Type 3 = Ontvangst (betaling ontvangen) → factuur is betaald
+            $isPaid = false;
+            if ($invoiceNumber) {
+                $mutResp = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                ])->get(config('services.eboekhouden.api_url') . '/v1/mutation', [
+                    'invoiceNumber' => $invoiceNumber,
+                ]);
+
+                if ($mutResp->successful()) {
+                    $mutations = $mutResp->json('items') ?? [];
+                    foreach ($mutations as $mut) {
+                        if (($mut['type'] ?? 0) === 3) {
+                            $isPaid = true;
+                            break;
+                        }
+                    }
+
+                    Log::info('e-boekhouden: mutaties voor factuur', [
+                        'invoiceNumber' => $invoiceNumber,
+                        'mutationCount' => count($mutations),
+                        'isPaid'        => $isPaid,
+                        'types'         => array_column($mutations, 'type'),
+                    ]);
+                }
+            }
+
+            // Voeg isPaid toe aan de response data
+            $data['isPaid'] = $isPaid;
+
+            return $data;
         } catch (\Exception $e) {
             Log::error('e-boekhouden: getInvoiceStatus exception', ['message' => $e->getMessage()]);
             return null;

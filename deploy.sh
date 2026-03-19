@@ -101,7 +101,11 @@ run_migrations() {
 clear_caches() {
     echo ""
     echo "🧹 Caches wissen..."
-    eval $SSH_CMD "$PHP $REMOTE_BASE/artisan view:clear && $PHP $REMOTE_BASE/artisan config:clear && $PHP $REMOTE_BASE/artisan route:clear"
+    # Elke commando apart — && in een eval-string wordt lokaal geëvalueerd
+    eval $SSH_CMD "$PHP $REMOTE_BASE/artisan view:clear"
+    eval $SSH_CMD "$PHP $REMOTE_BASE/artisan config:clear"
+    eval $SSH_CMD "$PHP $REMOTE_BASE/artisan route:clear"
+    eval $SSH_CMD "$PHP $REMOTE_BASE/artisan cache:clear"
     echo "✅ Caches geleegd"
 }
 

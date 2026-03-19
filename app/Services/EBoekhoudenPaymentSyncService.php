@@ -58,7 +58,7 @@ class EBoekhoudenPaymentSyncService
                     }
 
                     // Check if invoice is marked as "betaald" (paid)
-                    $isPaidInEb = isset($invoiceData['status']) && $invoiceData['status'] === 'betaald';
+                    $isPaidInEb = $this->isBetaald($invoiceData);
 
                     if ($isPaidInEb && $booking->payment_status !== 'paid') {
                         // Create payment record for this sync
@@ -160,7 +160,8 @@ class EBoekhoudenPaymentSyncService
             // Update sync timestamp
             $booking->update(['eboekhouden_synced_at' => now()]);
 
-            $isPaid = isset($invoiceData['status']) && $invoiceData['status'] === 'betaald';
+            // e-boekhouden kan verschillende veldnamen gebruiken voor betaalstatus
+            $isPaid = $this->isBetaald($invoiceData);
 
             if ($isPaid && $booking->payment_status !== 'paid') {
                 // Betalingsrecord aanmaken
@@ -193,6 +194,16 @@ class EBoekhoudenPaymentSyncService
             Log::error("e-boekhouden syncSingleBooking exception: " . $e->getMessage(), ['booking_id' => $booking->id]);
             return ['status' => 'error', 'message' => 'Fout: ' . $e->getMessage()];
         }
+    }
+
+    /**
+     * Bepaal of een factuur betaald is.
+     * EBoekhoudenService::getInvoiceStatus() voegt een 'isPaid' veld toe
+     * door de mutaties te controleren (type 3 = ontvangst = betaald).
+     */
+    private function isBetaald(array $invoiceData): bool
+    {
+        return (bool) ($invoiceData['isPaid'] ?? false);
     }
 
     /**
