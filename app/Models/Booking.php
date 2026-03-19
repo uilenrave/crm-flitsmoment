@@ -83,15 +83,20 @@ class Booking extends Model
 
     public static function generateBookingNumber(int $accountId): string
     {
-        $account = Account::find($accountId);
-        $prefix  = $account ? strtoupper($account->code) : 'CRM';
-        $year    = date('Y');
-        $count   = static::withoutGlobalScope(AccountScope::class)
-            ->where('account_id', $accountId)
-            ->whereYear('created_at', $year)
-            ->count() + 1;
+        $account    = Account::find($accountId);
+        $currentYear = (int) date('Y');
+        $shortYear   = date('y'); // bijv. "26"
 
-        return "{$prefix}-B-{$year}-" . str_pad($count, 3, '0', STR_PAD_LEFT);
+        // Reset sequence als het een nieuw jaar is
+        if ($account->booking_sequence_year !== $currentYear) {
+            $account->booking_sequence      = 0;
+            $account->booking_sequence_year = $currentYear;
+        }
+
+        $account->booking_sequence += 1;
+        $account->saveQuietly();
+
+        return $shortYear . '-' . str_pad($account->booking_sequence, 3, '0', STR_PAD_LEFT);
     }
 
     /** Zet telefoonnummer om naar WhatsApp-formaat (+31...) */
