@@ -1,0 +1,521 @@
+/* ============================================================================
+   Flitsmoment CRM Design System
+   Warm, Modern Design with Neumorphism, Orange/Amber Palette
+   ============================================================================ */
+
+:root {
+  /* Neumorphic Base Colors (White Palette) */
+  --base-bg:     #f8f7f5;      /* Off-white background */
+  --base-light:  #ffffff;      /* Pure white cards/inputs */
+  --base-darker: #f0eeeb;      /* Slightly darker tone */
+
+  /* Primary Colors (Warm Yellow - for accents) */
+  --primary-50:  #fffbeb;
+  --primary-100: #fef3c7;
+  --primary-200: #fde68a;
+  --primary-300: #fbbf24;
+  --primary-400: #f59e0b;
+  --primary-500: #fcd34d;      /* Main brand color - WARM YELLOW */
+  --primary-600: #f59e0b;      /* Hover state */
+  --primary-700: #d97706;      /* Active state */
+
+  /* Neutral Colors (Grays) */
+  --gray-50:   #fafafa;
+  --gray-100:  #f5f5f5;
+  --gray-200:  #e5e5e5;
+  --gray-300:  #d4d4d4;
+  --gray-400:  #a3a3a3;
+  --gray-500:  #737373;
+  --gray-600:  #525252;
+  --gray-700:  #404040;
+  --gray-800:  #262626;
+  --gray-900:  #171717;
+
+  /* Semantic Colors */
+  --success-50:  #dcfce7;
+  --success-600: #16a34a;
+
+  --danger-50:   #fee2e2;
+  --danger-600:  #dc2626;
+
+  --warning-50:  #fef3c7;
+  --warning-600: #d97706;
+
+  /* Neumorphic Shadow Colors (Subtle gray tints for white) */
+  --shadow-light:   rgba(255, 255, 255, 0.8);      /* Light highlight */
+  --shadow-dark:    rgba(0, 0, 0, 0.08);           /* Subtle dark shadow */
+  --shadow-dark-sm: rgba(0, 0, 0, 0.05);           /* Very subtle shadow */
+
+  /* Dual Shadow System (Neumorphic) */
+  --shadow-neu:     -1px -1px 3px var(--shadow-light),
+                     2px 2px 5px var(--shadow-dark);
+  --shadow-neu-lg:  -2px -2px 5px var(--shadow-light),
+                     3px 3px 8px var(--shadow-dark);
+  --shadow-neu-xl:  -3px -3px 8px var(--shadow-light),
+                     4px 4px 12px var(--shadow-dark);
+
+  /* Inset Shadows (for sunken/pressed elements) */
+  --shadow-inset:   inset -1px -1px 2px var(--shadow-light),
+                     inset 1px 1px 2px var(--shadow-dark-sm);
+  --shadow-inset-lg: inset -2px -2px 3px var(--shadow-light),
+                     inset 2px 2px 3px var(--shadow-dark-sm);
+
+  /* Focus State Shadow (Orange glow) */
+  --shadow-focus-orange: 0 0 0 3px rgba(252, 211, 77, 0.1);
+
+  /* Enhanced Shadows with Glow */
+  --shadow-glow-sm: 0 0 12px rgba(252, 211, 77, 0.2);
+  --shadow-glow-md: 0 0 20px rgba(252, 211, 77, 0.3);
+  --shadow-glow-lg: 0 0 30px rgba(252, 211, 77, 0.4);
+}
+
+/* ============================================================================
+   Neumorphic Card Component
+   ============================================================================ */
+
+.neu-card {
+  background: var(--base-light);
+  border: none;
+  border-radius: 1rem;
+  box-shadow: var(--shadow-neu);
+  transition: all 0.3s ease;
+}
+
+.neu-card:hover {
+  box-shadow: var(--shadow-neu-lg);
+}
+
+/* ============================================================================
+   Button Styles with Gradient
+   ============================================================================ */
+
+/* Primary Button (Orange - Neumorphic) */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  padding: 0.5rem 1.125rem;
+  border: none;
+  border-radius: 0.75rem;
+
+  background: linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%);
+  color: white;
+
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+
+  box-shadow: -2px -2px 5px rgba(255, 255, 255, 0.3),
+              2px 2px 6px rgba(139, 111, 71, 0.3),
+              0 4px 8px rgba(252, 211, 77, 0.2);
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-700) 100%);
+  box-shadow: -2px -2px 5px rgba(255, 255, 255, 0.3),
+              3px 3px 8px rgba(139, 111, 71, 0.35),
+              0 6px 12px rgba(252, 211, 77, 0.3);
+}
+
+.btn-primary:active {
+  box-shadow: inset -2px -2px 5px rgba(255, 255, 255, 0.3),
+              inset 2px 2px 5px rgba(139, 111, 71, 0.2),
+              0 2px 4px rgba(252, 211, 77, 0.2);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Secondary Button (Warm beige - Neumorphic) */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  padding: 0.5rem 1.125rem;
+  border: none;
+  border-radius: 0.75rem;
+
+  background: var(--base-light);
+  color: var(--gray-700);
+
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+
+  box-shadow: var(--shadow-neu);
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  box-shadow: var(--shadow-neu-lg);
+}
+
+.btn-secondary:active {
+  box-shadow: var(--shadow-inset);
+}
+
+/* Danger Button (Red) */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  padding: 0.5rem 1.125rem;
+  border: none;
+  border-radius: 0.75rem;
+
+  background: linear-gradient(135deg, var(--danger-600) 0%, #b91c1c 100%);
+  color: white;
+
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  box-shadow: 0 10px 20px rgba(220, 38, 38, 0.4);
+  transform: translateY(-3px);
+}
+
+/* Small Button Variant */
+.btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+/* ============================================================================
+   Form Inputs & Selects with Orange Focus
+   ============================================================================ */
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="password"],
+select,
+textarea {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.75rem;
+  background: #fafafa;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--gray-900);
+  transition: all 0.2s ease;
+}
+
+input[type="text"]::placeholder,
+input[type="email"]::placeholder,
+input[type="tel"]::placeholder,
+input[type="number"]::placeholder,
+input[type="password"]::placeholder,
+textarea::placeholder {
+  color: var(--gray-400);
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="tel"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="time"]:focus,
+input[type="datetime-local"]:focus,
+input[type="password"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  background: white;
+  border-color: var(--primary-500);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 0.25rem;
+  padding: 0.25rem;
+  transition: background-color 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  background-color: var(--gray-100);
+}
+
+/* ============================================================================
+   Badge / Status Badge Components
+   ============================================================================ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.badge:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* Status Badge Colors */
+.badge-success {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.2);
+}
+
+.badge-danger {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+}
+
+.badge-warning {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #b45309;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.2);
+}
+
+.badge-orange {
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
+  color: #92400e;
+  box-shadow: 0 4px 12px rgba(252, 211, 77, 0.2);
+}
+
+.badge-gray {
+  background: linear-gradient(135deg, #f5f5f5 0%, #e5e5e5 100%);
+  color: #525252;
+}
+
+/* ============================================================================
+   Gradient Background Utilities
+   ============================================================================ */
+
+.bg-gradient-neu {
+  background: linear-gradient(135deg, var(--gray-50) 0%, var(--primary-50) 100%);
+}
+
+.bg-gradient-orange {
+  background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-100) 100%);
+}
+
+/* ============================================================================
+   Table Styling (Neumorphic)
+   ============================================================================ */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+table thead {
+  background: var(--gray-50);
+}
+
+table thead th {
+  padding: 0.75rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+table tbody td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 0.875rem;
+  color: var(--gray-900);
+}
+
+table tbody tr {
+  transition: all 0.2s ease;
+}
+
+table tbody tr:hover {
+  background: var(--base-bg);
+}
+
+/* ============================================================================
+   Card Container Styling
+   ============================================================================ */
+
+.card {
+  background: var(--base-light);
+  border: none;
+  border-radius: 1rem;
+  box-shadow: var(--shadow-neu);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-neu-lg);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--gray-100);
+  gap: 1rem;
+}
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin: 0;
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+/* ============================================================================
+   Form Grid Utilities
+   ============================================================================ */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.form-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .form-grid,
+  .form-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================================
+   Alert / Message Styles
+   ============================================================================ */
+
+.alert {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border-left: 4px solid;
+  font-size: 0.875rem;
+}
+
+.alert-success {
+  background: var(--success-50);
+  border-color: var(--success-600);
+  color: var(--success-600);
+}
+
+.alert-danger {
+  background: var(--danger-50);
+  border-color: var(--danger-600);
+  color: var(--danger-600);
+}
+
+.alert-warning {
+  background: var(--warning-50);
+  border-color: var(--warning-600);
+  color: var(--warning-600);
+}
+
+/* ============================================================================
+   Text Utilities
+   ============================================================================ */
+
+.text-muted {
+  color: var(--gray-500);
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}
+
+/* ============================================================================
+   Responsive & Mobile Optimizations
+   ============================================================================ */
+
+@media (max-width: 640px) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* Prevent mobile zoom on focus */
+  }
+}
+
+/* ============================================================================
+   Utility Classes
+   ============================================================================ */
+
+.flex-gap-sm { gap: 0.5rem; }
+.flex-gap-md { gap: 1rem; }
+.flex-gap-lg { gap: 1.5rem; }
+
+.p-sm  { padding: 0.5rem; }
+.p-md  { padding: 1rem; }
+.p-lg  { padding: 1.5rem; }
+
+.mb-sm  { margin-bottom: 0.5rem; }
+.mb-md  { margin-bottom: 1rem; }
+.mb-lg  { margin-bottom: 1.5rem; }
+
+.rounded-sm  { border-radius: 0.375rem; }
+.rounded-md  { border-radius: 0.5rem; }
+.rounded-lg  { border-radius: 0.75rem; }
