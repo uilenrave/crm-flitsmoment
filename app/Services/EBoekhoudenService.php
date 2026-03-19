@@ -730,6 +730,110 @@ class EBoekhoudenService
     }
 
     /**
+     * Haal de betaalstatus op van een factuur
+     * Geeft de volledige factuurdata terug inclusief status
+     */
+    public function getInvoiceStatus(string $invoiceId): ?array
+    {
+        try {
+            $token = $this->getSessionToken();
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+            ])->get(config('services.eboekhouden.api_url') . '/v1/invoice/' . $invoiceId);
+
+            if (!$response->successful()) {
+                Log::error('e-boekhouden: getInvoiceStatus failed', [
+                    'invoiceId' => $invoiceId,
+                    'status'    => $response->status(),
+                ]);
+                return null;
+            }
+
+            return $response->json();
+        } catch (\Exception $e) {
+            Log::error('e-boekhouden: getInvoiceStatus exception', ['message' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Zoek een factuur op factuurnummer (bijv. FM-F00228)
+     * Geeft de factuurdata terug inclusief ID en status
+     */
+    public function findInvoiceByNumber(string $invoiceNumber): ?array
+    {
+        try {
+            $token = $this->getSessionToken();
+
+            // Probeer eerst direct te filteren via query parameter
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+            ])->get(config('services.eboekhouden.api_url') . '/v1/invoice', [
+                'invoiceNumber' => $invoiceNumber,
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $items = $data['items'] ?? $data['data'] ?? [];
+
+                // Als de API filtering ondersteunt, eerste match teruggeven
+                foreach ($items as $invoice) {
+                    if (($invoice['invoiceNumber'] ?? '') === $invoiceNumber) {
+                        return $invoice;
+                    }
+                }
+
+                // Als er maar één resultaat is (en geen exacte match gevonden), gebruik die
+                if (count($items) === 1) {
+                    return $items[0];
+                }
+            }
+
+            Log::warning('e-boekhouden: findInvoiceByNumber no direct match, searching all invoices', [
+                'invoiceNumber' => $invoiceNumber,
+            ]);
+
+            // Fallback: doorzoek alle facturen (paginering)
+            $offset = 0;
+            $pageSize = 100;
+
+            while (true) {
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                ])->get(config('services.eboekhouden.api_url') . '/v1/invoice', [
+                    'offset' => $offset,
+                    'limit'  => $pageSize,
+                ]);
+
+                if (!$response->successful()) break;
+
+                $items = $response->json('items') ?? $response->json('data') ?? [];
+                if (empty($items)) break;
+
+                foreach ($items as $invoice) {
+                    if (($invoice['invoiceNumber'] ?? '') === $invoiceNumber) {
+                        Log::info('e-boekhouden: findInvoiceByNumber found', [
+                            'invoiceNumber' => $invoiceNumber,
+                            'id'            => $invoice['id'] ?? null,
+                        ]);
+                        return $invoice;
+                    }
+                }
+
+                if (count($items) < $pageSize) break;
+                $offset += $pageSize;
+            }
+
+            Log::warning('e-boekhouden: findInvoiceByNumber not found', ['invoiceNumber' => $invoiceNumber]);
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('e-boekhouden: findInvoiceByNumber exception', ['message' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
      * Haal alle beschikbare grootboekrekeningen op
      * Handig om te zien welke ID je voor extras/upsell wilt gebruiken
      */

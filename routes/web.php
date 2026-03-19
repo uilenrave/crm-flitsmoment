@@ -66,6 +66,8 @@ Route::middleware('auth')->group(function () {
     Route::get('bookings/unit-availability', [BookingController::class, 'unitAvailability'])->name('bookings.unit-availability');
     Route::post('bookings/{booking}/gallery', [BookingController::class, 'saveGallery'])->name('bookings.save-gallery');
     Route::post('bookings/{booking}/create-invoice', [BookingController::class, 'createInvoice'])->name('bookings.create-invoice');
+    Route::post('bookings/{booking}/sync-invoice', [BookingController::class, 'syncInvoiceStatus'])->name('bookings.sync-invoice');
+    Route::post('bookings/{booking}/manual-invoice', [BookingController::class, 'saveManualInvoiceNumber'])->name('bookings.manual-invoice');
     Route::post('bookings/{booking}/strip-design', [BookingController::class, 'uploadStripDesign'])->name('bookings.strip-design');
     Route::delete('bookings/{booking}/strip-design', [BookingController::class, 'deleteStripDesign'])->name('bookings.strip-design-delete');
     Route::post('bookings/{booking}/strip-status', [BookingController::class, 'updateStripStatus'])->name('bookings.strip-status');

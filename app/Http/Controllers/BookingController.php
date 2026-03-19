@@ -456,6 +456,55 @@ class BookingController extends Controller
         }
     }
 
+    /** Handmatig factuurnummer opslaan (zonder factuur aan te maken via CRM) */
+    public function saveManualInvoiceNumber(Request $request, Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        $request->validate([
+            'eboekhouden_invoice_number' => ['required', 'string', 'max:50'],
+        ]);
+
+        $booking->update([
+            'eboekhouden_invoice_number' => trim($request->eboekhouden_invoice_number),
+            'eboekhouden_status'         => 'manual',
+        ]);
+
+        return redirect()->route('bookings.show', $booking)
+            ->with('success', 'Factuurnummer opgeslagen. Gebruik "Controleer betaalstatus" om de status te synchroniseren.');
+    }
+
+    /** Betaalstatus ophalen van e-boekhouden */
+    public function syncInvoiceStatus(Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        $booking->loadMissing('account');
+
+        if (!$booking->account->eboekhouden_enabled) {
+            return redirect()->route('bookings.show', $booking)
+                ->with('error', 'e-Boekhouden koppeling is uitgeschakeld voor dit account.');
+        }
+
+        if (!$booking->eboekhouden_invoice_id && !$booking->eboekhouden_invoice_number) {
+            return redirect()->route('bookings.show', $booking)
+                ->with('error', 'Geen factuur-ID of factuurnummer bekend. Maak eerst een factuur aan of vul het factuurnummer in.');
+        }
+
+        $syncService = app(\App\Services\EBoekhoudenPaymentSyncService::class);
+        $result = $syncService->syncSingleBooking($booking);
+
+        $flashType = match($result['status']) {
+            'paid'      => 'success',
+            'unpaid'    => 'warning',
+            'not_found' => 'error',
+            default     => 'error',
+        };
+
+        return redirect()->route('bookings.show', $booking)
+            ->with($flashType, $result['message']);
+    }
+
     /** Strip status bijwerken via AJAX */
     public function updateStripStatus(Request $request, Booking $booking): JsonResponse
     {

@@ -521,13 +521,20 @@
             <div class="card-header"><span class="card-title" style="font-size:0.875rem;">📊 e-boekhouden</span></div>
             <div style="padding:1.25rem;">
                 @if($booking->eboekhouden_invoice_id || $booking->eboekhouden_invoice_number)
-                    <div style="padding:0.75rem;background:{{ $colors['success-50'] }};border:1px solid {{ $colors['success-600'] }};border-radius:0.5rem;margin-bottom:0.75rem;">
-                        <div style="font-size:0.75rem;color:{{ $colors['success-600'] }};font-weight:600;margin-bottom:0.5rem;">✅ Factuur aangemaakt</div>
+                    {{-- Factuurstatus banner --}}
+                    @php
+                        $isManual = $booking->eboekhouden_status === 'manual' && !$booking->eboekhouden_invoice_id;
+                        $bannerBg = $isManual ? $colors['blue-50'] ?? '#EFF6FF' : $colors['success-50'];
+                        $bannerBorder = $isManual ? $colors['blue-600'] ?? '#2563EB' : $colors['success-600'];
+                        $bannerLabel = $isManual ? '🔗 Handmatig factuurnummer' : '✅ Factuur aangemaakt';
+                    @endphp
+                    <div style="padding:0.75rem;background:{{ $bannerBg }};border:1px solid {{ $bannerBorder }};border-radius:0.5rem;margin-bottom:0.75rem;">
+                        <div style="font-size:0.75rem;color:{{ $bannerBorder }};font-weight:600;margin-bottom:0.5rem;">{{ $bannerLabel }}</div>
                         <div style="font-size:0.75rem;">
                             @if($booking->eboekhouden_invoice_number)
                             <div style="margin-bottom:0.5rem;">
-                                <strong style="color:{{ $colors['success-600'] }};">Factuurnummer:</strong>
-                                <span style="display:inline-block;background:{{ $colors['success-600'] }};color:white;padding:0.25rem 0.5rem;border-radius:0.25rem;font-weight:600;margin-left:0.25rem;">{{ $booking->eboekhouden_invoice_number }}</span>
+                                <strong style="color:{{ $bannerBorder }};">Factuurnummer:</strong>
+                                <span style="display:inline-block;background:{{ $bannerBorder }};color:white;padding:0.25rem 0.5rem;border-radius:0.25rem;font-weight:600;margin-left:0.25rem;">{{ $booking->eboekhouden_invoice_number }}</span>
                             </div>
                             @endif
                             <div style="color:{{ $colors['gray-700'] }};line-height:1.6;font-size:0.7rem;">
@@ -543,8 +550,30 @@
                             </div>
                         </div>
                     </div>
+                    {{-- Betaalstatus controleren --}}
+                    <form method="POST" action="{{ route('bookings.sync-invoice', $booking) }}" style="margin-bottom:0.5rem;">
+                        @csrf
+                        <button type="submit" class="btn btn-secondary" style="width:100%;justify-content:center;font-size:0.8rem;">
+                            🔄 Controleer betaalstatus
+                        </button>
+                    </form>
                 @else
                     <p class="text-xs text-muted" style="margin-bottom:0.75rem;">Nog geen factuur aangemaakt in e-boekhouden.</p>
+
+                    {{-- Handmatig factuurnummer invullen --}}
+                    <form method="POST" action="{{ route('bookings.manual-invoice', $booking) }}" style="margin-bottom:0.75rem;">
+                        @csrf
+                        <div style="display:flex;gap:0.5rem;align-items:stretch;">
+                            <input type="text" name="eboekhouden_invoice_number"
+                                placeholder="Factuurnummer (bijv. FM-F00228)"
+                                style="flex:1;padding:0.4rem 0.6rem;border:1px solid {{ $colors['gray-300'] }};border-radius:0.375rem;font-size:0.8rem;"
+                                required>
+                            <button type="submit" class="btn btn-secondary" style="font-size:0.8rem;white-space:nowrap;">
+                                Koppelen
+                            </button>
+                        </div>
+                    </form>
+
                     <form method="POST" action="{{ route('bookings.create-invoice', $booking) }}">
                         @csrf
                         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;font-size:0.875rem;">

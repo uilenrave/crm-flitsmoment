@@ -113,6 +113,89 @@ class EBoekhoudenPaymentSyncService
     }
 
     /**
+     * Sync de betaalstatus van één boeking
+     * Zoekt het factuur-ID op via factuurnummer als dat nog ontbreekt
+     * Geeft een array terug met 'status' (paid/unpaid/not_found/error) en 'message'
+     */
+    public function syncSingleBooking(Booking $booking): array
+    {
+        try {
+            $booking->loadMissing('account');
+
+            // Zorg dat we een API key hebben
+            $apiKey = $booking->account->getEBoekhoudenApiKey();
+            if (!$apiKey) {
+                return ['status' => 'error', 'message' => 'Geen e-boekhouden API key geconfigureerd.'];
+            }
+
+            $this->ebService->withApiKey($apiKey);
+
+            $invoiceId = $booking->eboekhouden_invoice_id;
+
+            // Als er geen ID is maar wel een handmatig ingevuld factuurnummer, zoek het ID op
+            if (!$invoiceId && $booking->eboekhouden_invoice_number) {
+                $invoice = $this->ebService->findInvoiceByNumber($booking->eboekhouden_invoice_number);
+                if (!$invoice) {
+                    return [
+                        'status'  => 'not_found',
+                        'message' => "Factuur '{$booking->eboekhouden_invoice_number}' niet gevonden in e-boekhouden.",
+                    ];
+                }
+                $invoiceId = $invoice['id'] ?? null;
+                if ($invoiceId) {
+                    // Sla het ID op zodat we het de volgende keer niet opnieuw hoeven te zoeken
+                    $booking->update(['eboekhouden_invoice_id' => $invoiceId]);
+                }
+            }
+
+            if (!$invoiceId) {
+                return ['status' => 'error', 'message' => 'Geen factuur-ID beschikbaar.'];
+            }
+
+            $invoiceData = $this->ebService->getInvoiceStatus($invoiceId);
+            if (!$invoiceData) {
+                return ['status' => 'error', 'message' => 'Kon factuurstatus niet ophalen van e-boekhouden.'];
+            }
+
+            // Update sync timestamp
+            $booking->update(['eboekhouden_synced_at' => now()]);
+
+            $isPaid = isset($invoiceData['status']) && $invoiceData['status'] === 'betaald';
+
+            if ($isPaid && $booking->payment_status !== 'paid') {
+                // Betalingsrecord aanmaken
+                Payment::create([
+                    'account_id'            => $booking->account_id,
+                    'booking_id'            => $booking->id,
+                    'provider'              => 'eboekhouden',
+                    'provider_payment_id'   => $invoiceId,
+                    'amount'                => $booking->total_price,
+                    'currency'              => 'EUR',
+                    'description'           => "e-boekhouden factuur {$booking->eboekhouden_invoice_number}",
+                    'status'                => 'paid',
+                    'paid_at'               => now(),
+                    'eboekhouden_synced_at' => now(),
+                ]);
+
+                $booking->update(['payment_status' => 'paid']);
+
+                Log::info("e-boekhouden sync: boeking {$booking->id} gemarkeerd als betaald");
+                return ['status' => 'paid', 'message' => 'Betaling bevestigd — boeking bijgewerkt naar "betaald".'];
+            }
+
+            if ($isPaid) {
+                return ['status' => 'paid', 'message' => 'Factuur is betaald (was al bijgewerkt).'];
+            }
+
+            return ['status' => 'unpaid', 'message' => 'Factuur nog niet betaald in e-boekhouden.'];
+
+        } catch (\Exception $e) {
+            Log::error("e-boekhouden syncSingleBooking exception: " . $e->getMessage(), ['booking_id' => $booking->id]);
+            return ['status' => 'error', 'message' => 'Fout: ' . $e->getMessage()];
+        }
+    }
+
+    /**
      * Send email notification to admin when payment is synced from e-boekhouden
      */
     private function sendPaymentReceivedNotification(Booking $booking): void
