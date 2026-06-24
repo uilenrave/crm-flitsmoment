@@ -9,6 +9,8 @@ use App\Models\BookingItem;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\LeadStatus;
+use App\Models\RideSignup;
+use App\Models\Staff;
 use App\Services\MailService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -19,24 +21,153 @@ use Illuminate\View\View;
 
 class BookingController extends Controller
 {
+    /**
+     * Ajax: lijst van bezorg/ophaal-momenten van andere boekingen op een specifieke datum.
+     * Wordt gebruikt door het rechter-paneel bij create/edit om back-to-back planning makkelijk te maken.
+     */
+    public function dayLogistics(Request $request): JsonResponse
+    {
+        $request->validate([
+            'date'       => ['required', 'date'],
+            'exclude_id' => ['nullable', 'integer'],
+        ]);
+
+        $date = Carbon::parse($request->date)->toDateString();
+        $excludeId = (int) $request->input('exclude_id', 0);
+
+        $bookings = Booking::where('account_id', auth()->user()->account_id)
+            ->whereIn('status', ['confirmed', 'completed'])
+            ->where('id', '!=', $excludeId)
+            ->where(function ($q) use ($date) {
+                $q->whereDate('delivery_at', $date)
+                  ->orWhereDate('pickup_at', $date)
+                  ->orWhereDate('customer_pickup_at', $date)
+                  ->orWhereDate('customer_return_at', $date);
+            })
+            ->get([
+                'id', 'booking_number', 'customer_name', 'booking_type',
+                'event_address', 'event_postcode', 'event_city',
+                'delivery_at', 'pickup_at', 'customer_pickup_at', 'customer_return_at',
+            ]);
+
+        $moments = [];
+        $warehouse = 'Ravenswade 132, 3439 LD Nieuwegein';
+
+        // Helper: voeg moment toe alleen als datum klopt EN de tijd niet 00:00 is (= geen echte tijd ingevuld)
+        $addMoment = function (&$out, $ts, array $base, string $type, string $label, string $icon, string $address) use ($date) {
+            if (! $ts) return;
+            $c = Carbon::parse($ts);
+            if ($c->toDateString() !== $date) return;
+            // Skip "datum-only" timestamps (00:00 zonder echte tijd) — die zijn vaak stale data of placeholders
+            if ($c->hour === 0 && $c->minute === 0) return;
+            $out[] = $base + [
+                'time'    => $c->format('H:i'),
+                'type'    => $type,
+                'label'   => $label,
+                'icon'    => $icon,
+                'address' => $address,
+            ];
+        };
+
+        foreach ($bookings as $b) {
+            $address = collect([$b->event_address, $b->event_postcode, $b->event_city])
+                ->filter()->implode(', ');
+
+            $base = [
+                'id'              => $b->id,
+                'booking_number'  => $b->booking_number,
+                'customer_name'   => $b->customer_name,
+            ];
+
+            // Full Service: alleen delivery_at + pickup_at relevant
+            if ($b->booking_type === 'full_service') {
+                $addMoment($moments, $b->delivery_at, $base, 'delivery', 'Bezorging', '🚚', $address);
+                $addMoment($moments, $b->pickup_at,   $base, 'pickup',   'Ophalen',   '↩',  $address);
+            }
+            // To Go: alleen customer_pickup_at + customer_return_at relevant
+            if ($b->booking_type === 'to_go') {
+                $addMoment($moments, $b->customer_pickup_at, $base, 'customer_pickup', 'Klant haalt op',     '📦', $warehouse);
+                $addMoment($moments, $b->customer_return_at, $base, 'customer_return', 'Klant brengt terug', '🔄', $warehouse);
+            }
+        }
+
+        // Sorteer op tijd oplopend; momenten zonder tijd (00:00 zonder echte tijd) onderaan
+        usort($moments, fn($a, $b) => strcmp($a['time'], $b['time']));
+
+        return response()->json([
+            'date'    => $date,
+            'count'   => count($moments),
+            'moments' => $moments,
+        ]);
+    }
+
     public function index(Request $request): View
     {
-        $query = Booking::latest('event_date');
+        $query = Booking::orderBy('event_date', 'asc')
+            ->whereDate('event_date', '>=', today());
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
+        if ($request->filled('betaling')) {
+            $query->whereIn('payment_status', $this->resolvePaymentFilter($request->betaling));
+        }
         if ($request->filled('zoeken')) {
             $query->where(function ($q) use ($request) {
-                $q->where('customer_name', 'like', "%{$request->zoeken}%")
-                  ->orWhere('customer_email', 'like', "%{$request->zoeken}%")
-                  ->orWhere('booking_number', 'like', "%{$request->zoeken}%");
+                $s = "%{$request->zoeken}%";
+                $q->where('customer_name', 'like', $s)
+                  ->orWhere('customer_email', 'like', $s)
+                  ->orWhere('customer_phone', 'like', $s)
+                  ->orWhere('booking_number', 'like', $s)
+                  ->orWhere('event_address', 'like', $s)
+                  ->orWhere('event_city', 'like', $s)
+                  ->orWhere('event_notes', 'like', $s);
             });
         }
 
-        $bookings = $query->with('account')->paginate(20)->withQueryString();
+        $bookings = $query->with(['items.asset'])->paginate(20)->withQueryString();
+        $account  = auth()->user()->account;
 
-        return view('bookings.index', compact('bookings'));
+        return view('bookings.index', compact('bookings', 'account'));
+    }
+
+    public function archive(Request $request): View
+    {
+        $query = Booking::orderBy('event_date', 'desc')
+            ->whereDate('event_date', '<', today());
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('betaling')) {
+            $query->whereIn('payment_status', $this->resolvePaymentFilter($request->betaling));
+        }
+        if ($request->filled('zoeken')) {
+            $query->where(function ($q) use ($request) {
+                $s = "%{$request->zoeken}%";
+                $q->where('customer_name', 'like', $s)
+                  ->orWhere('customer_email', 'like', $s)
+                  ->orWhere('customer_phone', 'like', $s)
+                  ->orWhere('booking_number', 'like', $s)
+                  ->orWhere('event_address', 'like', $s)
+                  ->orWhere('event_city', 'like', $s)
+                  ->orWhere('event_notes', 'like', $s);
+            });
+        }
+
+        $bookings = $query->with(['items.asset'])->paginate(20)->withQueryString();
+        $account  = auth()->user()->account;
+        $pageTitle = 'Archief';
+
+        return view('bookings.index', compact('bookings', 'account', 'pageTitle'));
+    }
+
+    private function resolvePaymentFilter(string $betaling): array
+    {
+        return match($betaling) {
+            'openstaand' => ['unpaid', 'partial'],
+            default      => [$betaling],
+        };
     }
 
     public function create(Request $request): View
@@ -52,6 +183,12 @@ class BookingController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        // Browsers sturen soms HH:MM:SS door step="900" — afkappen naar HH:MM
+        $request->merge(array_filter([
+            'event_start_time' => $request->event_start_time ? substr($request->event_start_time, 0, 5) : null,
+            'event_end_time'   => $request->event_end_time   ? substr($request->event_end_time, 0, 5)   : null,
+        ], fn($v) => $v !== null));
+
         $data = $request->validate([
             'lead_id'              => ['nullable', 'exists:leads,id'],
             'customer_name'        => ['required', 'string', 'max:150'],
@@ -75,14 +212,29 @@ class BookingController extends Controller
             'event_postcode'       => ['nullable', 'string', 'max:20'],
             'event_city'           => ['nullable', 'string', 'max:100'],
             'event_notes'          => ['nullable', 'string'],
-            'strip_status'         => ['required', 'in:waiting_input,designing,review,accepted,ready'],
+            'delivery_instructions'         => ['nullable', 'string', 'max:5000'],
+            'delivery_instructions_files'   => ['nullable', 'array'],
+            'delivery_instructions_files.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
+            'strip_status'         => ['nullable', 'in:waiting_input,awaiting_customer_design,designing,review,accepted,ready'],
+            'strip_design_method'  => ['nullable', 'in:self,template,custom'],
+            'strip_self_tool'      => ['nullable', 'in:canva,photoshop'],
+            'strip_template_id'    => ['nullable', 'exists:strip_templates,id'],
             'total_price'          => ['nullable', 'numeric', 'min:0'],
+            'hide_prices'          => ['nullable', 'boolean'],
             'assets'               => ['nullable', 'array'],
             'assets.*.selected'    => ['nullable', 'in:1'],
             'assets.*.asset_id'    => ['nullable', 'exists:assets,id'],
             'assets.*.quantity'    => ['nullable', 'integer', 'min:1'],
             'assets.*.price'       => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        $data['hide_prices'] = $request->boolean('hide_prices');
+
+        // To Go heeft geen bezorg/ophaal door ons — altijd leegmaken om stale data te voorkomen
+        if (($data['booking_type'] ?? '') === 'to_go') {
+            $data['delivery_at'] = null;
+            $data['pickup_at']   = null;
+        }
 
         // Zakelijk betaalt altijd via iDEAL, nooit bij levering
         if (($data['customer_type'] ?? 'particulier') === 'zakelijk') {
@@ -96,11 +248,17 @@ class BookingController extends Controller
         $assetsInput = $request->input('assets', []);
         unset($data['assets']);
 
-        // Beschikbaarheidscheck voor photobooths
+        // Beschikbaarheidscheck voor photobooths (op bezorg/ophaal bereik)
         $availErrors = $this->checkPhotboothAvailability(
             $assetsInput,
             $data['event_date'],
             $data['event_end_date'] ?? null,
+            null,
+            $data['booking_type'] ?? null,
+            $data['delivery_at'] ?? null,
+            $data['pickup_at'] ?? null,
+            $data['customer_pickup_at'] ?? null,
+            $data['customer_return_at'] ?? null,
         );
         if (! empty($availErrors)) {
             return back()->withInput()->withErrors(['availability' => implode(' ', $availErrors)]);
@@ -124,7 +282,7 @@ class BookingController extends Controller
         if (! empty($data['lead_id'])) {
             $lead = Lead::find($data['lead_id']);
             if ($lead && ! $lead->isArchived()) {
-                $wonStatus = LeadStatus::where('name', 'won')->first();
+                $wonStatus = LeadStatus::whereIn('name', ['gewonnen', 'won'])->first();
                 if ($wonStatus) {
                     $lead->status_id = $wonStatus->id;
                 }
@@ -161,7 +319,7 @@ class BookingController extends Controller
             $booking->update(['public_token' => \Illuminate\Support\Str::random(48)]);
         }
 
-        $booking->load(['lead', 'payments', 'items', 'account']);
+        $booking->load(['lead', 'payments', 'items', 'account', 'deliveryStaff', 'pickupStaff', 'stripTemplate']);
 
         return view('bookings.show', compact('booking'));
     }
@@ -174,16 +332,41 @@ class BookingController extends Controller
         $itemsByAsset  = $booking->items->groupBy('asset_id');
 
         // Bereken welke units al geboekt zijn door andere boekingen voor deze datumperiode
+        // Gebruik het effectieve bezet-bereik van de huidige boeking (bezorg/ophaal of event_date)
         $bookedUnitsByAsset = [];
-        $eventDate    = $booking->event_date->toDateString();
-        $eventEndDate = ($booking->event_end_date ?? $booking->event_date)->toDateString();
+
+        if ($booking->booking_type === 'to_go' && $booking->customer_pickup_at) {
+            $checkStart = \Carbon\Carbon::parse($booking->customer_pickup_at)->toDateString();
+            $checkEnd   = $booking->customer_return_at
+                ? \Carbon\Carbon::parse($booking->customer_return_at)->toDateString()
+                : $checkStart;
+        } elseif ($booking->delivery_at) {
+            $checkStart = \Carbon\Carbon::parse($booking->delivery_at)->toDateString();
+            $checkEnd   = $booking->pickup_at
+                ? \Carbon\Carbon::parse($booking->pickup_at)->toDateString()
+                : $checkStart;
+        } else {
+            $checkStart = $booking->event_date->toDateString();
+            $checkEnd   = ($booking->event_end_date ?? $booking->event_date)->toDateString();
+        }
 
         foreach ($assets->where('category', 'photobooth') as $pb) {
-            $overlapScope = function ($q) use ($eventDate, $eventEndDate, $booking) {
+            $overlapScope = function ($q) use ($checkStart, $checkEnd, $booking) {
                 $q->whereIn('status', ['confirmed', 'completed'])
                   ->where('id', '!=', $booking->id)
-                  ->where('event_date', '<=', $eventEndDate)
-                  ->whereRaw("COALESCE(event_end_date, event_date) >= ?", [$eventDate]);
+                  ->whereRaw("
+                    (CASE
+                        WHEN booking_type = 'to_go' AND customer_pickup_at IS NOT NULL THEN DATE(customer_pickup_at)
+                        WHEN delivery_at IS NOT NULL THEN DATE(delivery_at)
+                        ELSE event_date
+                    END) <= ?
+                    AND
+                    (CASE
+                        WHEN booking_type = 'to_go' AND customer_pickup_at IS NOT NULL THEN DATE(COALESCE(customer_return_at, customer_pickup_at))
+                        WHEN delivery_at IS NOT NULL THEN DATE(COALESCE(pickup_at, delivery_at))
+                        ELSE COALESCE(event_end_date, event_date)
+                    END) >= ?
+                  ", [$checkEnd, $checkStart]);
             };
 
             // Units specifiek geboekt (met unit_number)
@@ -210,11 +393,19 @@ class BookingController extends Controller
             $bookedUnitsByAsset[$pb->id] = $bookedUnits;
         }
 
-        return view('bookings.edit', compact('booking', 'assets', 'selectedItems', 'itemsByAsset', 'bookedUnitsByAsset'));
+        $staffMembers = Staff::where('is_active', true)->orderBy('name')->get();
+
+        return view('bookings.edit', compact('booking', 'assets', 'selectedItems', 'itemsByAsset', 'bookedUnitsByAsset', 'staffMembers'));
     }
 
     public function update(Request $request, Booking $booking): RedirectResponse
     {
+        // Browsers sturen soms HH:MM:SS door step="900" — afkappen naar HH:MM
+        $request->merge(array_filter([
+            'event_start_time' => $request->event_start_time ? substr($request->event_start_time, 0, 5) : null,
+            'event_end_time'   => $request->event_end_time   ? substr($request->event_end_time, 0, 5)   : null,
+        ], fn($v) => $v !== null));
+
         $data = $request->validate([
             'customer_name'        => ['required', 'string', 'max:150'],
             'customer_email'       => ['nullable', 'email', 'max:255'],
@@ -237,7 +428,13 @@ class BookingController extends Controller
             'event_postcode'       => ['nullable', 'string', 'max:20'],
             'event_city'           => ['nullable', 'string', 'max:100'],
             'event_notes'          => ['nullable', 'string'],
-            'strip_status'         => ['required', 'in:waiting_input,designing,review,accepted,ready'],
+            'delivery_instructions'         => ['nullable', 'string', 'max:5000'],
+            'delivery_instructions_files'   => ['nullable', 'array'],
+            'delivery_instructions_files.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
+            'strip_status'         => ['nullable', 'in:waiting_input,awaiting_customer_design,designing,review,accepted,ready'],
+            'strip_design_method'  => ['nullable', 'in:self,template,custom'],
+            'strip_self_tool'      => ['nullable', 'in:canva,photoshop'],
+            'strip_template_id'    => ['nullable', 'exists:strip_templates,id'],
             'gallery_url'          => ['nullable', 'url', 'max:500'],
             'total_price'          => ['nullable', 'numeric', 'min:0'],
             'status'               => ['required', 'in:confirmed,cancelled,completed,no_show'],
@@ -248,7 +445,18 @@ class BookingController extends Controller
             'assets.*.quantity'    => ['nullable', 'integer', 'min:1'],
             'assets.*.price'       => ['nullable', 'numeric', 'min:0'],
             'strip_design_file'    => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:20480'],
+            'delivery_staff_id'    => ['nullable', 'exists:staff,id'],
+            'pickup_staff_id'      => ['nullable', 'exists:staff,id'],
+            'hide_prices'          => ['nullable', 'boolean'],
         ]);
+
+        $data['hide_prices'] = $request->boolean('hide_prices');
+
+        // To Go heeft geen bezorg/ophaal door ons — altijd leegmaken om stale data te voorkomen
+        if (($data['booking_type'] ?? $booking->booking_type) === 'to_go') {
+            $data['delivery_at'] = null;
+            $data['pickup_at']   = null;
+        }
 
         // Zakelijk betaalt altijd via iDEAL, nooit bij levering
         if (($data['customer_type'] ?? 'particulier') === 'zakelijk') {
@@ -268,15 +476,30 @@ class BookingController extends Controller
             $data['strip_design_url'] = Storage::disk('public')->url($path);
         }
 
-        $assetsInput = $request->input('assets', []);
-        unset($data['assets'], $data['strip_design_file']);
+        // ── Leverinstructies afbeeldingen: nieuwe uploads toevoegen aan bestaande lijst ──
+        $existingImages = $booking->delivery_instructions_images ?? [];
+        if ($request->hasFile('delivery_instructions_files')) {
+            foreach ($request->file('delivery_instructions_files') as $file) {
+                $path = $file->store('delivery-instructions', 'public');
+                $existingImages[] = $path;
+            }
+        }
+        $data['delivery_instructions_images'] = ! empty($existingImages) ? array_values($existingImages) : null;
 
-        // Beschikbaarheidscheck voor photobooths (excl. huidige boeking)
+        $assetsInput = $request->input('assets', []);
+        unset($data['assets'], $data['strip_design_file'], $data['delivery_instructions_files']);
+
+        // Beschikbaarheidscheck voor photobooths (excl. huidige boeking, op bezorg/ophaal bereik)
         $availErrors = $this->checkPhotboothAvailability(
             $assetsInput,
             $data['event_date'],
             $data['event_end_date'] ?? null,
             $booking->id,
+            $data['booking_type'] ?? null,
+            $data['delivery_at'] ?? null,
+            $data['pickup_at'] ?? null,
+            $data['customer_pickup_at'] ?? null,
+            $data['customer_return_at'] ?? null,
         );
         if (! empty($availErrors)) {
             return back()->withInput()->withErrors(['availability' => implode(' ', $availErrors)]);
@@ -351,6 +574,7 @@ class BookingController extends Controller
             ->where(function ($q) {
                 $q->whereNull('gallery_url')->orWhere('gallery_url', '');
             })
+            ->where('gallery_skipped', false)
             ->orderByDesc('event_date')
             ->get();
 
@@ -358,16 +582,28 @@ class BookingController extends Controller
     }
 
     /** Ajax: sla galerij URL op en stuur mail */
+    public function skipGallery(Booking $booking): \Illuminate\Http\JsonResponse
+    {
+        $booking->update(['gallery_skipped' => true]);
+        return response()->json(['success' => true]);
+    }
+
     public function saveGallery(Request $request, Booking $booking): \Illuminate\Http\JsonResponse
     {
         $request->validate([
             'gallery_url' => ['required', 'url', 'max:500'],
         ]);
 
+        // Genereer een unieke gallery token als die er nog niet is
+        $token = $booking->gallery_token ?? \Illuminate\Support\Str::random(24);
+
         $booking->update([
-            'gallery_url' => $request->gallery_url,
-            'status'      => 'completed',
+            'gallery_url'   => $request->gallery_url,
+            'gallery_token' => $token,
+            'status'        => 'completed',
         ]);
+
+        $shareUrl = route('gallery.show', $token);
 
         $mailSent = false;
         if ($booking->customer_email) {
@@ -378,6 +614,7 @@ class BookingController extends Controller
         return response()->json([
             'success'   => true,
             'mail_sent' => $mailSent,
+            'share_url' => $shareUrl,
             'message'   => $mailSent ? 'Galerij opgeslagen en mail verstuurd!' : 'Galerij opgeslagen (geen e-mailadres bekend).',
         ]);
     }
@@ -456,6 +693,34 @@ class BookingController extends Controller
         }
     }
 
+    /** Betaalstatus wijzigen via AJAX */
+    public function updatePaymentStatus(Request $request, Booking $booking): JsonResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        $request->validate([
+            'payment_status' => ['required', 'in:unpaid,partial,paid,cancelled,refunded'],
+        ]);
+
+        $booking->update(['payment_status' => $request->payment_status]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Geen factuur nodig toggle */
+    public function toggleSkipInvoice(Request $request, Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        $booking->update(['eboekhouden_skip_invoice' => !$booking->eboekhouden_skip_invoice]);
+
+        $msg = $booking->eboekhouden_skip_invoice
+            ? 'Boeking gemarkeerd als "geen factuur nodig".'
+            : 'Markering verwijderd — factuur kan weer aangemaakt worden.';
+
+        return redirect()->route('bookings.show', $booking)->with('success', $msg);
+    }
+
     /** Handmatig factuurnummer opslaan (zonder factuur aan te maken via CRM) */
     public function saveManualInvoiceNumber(Request $request, Booking $booking): RedirectResponse
     {
@@ -465,13 +730,28 @@ class BookingController extends Controller
             'eboekhouden_invoice_number' => ['required', 'string', 'max:50'],
         ]);
 
-        $booking->update([
-            'eboekhouden_invoice_number' => trim($request->eboekhouden_invoice_number),
-            'eboekhouden_status'         => 'manual',
-        ]);
+        $newNumber = trim($request->eboekhouden_invoice_number);
+        $isChange  = $booking->eboekhouden_invoice_number && $booking->eboekhouden_invoice_number !== $newNumber;
 
-        return redirect()->route('bookings.show', $booking)
-            ->with('success', 'Factuurnummer opgeslagen. Gebruik "Controleer betaalstatus" om de status te synchroniseren.');
+        $update = [
+            'eboekhouden_invoice_number' => $newNumber,
+            'eboekhouden_status'         => 'manual',
+        ];
+
+        // Bij een wijziging: reset sync-gegevens en betaalstatus zodat opnieuw gecontroleerd moet worden
+        if ($isChange) {
+            $update['eboekhouden_invoice_id'] = null;
+            $update['eboekhouden_synced_at']  = null;
+            $update['payment_status']         = 'unpaid';
+        }
+
+        $booking->update($update);
+
+        $msg = $isChange
+            ? 'Factuurnummer gewijzigd. Betaalstatus is teruggezet naar "niet betaald" — controleer de status opnieuw.'
+            : 'Factuurnummer opgeslagen. Gebruik "Controleer betaalstatus" om de status te synchroniseren.';
+
+        return redirect()->route('bookings.show', $booking)->with('success', $msg);
     }
 
     /** Betaalstatus ophalen van e-boekhouden */
@@ -505,6 +785,124 @@ class BookingController extends Controller
             ->with($flashType, $result['message']);
     }
 
+    /** Batch: betaalstatus controleren voor alle onbetaalde boekingen */
+    public function syncAllPayments(): RedirectResponse
+    {
+        $account = auth()->user()->account;
+
+        if (!$account->eboekhouden_enabled) {
+            return redirect()->route('bookings.index')
+                ->with('error', 'e-Boekhouden koppeling is uitgeschakeld voor dit account.');
+        }
+
+        $syncService = app(\App\Services\EBoekhoudenPaymentSyncService::class);
+        $result = $syncService->syncPaymentStatuses($account->id);
+
+        $message = "{$result['synced']} boeking(en) bijgewerkt naar betaald";
+        if ($result['errors'] > 0) {
+            $message .= ", {$result['errors']} fout(en)";
+        }
+        if ($result['skipped'] > 0) {
+            $message .= ", {$result['skipped']} overgeslagen";
+        }
+        $message .= '.';
+
+        $flashType = $result['synced'] > 0 ? 'success' : 'warning';
+
+        return redirect()->route('bookings.index')->with($flashType, $message);
+    }
+
+    /** Terugbrengtijdstip verzoek goedkeuren of afwijzen */
+    public function handleReturnTimeRequest(Request $request, Booking $booking): RedirectResponse
+    {
+        $action = $request->input('action'); // 'approve' of 'reject'
+
+        if ($action === 'approve' && $booking->proposed_return_time && $booking->customer_return_at) {
+            $newReturnAt = $booking->customer_return_at->setTimeFromTimeString($booking->proposed_return_time);
+            $booking->update([
+                'customer_return_at'     => $newReturnAt,
+                'proposed_return_status' => 'approved',
+            ]);
+
+            // Mail naar klant
+            if ($booking->customer_email) {
+                $portalUrl = route('portal.show', $booking->public_token);
+                $subject   = "✅ Retourtijdstip bevestigd — {$booking->booking_number}";
+                $body      = "
+                    <p>Beste {$booking->customer_name},</p>
+                    <p>Je retourtijdstip is goedgekeurd:</p>
+                    <table style='border-collapse:collapse;margin:1rem 0;font-size:15px;'>
+                        <tr>
+                            <td style='padding:.4rem 1rem .4rem 0;color:#6b7280;'>🔄 Terugbrengen</td>
+                            <td style='padding:.4rem 0;font-weight:700;'>{$newReturnAt->translatedFormat('l j F Y')} om {$newReturnAt->format('H:i')}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding:.4rem 1rem .4rem 0;color:#6b7280;'>📍 Adres</td>
+                            <td style='padding:.4rem 0;'>Ravenswade 132, 3439 LD Nieuwegein</td>
+                        </tr>
+                    </table>
+                    <p><a href='{$portalUrl}' style='display:inline-block;background:#ea580c;color:#fff;padding:.6rem 1.25rem;border-radius:.4rem;text-decoration:none;font-weight:700;'>Bekijk je boeking →</a></p>
+                ";
+                app(MailService::class)->sendRaw($booking->customer_email, $subject, $body);
+            }
+
+            return redirect()->route('bookings.show', $booking)
+                ->with('success', '✅ Terugbrengtijdstip goedgekeurd en bijgewerkt naar ' . $newReturnAt->format('H:i') . ' uur.');
+        }
+
+        if ($action === 'reject') {
+            $booking->update([
+                'proposed_return_time'   => null,
+                'proposed_return_status' => 'rejected',
+            ]);
+
+            return redirect()->route('bookings.show', $booking)
+                ->with('success', 'Terugbrengverzoek afgewezen. Het originele tijdstip blijft staan.');
+        }
+
+        return redirect()->route('bookings.show', $booking);
+    }
+
+    /** Boekingsbevestiging opnieuw sturen */
+    public function resendConfirmation(Booking $booking): RedirectResponse
+    {
+        if (! $booking->customer_email) {
+            return redirect()->route('bookings.show', $booking)
+                ->with('error', 'Geen e-mailadres bekend voor deze boeking.');
+        }
+
+        app(MailService::class)->send('customer_booking_confirmation', $booking, $booking->customer_email);
+
+        return redirect()->route('bookings.show', $booking)
+            ->with('success', 'Boekingsbevestiging opnieuw verstuurd naar ' . $booking->customer_email . '.');
+    }
+
+    /** Galerij-klaar mail (opnieuw) versturen */
+    public function resendGalleryMail(Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        if (! $booking->customer_email) {
+            return redirect()->route('bookings.show', $booking)
+                ->with('error', 'Geen e-mailadres bekend voor deze boeking.');
+        }
+        if (! $booking->gallery_url) {
+            return redirect()->route('bookings.show', $booking)
+                ->with('error', 'Er is nog geen galerij-link ingevuld voor deze boeking.');
+        }
+
+        $booking->load('account');
+        $ok = app(MailService::class)->send('customer_gallery_ready', $booking, $booking->customer_email);
+
+        if (! $ok) {
+            return redirect()->route('bookings.show', $booking)
+                ->with('error', 'Mail kon niet verstuurd worden. Controleer of de template "Fotogalerij gereed" actief is in /mail-templates.');
+        }
+
+        return redirect()->route('bookings.show', $booking)
+            ->with('success', 'Galerij-mail opnieuw verstuurd naar ' . $booking->customer_email . '.');
+    }
+
     /** Strip status bijwerken via AJAX */
     public function updateStripStatus(Request $request, Booking $booking): JsonResponse
     {
@@ -529,6 +927,11 @@ class BookingController extends Controller
     }
 
     /** Snel ontwerp uploaden vanuit het overzicht */
+    public function designModal(Booking $booking): \Illuminate\Http\Response
+    {
+        return response(view('bookings._design_modal', compact('booking'))->render());
+    }
+
     public function uploadStripDesign(Request $request, Booking $booking): RedirectResponse
     {
         $request->validate([
@@ -585,6 +988,25 @@ class BookingController extends Controller
         return redirect()->route('bookings.index')->with('success', "Ontwerp toegevoegd en mail verstuurd naar {$booking->customer_name}.");
     }
 
+    /** Verwijder één afbeelding uit de leverinstructies */
+    public function deleteDeliveryImage(Request $request, Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        $path   = (string) $request->input('path');
+        $images = $booking->delivery_instructions_images ?? [];
+
+        if (! in_array($path, $images, true)) {
+            return back()->with('error', 'Afbeelding niet gevonden.');
+        }
+
+        Storage::disk('public')->delete($path);
+        $images = array_values(array_filter($images, fn($p) => $p !== $path));
+        $booking->update(['delivery_instructions_images' => $images ?: null]);
+
+        return back()->with('success', 'Afbeelding verwijderd.');
+    }
+
     /** Verwijder een specifiek ontwerp uit de lijst */
     public function deleteStripDesign(Request $request, Booking $booking): RedirectResponse
     {
@@ -621,10 +1043,196 @@ class BookingController extends Controller
         return redirect()->route('bookings.index')->with('success', 'Ontwerp verwijderd.');
     }
 
+    /** Personeel inplannen: overzicht alle aankomende boekingen */
+    public function staffPlanning(Request $request): View
+    {
+        $staffMembers = Staff::where('is_active', true)->orderBy('name')->get();
+
+        $bookings = Booking::with(['deliveryStaff', 'pickupStaff'])
+            ->whereIn('status', ['confirmed'])
+            ->where('event_date', '>=', now()->toDateString())
+            ->orderBy('event_date')
+            ->orderBy('delivery_at')
+            ->get();
+
+        // Aanmeldingen in één query ophalen (geen N+1), gegroepeerd op "booking_id|role"
+        $signups = RideSignup::with('staff')
+            ->whereIn('booking_id', $bookings->pluck('id'))
+            ->get()
+            ->groupBy(fn ($s) => $s->booking_id . '|' . $s->role);
+
+        // Publieke bord-URL voor de WhatsApp-groep
+        $boardUrl = route('rides.board', auth()->user()->account_id);
+
+        return view('bookings.staff-planning', compact('bookings', 'staffMembers', 'signups', 'boardUrl'));
+    }
+
+    /** AJAX: sla bezorger/ophaler op voor één boeking */
+    public function assignStaff(Request $request, Booking $booking): JsonResponse
+    {
+        $data = $request->validate([
+            'field' => ['required', 'in:delivery_staff_id,pickup_staff_id'],
+            'staff_id' => ['nullable', 'exists:staff,id'],
+        ]);
+
+        $openCol = $data['field'] === 'delivery_staff_id' ? 'delivery_open' : 'pickup_open';
+
+        if ($data['staff_id']) {
+            // Rollen die bij dit veld horen: delivery_staff_id dekt delivery + handover, pickup_staff_id dekt pickup
+            $roles = $data['field'] === 'delivery_staff_id' ? ['delivery', 'handover'] : ['pickup'];
+
+            // Had deze medewerker zich aangemeld voor deze rit? Zo ja → bevestigingsmail.
+            // (Bij gewone handmatige planning zonder aanmelding sturen we niets, om spam te voorkomen.)
+            $hadSignedUp = RideSignup::withoutGlobalScope(\App\Scopes\AccountScope::class)
+                ->where('booking_id', $booking->id)
+                ->whereIn('role', $roles)
+                ->where('staff_id', $data['staff_id'])
+                ->where('response', 'yes')
+                ->exists();
+
+            // Toewijzen: zet rit dicht voor aanmelding en ruim aanmeldingen op
+            $booking->update([
+                $data['field'] => $data['staff_id'],
+                $openCol       => false,
+            ]);
+
+            RideSignup::withoutGlobalScope(\App\Scopes\AccountScope::class)
+                ->where('booking_id', $booking->id)
+                ->whereIn('role', $roles)
+                ->delete();
+
+            $staff = Staff::find($data['staff_id']);
+
+            if ($hadSignedUp) {
+                $this->notifyStaffAssigned($booking, $staff, $data['field']);
+            }
+
+            return response()->json(['ok' => true, 'name' => $staff?->name]);
+        }
+
+        // Loskoppelen: laat open-vlag + aanmeldingen ongemoeid
+        $booking->update([$data['field'] => null]);
+
+        return response()->json(['ok' => true, 'name' => null]);
+    }
+
+    /** AJAX: zet één rit open of dicht voor aanmelding door medewerkers */
+    public function toggleRideOpen(Request $request, Booking $booking): JsonResponse
+    {
+        $data = $request->validate([
+            'field' => ['required', 'in:delivery_staff_id,pickup_staff_id'],
+            'open'  => ['required', 'boolean'],
+        ]);
+
+        $openCol = $data['field'] === 'delivery_staff_id' ? 'delivery_open' : 'pickup_open';
+
+        // Een al toegewezen rit kun je niet openzetten
+        if ($data['open'] && $booking->{$data['field']}) {
+            return response()->json(['ok' => false, 'error' => 'Deze rit is al toegewezen.'], 422);
+        }
+
+        $booking->update([$openCol => $data['open']]);
+
+        return response()->json(['ok' => true, 'open' => $data['open']]);
+    }
+
+    /** Zet alle nog niet-ingeplande ritten open voor aanmelding en mail de medewerkers */
+    public function openAllUnassigned(Request $request): RedirectResponse
+    {
+        $accountId = auth()->user()->account_id;
+
+        $base = Booking::whereIn('status', ['confirmed'])
+            ->where('event_date', '>=', now()->toDateString());
+
+        $opened = (clone $base)->whereNull('delivery_staff_id')->where('delivery_open', false)
+            ->update(['delivery_open' => true]);
+        $opened += (clone $base)->whereNull('pickup_staff_id')->where('pickup_open', false)
+            ->update(['pickup_open' => true]);
+
+        if ($opened > 0) {
+            $this->notifyStaffRidesOpened($accountId);
+        }
+
+        return redirect()->route('bookings.staff-planning')
+            ->with('success', $opened > 0
+                ? "$opened rit(ten) opengezet — medewerkers hebben een mail gekregen."
+                : 'Er waren geen ritten meer om open te zetten.');
+    }
+
+    /** Mail alle actieve medewerkers dat er ritten openstaan */
+    private function notifyStaffRidesOpened(int $accountId): void
+    {
+        try {
+            $staffMembers = Staff::withoutGlobalScope(\App\Scopes\AccountScope::class)
+                ->where('account_id', $accountId)
+                ->where('is_active', true)
+                ->whereNotNull('email')
+                ->get();
+
+            if ($staffMembers->isEmpty()) return;
+
+            // Tel hoeveel ritten er nu openstaan voor dit account
+            $openCount = Booking::withoutGlobalScope(\App\Scopes\AccountScope::class)
+                ->where('account_id', $accountId)
+                ->whereIn('status', ['confirmed'])
+                ->where('event_date', '>=', now()->toDateString())
+                ->where(function ($q) {
+                    $q->where('delivery_open', true)->orWhere('pickup_open', true);
+                })
+                ->count();
+
+            $mailService = app(MailService::class);
+
+            foreach ($staffMembers as $staff) {
+                $link = route('staff.portal', $staff->public_token) . '?tab=beschikbaar';
+                $htmlBody = '
+                <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+                    <h2 style="margin:0 0 8px;font-size:18px;">🚗 Er staan ritten open</h2>
+                    <p style="color:#64748b;margin:0 0 20px;">Hoi '.$staff->name.', er staan ritten open waar je je voor kunt aanmelden. Wie het eerst komt... — meld je aan voor de ritten die jij kunt doen.</p>
+                    <a href="'.$link.'" style="display:inline-block;background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Bekijk beschikbare ritten →</a>
+                    <p style="color:#94a3b8;margin:18px 0 0;font-size:12px;">Je beheerder bevestigt daarna wie de rit doet.</p>
+                </div>';
+
+                try {
+                    $mailService->sendRaw($staff->email, '🚗 Er staan ritten open — Flitsmoment', $htmlBody);
+                } catch (\Exception $e) {
+                    \Log::error('Ritten-open mail fout (' . $staff->email . '): ' . $e->getMessage());
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::error('notifyStaffRidesOpened fout: ' . $e->getMessage());
+        }
+    }
+
+    /** Mail de gekozen medewerker dat hij is ingepland voor een rit */
+    private function notifyStaffAssigned(Booking $booking, ?Staff $staff, string $field): void
+    {
+        if (! $staff || ! $staff->email) return;
+
+        try {
+            $rolLabel = $field === 'pickup_staff_id'
+                ? 'ophalen'
+                : ($booking->booking_type === 'to_go' ? 'afgeven' : 'bezorgen');
+            $link = route('staff.portal', $staff->public_token);
+            $datum = $booking->event_date?->translatedFormat('l j F Y');
+
+            $htmlBody = '
+            <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+                <h2 style="margin:0 0 8px;font-size:18px;">✅ Je bent ingepland</h2>
+                <p style="color:#64748b;margin:0 0 20px;">Hoi '.$staff->name.', je bent ingepland om te <strong>'.$rolLabel.'</strong> voor boeking <strong>'.$booking->booking_number.'</strong> ('.$booking->customer_name.')'.($datum ? ' op '.$datum : '').'.</p>
+                <a href="'.$link.'" style="display:inline-block;background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Bekijk je planning →</a>
+            </div>';
+
+            app(MailService::class)->sendRaw($staff->email, '✅ Je bent ingepland — ' . $booking->booking_number, $htmlBody);
+        } catch (\Exception $e) {
+            \Log::error('notifyStaffAssigned mail fout: ' . $e->getMessage());
+        }
+    }
+
     /** Planning overzicht: Gantt-timeline per photobooth */
     public function planning(Request $request): View
     {
-        $weeks  = max(4, min(16, (int) $request->input('weeks', 8)));
+        $weeks  = max(1, min(16, (int) $request->input('weeks', 2)));
         $offset = (int) $request->input('offset', 0);
 
         $startDate = Carbon::now()->startOfWeek()->addWeeks($offset);
@@ -642,11 +1250,174 @@ class BookingController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Haal alle relevante boekingen op (alleen bevestigd/afgerond, in datumbereik, met photobooth items)
-        $bookings = Booking::with(['items' => fn($q) => $q->with('asset')])
+        // Haal achtergronden, prop_boxes en extra's op
+        $extraAssets = Asset::whereIn('category', ['background', 'prop_box', 'extra'])
+            ->where('is_active', true)
+            ->where('ignore_stock', false)  // verberg consumables/kosten uit planning
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get();
+
+        // Helper: effectieve Gantt-datums op basis van bezorg/ophaalmoment
+        $ganttDates = function (Booking $b): array {
+            if ($b->booking_type === 'to_go' && $b->customer_pickup_at) {
+                // To Go: klant haalt op → retour
+                $start = Carbon::parse($b->customer_pickup_at)->startOfDay();
+                $end   = $b->customer_return_at ? Carbon::parse($b->customer_return_at)->startOfDay() : $start->copy();
+            } elseif ($b->delivery_at) {
+                // Full Service: bezorging → ophalen
+                $start = Carbon::parse($b->delivery_at)->startOfDay();
+                $end   = $b->pickup_at ? Carbon::parse($b->pickup_at)->startOfDay() : $start->copy();
+            } else {
+                // Fallback: event_date
+                $start = $b->event_date->copy();
+                $end   = $b->event_end_date ? $b->event_end_date->copy() : $start->copy();
+            }
+            return [$start, $end];
+        };
+
+        // Helper: tijdsfractie van de dag (0.0 = middernacht, 1.0 = 23:59)
+        // Geeft [startFractie, eindFractie] terug voor visuele balkpositionering
+        $ganttTimeFracs = function (Booking $b): array {
+            if ($b->booking_type === 'to_go' && $b->customer_pickup_at) {
+                $dtStart = Carbon::parse($b->customer_pickup_at);
+                $dtEnd   = $b->customer_return_at ? Carbon::parse($b->customer_return_at) : null;
+            } elseif ($b->delivery_at) {
+                $dtStart = Carbon::parse($b->delivery_at);
+                $dtEnd   = $b->pickup_at ? Carbon::parse($b->pickup_at) : null;
+            } else {
+                return [0.0, 1.0]; // geen tijdinfo → volledige dag
+            }
+            $startFrac = ($dtStart->hour * 60 + $dtStart->minute) / 1440;
+            $endFrac   = $dtEnd ? ($dtEnd->hour * 60 + $dtEnd->minute) / 1440 : 1.0;
+            // Als eindtijd 00:00 is (middernacht) behandelen als einde van de dag
+            if ($dtEnd && $dtEnd->hour === 0 && $dtEnd->minute === 0) $endFrac = 1.0;
+            return [$startFrac, $endFrac];
+        };
+
+        // Helper: bereken margin-left/right percentages voor een segment
+        // Boekingen die extra assets bevatten in dit datumbereik
+        $extraBookings = Booking::with(['items' => fn($q) => $q->with('asset')])
             ->whereIn('status', ['confirmed', 'completed'])
             ->where('event_date', '<=', $endDate->toDateString())
             ->whereRaw("COALESCE(event_end_date, event_date) >= ?", [$startDate->toDateString()])
+            ->orderBy('event_date')
+            ->get()
+            ->filter(fn($b) => $b->items->contains(
+                fn($i) => in_array($i->asset?->category, ['background', 'prop_box', 'extra'])
+            ));
+
+        // Bouw Gantt-rijen per extra asset (zelfde logica als photobooths)
+        $extraRows = [];
+        foreach ($extraAssets as $asset) {
+            $assetBookings = $extraBookings
+                ->filter(fn($b) => $b->items->where('asset_id', $asset->id)->isNotEmpty())
+                ->sortBy('event_date')
+                ->values();
+
+            $numSlots = $asset->ignore_stock ? 1 : min(20, max(1, (int) $asset->stock));
+
+            // Wijs boekingen toe aan slots op basis van conflicten
+            $slots = array_fill(0, $numSlots, []);
+            foreach ($assetBookings as $booking) {
+                [$bookStart, $bookEnd] = $ganttDates($booking);
+                // Qty begrensd op numSlots — voorkomt oneindige overflow bij wegwerpartikelen
+                $qty = min($numSlots, max(1, (int) ($booking->items->firstWhere('asset_id', $asset->id)?->quantity ?? 1)));
+
+                $assigned = 0;
+                for ($s = 0; $s < $numSlots && $assigned < $qty; $s++) {
+                    $conflict = false;
+                    foreach ($slots[$s] as $existing) {
+                        [$exStart, $exEnd] = $ganttDates($existing);
+                        if ($bookStart->lte($exEnd) && $bookEnd->gte($exStart)) { $conflict = true; break; }
+                    }
+                    if (! $conflict) { $slots[$s][] = $booking; $assigned++; }
+                }
+                // Overflow: plak in de laatste slot (kan nu maximaal $numSlots keer)
+                while ($assigned < $qty) { $slots[$numSlots - 1][] = $booking; $assigned++; }
+            }
+
+            // Bouw per-dag segmenten per slot (elk dagcel kan meerdere boekingen tonen)
+            for ($s = 0; $s < $numSlots; $s++) {
+                $slotBookings = collect($slots[$s])->sortBy('event_date')->values();
+                $segments     = [];
+
+                foreach ($days as $day) {
+                    $dayBookings = [];
+                    foreach ($slotBookings as $booking) {
+                        [$bookStart, $bookEnd] = $ganttDates($booking);
+                        if ($day->lt($bookStart) || $day->gt($bookEnd)) continue;
+
+                        [$startFrac, $endFrac] = $ganttTimeFracs($booking);
+                        $isFirstDay = $day->isSameDay($bookStart);
+                        $isLastDay  = $day->isSameDay($bookEnd);
+
+                        $startPct = $isFirstDay ? round($startFrac * 100, 2) : 0.0;
+                        $endPct   = $isLastDay  ? round($endFrac   * 100, 2) : 100.0;
+
+                        // Skip lege segmenten (bijv. ophaal exact om 00:00)
+                        if ($endPct <= $startPct) continue;
+
+                        $dayBookings[] = [
+                            'booking'      => $booking,
+                            'start_pct'    => $startPct,
+                            'end_pct'      => $endPct,
+                            'is_first_day' => $isFirstDay,
+                            'is_last_day'  => $isLastDay,
+                        ];
+                    }
+
+                    // Sorteer op start_pct zodat bars naast elkaar passen
+                    usort($dayBookings, fn($a, $b) => $a['start_pct'] <=> $b['start_pct']);
+
+                    // Detecteer tijds-overlap tussen boekingen op deze dag
+                    $hasConflict = false;
+                    for ($i = 1; $i < count($dayBookings); $i++) {
+                        if ($dayBookings[$i]['start_pct'] < $dayBookings[$i - 1]['end_pct']) {
+                            $hasConflict = true;
+                            break;
+                        }
+                    }
+
+                    $segments[] = [
+                        'bookings'     => $dayBookings,
+                        'has_conflict' => $hasConflict,
+                    ];
+                }
+
+                $extraRows[] = [
+                    'asset'       => $asset,
+                    'label'       => $numSlots > 1 ? $asset->name . ' ' . ($s + 1) : $asset->name,
+                    'slot'        => $s + 1,
+                    'total_slots' => $numSlots,
+                    'category'    => $asset->category,
+                    'segments'    => $segments,
+                ];
+            }
+        }
+
+        // Haal alle relevante boekingen op (ook to_go: pickup t/m return datum)
+        $bookings = Booking::with(['items' => fn($q) => $q->with('asset')])
+            ->whereIn('status', ['confirmed', 'completed'])
+            ->where(function ($q) use ($startDate, $endDate) {
+                $q->where(function ($q2) use ($startDate, $endDate) {
+                    // Normale boekingen: event_date bereik
+                    $q2->where('event_date', '<=', $endDate->toDateString())
+                       ->whereRaw("COALESCE(event_end_date, event_date) >= ?", [$startDate->toDateString()]);
+                })->orWhere(function ($q2) use ($startDate, $endDate) {
+                    // To Go: ophaalmoment t/m retourdatum
+                    $q2->where('booking_type', 'to_go')
+                       ->whereNotNull('customer_pickup_at')
+                       ->whereRaw("DATE(customer_pickup_at) <= ?", [$endDate->toDateString()])
+                       ->whereRaw("DATE(COALESCE(customer_return_at, customer_pickup_at)) >= ?", [$startDate->toDateString()]);
+                })->orWhere(function ($q2) use ($startDate, $endDate) {
+                    // Full Service: bezorging t/m ophalen (nooit To Go)
+                    $q2->where('booking_type', '!=', 'to_go')
+                       ->whereNotNull('delivery_at')
+                       ->whereRaw("DATE(delivery_at) <= ?", [$endDate->toDateString()])
+                       ->whereRaw("DATE(COALESCE(pickup_at, delivery_at)) >= ?", [$startDate->toDateString()]);
+                });
+            })
             ->orderBy('event_date')
             ->get()
             ->filter(fn($b) => $b->items->contains(fn($i) => $i->asset?->category === 'photobooth'));
@@ -672,16 +1443,14 @@ class BookingController extends Controller
             // Legacy: auto-toewijzen met oud algoritme
             $legacySlots = array_fill(0, $numSlots, []);
             foreach ($legacy->sortBy('event_date') as $booking) {
-                $bookStart = $booking->event_date->copy();
-                $bookEnd   = $booking->event_end_date ? $booking->event_end_date->copy() : $bookStart;
+                [$bookStart, $bookEnd] = $ganttDates($booking);
                 $qty       = max(1, (int) ($booking->items->firstWhere('asset_id', $pb->id)?->quantity ?? 1));
 
                 $assignedCount = 0;
                 for ($s = 0; $s < $numSlots && $assignedCount < $qty; $s++) {
                     $conflict = false;
                     foreach ($legacySlots[$s] as $existing) {
-                        $exStart = $existing->event_date->copy();
-                        $exEnd   = $existing->event_end_date ? $existing->event_end_date->copy() : $exStart;
+                        [$exStart, $exEnd] = $ganttDates($existing);
                         if ($bookStart->lte($exEnd) && $bookEnd->gte($exStart)) {
                             $conflict = true;
                             break;
@@ -716,36 +1485,46 @@ class BookingController extends Controller
                     ->sortBy('event_date')
                     ->values();
 
-                $segments  = [];
-                $dayIndex  = 0;
-                $totalDays = $days->count();
-
-                while ($dayIndex < $totalDays) {
-                    $currentDay     = $days[$dayIndex];
-                    $matchedBooking = null;
-                    $colspan        = 1;
-
+                // Bouw per-dag segmenten (elk dagcel kan meerdere boekingen tonen)
+                $segments = [];
+                foreach ($days as $day) {
+                    $dayBookings = [];
                     foreach ($slotBookings as $booking) {
-                        $bookStart = $booking->event_date->copy();
-                        $bookEnd   = $booking->event_end_date ? $booking->event_end_date->copy() : $bookStart;
+                        [$bookStart, $bookEnd] = $ganttDates($booking);
+                        if ($day->lt($bookStart) || $day->gt($bookEnd)) continue;
 
-                        $visStart = $bookStart->lt($startDate) ? $startDate->copy() : $bookStart;
-                        $visEnd   = $bookEnd->gt($endDate)     ? $endDate->copy()   : $bookEnd;
+                        [$startFrac, $endFrac] = $ganttTimeFracs($booking);
+                        $isFirstDay = $day->isSameDay($bookStart);
+                        $isLastDay  = $day->isSameDay($bookEnd);
 
-                        if ($currentDay->gte($visStart) && $currentDay->lte($visEnd)) {
-                            $matchedBooking = $booking;
-                            $colspan        = $currentDay->diffInDays($visEnd) + 1;
+                        $startPct = $isFirstDay ? round($startFrac * 100, 2) : 0.0;
+                        $endPct   = $isLastDay  ? round($endFrac   * 100, 2) : 100.0;
+
+                        if ($endPct <= $startPct) continue;
+
+                        $dayBookings[] = [
+                            'booking'      => $booking,
+                            'start_pct'    => $startPct,
+                            'end_pct'      => $endPct,
+                            'is_first_day' => $isFirstDay,
+                            'is_last_day'  => $isLastDay,
+                        ];
+                    }
+
+                    usort($dayBookings, fn($a, $b) => $a['start_pct'] <=> $b['start_pct']);
+
+                    $hasConflict = false;
+                    for ($i = 1; $i < count($dayBookings); $i++) {
+                        if ($dayBookings[$i]['start_pct'] < $dayBookings[$i - 1]['end_pct']) {
+                            $hasConflict = true;
                             break;
                         }
                     }
 
-                    if ($matchedBooking) {
-                        $segments[] = ['booking' => $matchedBooking, 'colspan' => $colspan];
-                        $dayIndex  += $colspan;
-                    } else {
-                        $segments[] = ['booking' => null, 'colspan' => 1];
-                        $dayIndex++;
-                    }
+                    $segments[] = [
+                        'bookings'     => $dayBookings,
+                        'has_conflict' => $hasConflict,
+                    ];
                 }
 
                 $rows[] = [
@@ -761,10 +1540,350 @@ class BookingController extends Controller
         $prevOffset = $offset - $weeks;
         $nextOffset = $offset + $weeks;
 
+        // ── Team-rijen (medewerkers) ──────────────────────────────────────────
+        $allStaff = Staff::where('is_active', true)->orderBy('name')->get();
+
+        // Alle boekingen in dit bereik met staff-koppeling
+        $staffBookings = Booking::with(['deliveryStaff', 'pickupStaff'])
+            ->whereIn('status', ['confirmed', 'completed'])
+            ->where(function ($q) use ($startDate, $endDate) {
+                $q->whereNotNull('delivery_staff_id')
+                  ->orWhereNotNull('pickup_staff_id');
+            })
+            ->where('event_date', '<=', $endDate->toDateString())
+            ->whereRaw("COALESCE(event_end_date, event_date) >= ?", [$startDate->toDateString()])
+            ->orderBy('event_date')
+            ->get();
+
+        $teamRows = [];
+        foreach ($allStaff as $member) {
+            // Bezorger: delivery_at dag (of event_date als fallback)
+            $deliveryBookings = $staffBookings->filter(fn($b) => $b->delivery_staff_id === $member->id);
+            // Ophaler: pickup_at dag
+            $pickupBookings   = $staffBookings->filter(fn($b) => $b->pickup_staff_id === $member->id);
+
+            // Bouw gesegmenteerde rij
+            $buildRow = function (string $roleLabel, $roleBookings, string $color) use ($days, $ganttDates, $member): array {
+                $totalDays = $days->count();
+                $dayIndex  = 0;
+                $segments  = [];
+                $sorted    = $roleBookings->sortBy('event_date')->values();
+
+                while ($dayIndex < $totalDays) {
+                    $currentDay   = $days[$dayIndex];
+                    $matchedBook  = null;
+                    $colspan      = 1;
+
+                    foreach ($sorted as $b) {
+                        // Voor bezorger: gebruik delivery_at dag; voor ophaler: pickup_at dag
+                        if ($roleLabel === 'Bezorger' || $roleLabel === 'Afgever') {
+                            $segStart = $b->delivery_at
+                                ? Carbon::parse($b->delivery_at)->startOfDay()
+                                : ($b->booking_type === 'to_go' && $b->customer_pickup_at
+                                    ? Carbon::parse($b->customer_pickup_at)->startOfDay()
+                                    : $b->event_date->copy());
+                            $segEnd = $segStart->copy();
+                        } else { // Ophaler
+                            $segStart = $b->pickup_at
+                                ? Carbon::parse($b->pickup_at)->startOfDay()
+                                : $b->event_date->copy();
+                            $segEnd = $segStart->copy();
+                        }
+
+                        if ($currentDay->between($segStart, $segEnd)) {
+                            $matchedBook = $b;
+                            $colspan = 1;
+                            break;
+                        }
+                    }
+
+                    if ($matchedBook) {
+                        $segments[] = ['booking' => $matchedBook, 'colspan' => $colspan, 'conflict' => false, 'conflict_bookings' => [], 'color' => $color];
+                    } else {
+                        $segments[] = ['booking' => null, 'colspan' => 1, 'conflict' => false, 'conflict_bookings' => [], 'color' => $color];
+                    }
+
+                    $dayIndex += $colspan;
+                }
+                return $segments;
+            };
+
+            $hasDelivery = $deliveryBookings->isNotEmpty();
+            $hasPickup   = $pickupBookings->isNotEmpty();
+
+            if (! $hasDelivery && ! $hasPickup) continue;
+
+            // Combineer: één rij per medewerker (bezorger + ophaler gecombineerd per dag)
+            $totalDays = $days->count();
+            $dayIndex  = 0;
+            $segments  = [];
+            $allMemberBookings = $staffBookings->filter(fn($b) =>
+                $b->delivery_staff_id === $member->id || $b->pickup_staff_id === $member->id
+            )->sortBy('event_date')->values();
+
+            while ($dayIndex < $totalDays) {
+                $currentDay  = $days[$dayIndex];
+                $matchedBook = null;
+                $roleLabel   = null;
+
+                foreach ($allMemberBookings as $b) {
+                    // Bezorger/afgever: op delivery_at dag
+                    if ($b->delivery_staff_id === $member->id) {
+                        $segDay = $b->delivery_at
+                            ? Carbon::parse($b->delivery_at)->startOfDay()
+                            : ($b->booking_type === 'to_go' && $b->customer_pickup_at
+                                ? Carbon::parse($b->customer_pickup_at)->startOfDay()
+                                : $b->event_date->copy());
+                        if ($currentDay->isSameDay($segDay)) {
+                            $matchedBook = $b;
+                            $roleLabel   = $b->booking_type === 'to_go' ? 'Afgever' : 'Bezorger';
+                            break;
+                        }
+                    }
+                    // Ophaler: op pickup_at dag (FS) of customer_return_at dag (To Go)
+                    if ($b->pickup_staff_id === $member->id) {
+                        if ($b->booking_type === 'to_go') {
+                            $segDay = $b->customer_return_at
+                                ? Carbon::parse($b->customer_return_at)->startOfDay()
+                                : $b->event_date->copy();
+                        } else {
+                            $segDay = $b->pickup_at
+                                ? Carbon::parse($b->pickup_at)->startOfDay()
+                                : $b->event_date->copy();
+                        }
+                        if ($currentDay->isSameDay($segDay)) {
+                            $matchedBook = $b;
+                            $roleLabel   = $b->booking_type === 'to_go' ? 'Ophaler (To Go)' : 'Ophaler';
+                            break;
+                        }
+                    }
+                }
+
+                $segments[] = [
+                    'booking'           => $matchedBook,
+                    'colspan'           => 1,
+                    'conflict'          => false,
+                    'conflict_bookings' => [],
+                    'role_label'        => $roleLabel,
+                ];
+                $dayIndex++;
+            }
+
+            $teamRows[] = [
+                'label'    => $member->name,
+                'member'   => $member,
+                'segments' => $segments,
+            ];
+        }
+
+        // Verzamel alle conflicten (tijds-overlap binnen één unit) voor de waarschuwingsbanner
+        $conflicts = [];
+        foreach ($rows as $row) {
+            $seenPairs = [];
+            foreach ($row['segments'] as $seg) {
+                if (! $seg['has_conflict']) continue;
+                $bookings = $seg['bookings'];
+                for ($i = 0; $i < count($bookings); $i++) {
+                    for ($j = $i + 1; $j < count($bookings); $j++) {
+                        $a = $bookings[$i];
+                        $b = $bookings[$j];
+                        if ($a['start_pct'] < $b['end_pct'] && $a['end_pct'] > $b['start_pct']) {
+                            $key = min($a['booking']->id, $b['booking']->id) . '-' . max($a['booking']->id, $b['booking']->id);
+                            if (! isset($seenPairs[$key])) {
+                                $seenPairs[$key] = true;
+                                $conflicts[]    = ['label' => $row['label'], 'a' => $a['booking'], 'b' => $b['booking']];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return view('bookings.planning', compact(
             'photobooths', 'days', 'rows', 'startDate', 'endDate',
-            'weeks', 'offset', 'prevOffset', 'nextOffset'
+            'weeks', 'offset', 'prevOffset', 'nextOffset',
+            'extraAssets', 'extraRows', 'conflicts', 'teamRows'
         ));
+    }
+
+    /** iCal feed — token-beveiligd, geen login nodig */
+    public function ical(string $token): \Illuminate\Http\Response
+    {
+        // Zoek account op basis van HMAC-token (deterministisch, geen DB-kolom nodig)
+        $account = \App\Models\Account::all()->first(function ($a) use ($token) {
+            return hash_equals(
+                hash_hmac('sha256', (string) $a->id, config('app.key')),
+                $token
+            );
+        });
+
+        abort_if(! $account, 404);
+
+        // Boekingen: 3 maanden terug t/m 2 jaar vooruit
+        $bookings = Booking::with(['deliveryStaff', 'pickupStaff'])
+            ->where('account_id', $account->id)
+            ->whereIn('status', ['confirmed', 'completed'])
+            ->where('event_date', '>=', now()->subMonths(3)->toDateString())
+            ->where('event_date', '<=', now()->addYears(2)->toDateString())
+            ->orderBy('event_date')
+            ->get();
+
+        // Helper: eerste letter van medewerker of 🔴 als niemand ingepland
+        $staffPrefix = function ($staff): string {
+            if (! $staff) return '🔴';
+            return mb_strtoupper(mb_substr($staff->name, 0, 1));
+        };
+
+        // Hulpfunctie: naive datetime (opgeslagen als Amsterdamse lokale tijd) → UTC iCal string
+        // Carbon::parse() accepteert flexibel formaat en respecteert de opgegeven timezone
+        $utc = function (Carbon $dt): string {
+            return Carbon::parse($dt->format('Y-m-d H:i:s'), 'Europe/Amsterdam')
+                ->utc()->format('Ymd\THis\Z');
+        };
+
+        $now = Carbon::now()->utc()->format('Ymd\THis\Z');
+
+        $lines = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//Flitsmoment CRM//NL',
+            'CALSCALE:GREGORIAN',
+            'METHOD:PUBLISH',
+            'X-WR-CALNAME:' . $this->icalEscape($account->name . ' — Boekingen'),
+            'X-WR-TIMEZONE:Europe/Amsterdam',
+            'X-WR-CALDESC:Boekingen en logistieke momenten vanuit het Flitsmoment CRM',
+        ];
+
+        foreach ($bookings as $booking) {
+            $bn   = $booking->booking_number;
+            $name = $booking->customer_name;
+            $addr = $booking->event_address ? ($booking->event_address . ', ' . $booking->event_city) : $booking->event_city;
+            $typeLabel = $booking->booking_type === 'to_go' ? 'To Go' : 'Full Service';
+
+            // ── 1. Event ──────────────────────────────────────────────
+            $eventDateStr = $booking->event_date->format('Y-m-d');
+            $endDateStr   = ($booking->is_multi_day && $booking->event_end_date)
+                ? $booking->event_end_date->format('Y-m-d')
+                : $eventDateStr;
+
+            if ($booking->event_start_time && $booking->event_end_time) {
+                $startCarbon = Carbon::parse($eventDateStr . ' ' . $booking->event_start_time, 'Europe/Amsterdam');
+                $endCarbon   = Carbon::parse($endDateStr   . ' ' . $booking->event_end_time,   'Europe/Amsterdam');
+
+                // Eindtijd vóór starttijd → event loopt door naar de volgende dag (bijv. 19:00–01:00)
+                if ($endCarbon->lte($startCarbon)) {
+                    $endCarbon->addDay();
+                }
+
+                $startProp = 'DTSTART:' . $startCarbon->utc()->format('Ymd\THis\Z');
+                $endProp   = 'DTEND:'   . $endCarbon->utc()->format('Ymd\THis\Z');
+            } else {
+                // Geen tijden: hele-dag event
+                $startProp = 'DTSTART;VALUE=DATE:' . str_replace('-', '', $eventDateStr);
+                $endProp   = 'DTEND;VALUE=DATE:' . Carbon::parse($endDateStr)->addDay()->format('Ymd');
+            }
+
+            $desc = "Boeking: {$bn}\\nType: {$typeLabel}";
+            if ($addr) $desc .= "\\nLocatie: " . $this->icalEscape($addr);
+
+            $lines = array_merge($lines, [
+                'BEGIN:VEVENT',
+                'UID:booking-' . $booking->id . '-event@crm.flitsmoment.nl',
+                'DTSTAMP:' . $now,
+                $startProp,
+                $endProp,
+                'SUMMARY:' . $this->icalEscape("🎉 {$name}"),
+                'DESCRIPTION:' . $desc,
+                'END:VEVENT',
+            ]);
+
+            // ── 2. Bezorging (full_service) ───────────────────────────
+            if ($booking->booking_type === 'full_service' && $booking->delivery_at) {
+                $dStart  = $utc($booking->delivery_at);
+                $dEnd    = $utc($booking->delivery_at->copy()->addHour());
+                $dPrefix = $staffPrefix($booking->deliveryStaff);
+                $lines = array_merge($lines, [
+                    'BEGIN:VEVENT',
+                    'UID:booking-' . $booking->id . '-delivery@crm.flitsmoment.nl',
+                    'DTSTAMP:' . $now,
+                    'DTSTART:' . $dStart,
+                    'DTEND:' . $dEnd,
+                    'SUMMARY:' . $this->icalEscape("🚚 {$dPrefix} | Bezorging: {$name}"),
+                    'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}\\nNaar: " . ($addr ?: '—')),
+                    'END:VEVENT',
+                ]);
+            }
+
+            // ── 3. Ophaling (full_service) ────────────────────────────
+            if ($booking->booking_type === 'full_service' && $booking->pickup_at) {
+                $pStart  = $utc($booking->pickup_at);
+                $pEnd    = $utc($booking->pickup_at->copy()->addHour());
+                $pPrefix = $staffPrefix($booking->pickupStaff);
+                $lines = array_merge($lines, [
+                    'BEGIN:VEVENT',
+                    'UID:booking-' . $booking->id . '-pickup@crm.flitsmoment.nl',
+                    'DTSTAMP:' . $now,
+                    'DTSTART:' . $pStart,
+                    'DTEND:' . $pEnd,
+                    'SUMMARY:' . $this->icalEscape("↩️ {$pPrefix} | Ophaling: {$name}"),
+                    'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}\\nVan: " . ($addr ?: '—')),
+                    'END:VEVENT',
+                ]);
+            }
+
+            // ── 4. Klant haalt op (to_go) ─────────────────────────────
+            if ($booking->booking_type === 'to_go' && $booking->customer_pickup_at) {
+                $cpStart  = $utc($booking->customer_pickup_at);
+                $cpEnd    = $utc($booking->customer_pickup_at->copy()->addHour());
+                $cpPrefix = $staffPrefix($booking->deliveryStaff);
+                $lines = array_merge($lines, [
+                    'BEGIN:VEVENT',
+                    'UID:booking-' . $booking->id . '-customer-pickup@crm.flitsmoment.nl',
+                    'DTSTAMP:' . $now,
+                    'DTSTART:' . $cpStart,
+                    'DTEND:' . $cpEnd,
+                    'SUMMARY:' . $this->icalEscape("📦 {$cpPrefix} | Afhalen: {$name}"),
+                    'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}"),
+                    'END:VEVENT',
+                ]);
+            }
+
+            // ── 5. Klant brengt terug (to_go) ────────────────────────
+            if ($booking->booking_type === 'to_go' && $booking->customer_return_at) {
+                $crStart  = $utc($booking->customer_return_at);
+                $crEnd    = $utc($booking->customer_return_at->copy()->addHour());
+                $crPrefix = $staffPrefix($booking->pickupStaff);
+                $lines = array_merge($lines, [
+                    'BEGIN:VEVENT',
+                    'UID:booking-' . $booking->id . '-customer-return@crm.flitsmoment.nl',
+                    'DTSTAMP:' . $now,
+                    'DTSTART:' . $crStart,
+                    'DTEND:' . $crEnd,
+                    'SUMMARY:' . $this->icalEscape("↩️ {$crPrefix} | Retour: {$name}"),
+                    'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}"),
+                    'END:VEVENT',
+                ]);
+            }
+        }
+
+        $lines[] = 'END:VCALENDAR';
+        $content  = implode("\r\n", $lines) . "\r\n";
+
+        return response($content, 200, [
+            'Content-Type'        => 'text/calendar; charset=utf-8',
+            'Content-Disposition' => 'inline; filename="flitsmoment.ics"',
+            'Cache-Control'       => 'no-cache, must-revalidate',
+        ]);
+    }
+
+    /** Escape tekst voor iCal SUMMARY/DESCRIPTION */
+    private function icalEscape(string $text): string
+    {
+        return str_replace(
+            ['\\',   ';',   ',',   "\n"],
+            ['\\\\', '\\;', '\\,', '\\n'],
+            $text
+        );
     }
 
     public function destroy(Booking $booking): RedirectResponse
@@ -774,64 +1893,202 @@ class BookingController extends Controller
         return redirect()->route('bookings.index')->with('success', 'Boeking verwijderd.');
     }
 
-    /** AJAX: geef bezette units per photobooth-asset voor de opgegeven datums */
+    /** AJAX: geef bezette en bijna-bezette units per photobooth-asset voor de opgegeven datums */
     public function unitAvailability(Request $request): JsonResponse
     {
-        $eventDate    = $request->input('event_date');
-        $eventEndDate = $request->input('event_end_date') ?: $eventDate;
-        $excludeId    = $request->input('exclude_booking_id');
+        // Bepaal datetime-bereik van de nieuwe boeking
+        $bookingType = $request->input('booking_type');
+        if ($bookingType === 'to_go' && $request->input('customer_pickup_at')) {
+            $newStart   = Carbon::parse($request->input('customer_pickup_at'));
+            $newEnd     = $request->input('customer_return_at') ? Carbon::parse($request->input('customer_return_at')) : null;
+            $checkStart = $newStart->toDateString();
+            $checkEnd   = $newEnd ? $newEnd->toDateString() : $checkStart;
+        } elseif ($request->input('delivery_at')) {
+            $newStart   = Carbon::parse($request->input('delivery_at'));
+            $newEnd     = $request->input('pickup_at') ? Carbon::parse($request->input('pickup_at')) : null;
+            $checkStart = $newStart->toDateString();
+            $checkEnd   = $newEnd ? $newEnd->toDateString() : $checkStart;
+        } else {
+            $newStart   = $request->input('event_date') ? Carbon::parse($request->input('event_date'))->startOfDay() : null;
+            $newEnd     = $request->input('event_end_date') ? Carbon::parse($request->input('event_end_date'))->endOfDay() : null;
+            $checkStart = $request->input('event_date');
+            $checkEnd   = $request->input('event_end_date') ?: $checkStart;
+        }
 
-        if (! $eventDate) {
+        $excludeId = $request->input('exclude_booking_id');
+
+        if (! $checkStart) {
             return response()->json([]);
         }
 
+        // Dutch month abbreviations for warning messages
+        $dutchM = ['', 'jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+        $fmtDt  = fn(Carbon $dt) => $dt->format('j') . ' ' . $dutchM[(int)$dt->format('n')] . ' ' . $dt->format('H:i');
+
+        // Classificeer een bestaande boeking: 'conflict', 'warning' (binnen 24u) of 'ok'
+        $classify = function (Booking $b) use ($newStart, $newEnd, $fmtDt): array {
+            [$exStart, $exEnd] = $this->bookingDatetimeRange($b);
+            $ns = $newStart ?? $exStart->copy()->startOfDay();
+            $ne = $newEnd   ?? $ns->copy()->endOfDay();
+
+            // Echte datetime overlap → hard conflict
+            if ($ns->lt($exEnd) && $ne->gt($exStart)) {
+                return ['status' => 'conflict', 'message' => ''];
+            }
+
+            // Geen overlap — check kloof in uren
+            $gap = PHP_INT_MAX;
+            if ($exEnd->lte($ns)) {
+                $gap = min($gap, $exEnd->diffInMinutes($ns) / 60.0);
+            }
+            if ($ne->lte($exStart)) {
+                $gap = min($gap, $ne->diffInMinutes($exStart) / 60.0);
+            }
+
+            if ($gap < 24) {
+                $gapFmt = $gap < 1 ? round($gap * 60) . ' min' : round($gap, 1) . ' uur';
+                $msg    = $exEnd->lte($ns)
+                    ? "Wordt opgehaald om {$fmtDt($exEnd)} ({$b->booking_number} — {$b->customer_name}). Jouw bezorging start om {$fmtDt($ns)}. Slechts {$gapFmt} ertussen."
+                    : "Jouw ophaling is om {$fmtDt($ne)}. Bezorging {$b->booking_number} ({$b->customer_name}) start om {$fmtDt($exStart)}. Slechts {$gapFmt} ertussen.";
+                return ['status' => 'warning', 'message' => $msg];
+            }
+
+            return ['status' => 'ok', 'message' => ''];
+        };
+
         $photobooths = Asset::where('category', 'photobooth')->where('is_active', true)->get();
-        $result      = [];
+        $output      = [];
 
         foreach ($photobooths as $pb) {
-            $overlapScope = function ($q) use ($eventDate, $eventEndDate, $excludeId) {
+            $overlapScope = function ($q) use ($checkStart, $checkEnd, $excludeId) {
                 $q->whereIn('status', ['confirmed', 'completed'])
-                  ->where('event_date', '<=', $eventEndDate)
-                  ->whereRaw("COALESCE(event_end_date, event_date) >= ?", [$eventDate]);
+                  ->whereRaw("
+                    (CASE
+                        WHEN booking_type = 'to_go' AND customer_pickup_at IS NOT NULL THEN DATE(customer_pickup_at)
+                        WHEN delivery_at IS NOT NULL THEN DATE(delivery_at)
+                        ELSE event_date
+                    END) <= ?
+                    AND
+                    (CASE
+                        WHEN booking_type = 'to_go' AND customer_pickup_at IS NOT NULL THEN DATE(COALESCE(customer_return_at, customer_pickup_at))
+                        WHEN delivery_at IS NOT NULL THEN DATE(COALESCE(pickup_at, delivery_at))
+                        ELSE COALESCE(event_end_date, event_date)
+                    END) >= ?
+                  ", [$checkEnd, $checkStart]);
                 if ($excludeId) {
                     $q->where('id', '!=', $excludeId);
                 }
             };
 
-            $specificUnits = BookingItem::where('asset_id', $pb->id)
+            $specificItems = BookingItem::where('asset_id', $pb->id)
                 ->whereNotNull('unit_number')
                 ->whereHas('booking', $overlapScope)
-                ->pluck('unit_number')
-                ->toArray();
+                ->with('booking')
+                ->get();
 
-            $legacyQty = (int) BookingItem::where('asset_id', $pb->id)
+            $legacyItems = BookingItem::where('asset_id', $pb->id)
                 ->whereNull('unit_number')
                 ->whereHas('booking', $overlapScope)
-                ->sum('quantity');
+                ->with('booking')
+                ->get();
 
-            $bookedUnits = array_values(array_unique($specificUnits));
-            for ($u = 1; $u <= $pb->stock && $legacyQty > 0; $u++) {
-                if (! in_array($u, $bookedUnits)) {
-                    $bookedUnits[] = $u;
-                    $legacyQty--;
+            $bookedUnits  = [];
+            $warningUnits = [];
+            $warningInfo  = [];
+
+            foreach ($specificItems as $item) {
+                $unit = (int) $item->unit_number;
+                $cls  = $classify($item->booking);
+                if ($cls['status'] === 'conflict') {
+                    $bookedUnits[] = $unit;
+                } elseif ($cls['status'] === 'warning') {
+                    $warningUnits[]     = $unit;
+                    $warningInfo[$unit] = ['message' => $cls['message']];
                 }
             }
 
-            $result[$pb->id] = $bookedUnits;
+            // Legacy items: tel conflicten en warnings, wijs auto toe aan eerste vrije slots
+            $legacyConflict = 0;
+            $legacyWarning  = 0;
+            $legacyWarnMsg  = '';
+            foreach ($legacyItems as $item) {
+                $cls = $classify($item->booking);
+                if ($cls['status'] === 'conflict') {
+                    $legacyConflict += max(1, (int) ($item->quantity ?? 1));
+                } elseif ($cls['status'] === 'warning') {
+                    $legacyWarning += max(1, (int) ($item->quantity ?? 1));
+                    if (! $legacyWarnMsg) $legacyWarnMsg = $cls['message'];
+                }
+            }
+            for ($u = 1; $u <= $pb->stock && $legacyConflict > 0; $u++) {
+                if (! in_array($u, $bookedUnits)) { $bookedUnits[] = $u; $legacyConflict--; }
+            }
+            for ($u = 1; $u <= $pb->stock && $legacyWarning > 0; $u++) {
+                if (! in_array($u, $bookedUnits) && ! in_array($u, $warningUnits)) {
+                    $warningUnits[]     = $u;
+                    $warningInfo[$u]    = ['message' => $legacyWarnMsg];
+                    $legacyWarning--;
+                }
+            }
+
+            $output[$pb->id] = [
+                'booked'      => array_values(array_unique($bookedUnits)),
+                'warning'     => array_values(array_diff(array_unique($warningUnits), $bookedUnits)),
+                'warningInfo' => $warningInfo,
+            ];
         }
 
-        return response()->json($result);
+        return response()->json($output);
     }
 
-    /** Controleer of photobooth units beschikbaar zijn voor de gegeven datums */
+    /** Geeft de effectieve datetime-range van een boeking terug als [start, end] Carbon-paar */
+    private function bookingDatetimeRange(Booking $booking): array
+    {
+        if ($booking->booking_type === 'to_go' && $booking->customer_pickup_at) {
+            $start = Carbon::parse($booking->customer_pickup_at);
+            $end   = $booking->customer_return_at
+                ? Carbon::parse($booking->customer_return_at)
+                : $start->copy()->endOfDay();
+        } elseif ($booking->delivery_at) {
+            $start = Carbon::parse($booking->delivery_at);
+            $end   = $booking->pickup_at
+                ? Carbon::parse($booking->pickup_at)
+                : $start->copy()->endOfDay();
+        } else {
+            $start = Carbon::parse($booking->event_date)->startOfDay();
+            $end   = Carbon::parse($booking->event_end_date ?? $booking->event_date)->endOfDay();
+        }
+        return [$start, $end];
+    }
+
+    /** Controleer of photobooth units beschikbaar zijn voor de gegeven datums (datetime-gebaseerd) */
     private function checkPhotboothAvailability(
         array $assetsInput,
         string $eventDate,
         ?string $eventEndDate,
-        ?int $excludeBookingId = null
+        ?int $excludeBookingId = null,
+        ?string $bookingType    = null,
+        ?string $deliveryAt     = null,
+        ?string $pickupAt       = null,
+        ?string $customerPickupAt  = null,
+        ?string $customerReturnAt  = null,
     ): array {
-        $errors  = [];
-        $endDate = $eventEndDate ?? $eventDate;
+        $errors = [];
+
+        // Bepaal het datetime-bereik van de nieuwe boeking
+        if ($bookingType === 'to_go' && $customerPickupAt) {
+            $newStart = Carbon::parse($customerPickupAt);
+            $newEnd   = $customerReturnAt ? Carbon::parse($customerReturnAt) : $newStart->copy()->endOfDay();
+        } elseif ($deliveryAt) {
+            $newStart = Carbon::parse($deliveryAt);
+            $newEnd   = $pickupAt ? Carbon::parse($pickupAt) : $newStart->copy()->endOfDay();
+        } else {
+            $newStart = Carbon::parse($eventDate)->startOfDay();
+            $newEnd   = Carbon::parse($eventEndDate ?? $eventDate)->endOfDay();
+        }
+
+        $checkStart = $newStart->toDateString();
+        $checkEnd   = $newEnd->toDateString();
 
         foreach ($assetsInput as $assetId => $data) {
             $asset = Asset::find($assetId);
@@ -841,19 +2098,35 @@ class BookingController extends Controller
             if (empty($selectedUnits)) continue;
 
             foreach ($selectedUnits as $unitNumber) {
-                $alreadyBooked = BookingItem::where('asset_id', $assetId)
+                $conflictExists = BookingItem::where('asset_id', $assetId)
                     ->where('unit_number', $unitNumber)
-                    ->whereHas('booking', function ($q) use ($eventDate, $endDate, $excludeBookingId) {
+                    ->whereHas('booking', function ($q) use ($checkStart, $checkEnd, $excludeBookingId) {
                         $q->where('status', '!=', 'cancelled');
                         if ($excludeBookingId) {
                             $q->where('id', '!=', $excludeBookingId);
                         }
-                        $q->where('event_date', '<=', $endDate)
-                          ->whereRaw("COALESCE(event_end_date, event_date) >= ?", [$eventDate]);
+                        $q->whereRaw("
+                            (CASE
+                                WHEN booking_type = 'to_go' AND customer_pickup_at IS NOT NULL THEN DATE(customer_pickup_at)
+                                WHEN delivery_at IS NOT NULL THEN DATE(delivery_at)
+                                ELSE event_date
+                            END) <= ?
+                            AND
+                            (CASE
+                                WHEN booking_type = 'to_go' AND customer_pickup_at IS NOT NULL THEN DATE(COALESCE(customer_return_at, customer_pickup_at))
+                                WHEN delivery_at IS NOT NULL THEN DATE(COALESCE(pickup_at, delivery_at))
+                                ELSE COALESCE(event_end_date, event_date)
+                            END) >= ?
+                        ", [$checkEnd, $checkStart]);
                     })
-                    ->exists();
+                    ->with('booking')
+                    ->get()
+                    ->contains(function ($item) use ($newStart, $newEnd) {
+                        [$exStart, $exEnd] = $this->bookingDatetimeRange($item->booking);
+                        return $newStart->lt($exEnd) && $newEnd->gt($exStart);
+                    });
 
-                if ($alreadyBooked) {
+                if ($conflictExists) {
                     $errors[] = "'{$asset->name}' Unit {$unitNumber} is al geboekt voor de geselecteerde periode.";
                 }
             }

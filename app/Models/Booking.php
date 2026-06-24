@@ -17,17 +17,20 @@ class Booking extends Model
         'customer_name', 'customer_email', 'customer_phone', 'customer_type', 'company_name', 'payment_method',
         'event_date', 'event_end_date', 'is_multi_day', 'event_start_time', 'event_end_time',
         'delivery_at', 'pickup_at',
-        'customer_pickup_at', 'customer_return_at',
+        'customer_pickup_at', 'customer_return_at', 'customer_pickup_approved',
+        'proposed_return_time', 'proposed_return_status',
         'event_location', 'event_address', 'event_postcode', 'event_city',
         'event_notes',
-        'strip_status', 'strip_design_url', 'strip_notes', 'strip_feedback', 'strip_feedback_at', 'strip_version', 'strip_comments', 'strip_designs', 'strip_intake_data', 'gallery_url',
+        'delivery_instructions', 'delivery_instructions_images',
+        'strip_status', 'strip_design_url', 'strip_notes', 'strip_feedback', 'strip_feedback_at', 'strip_version', 'strip_comments', 'strip_designs', 'strip_intake_data', 'strip_format', 'strip_design_method', 'strip_self_tool', 'strip_template_id', 'gallery_url', 'gallery_token',
         'base_price', 'total_price', 'amount_total',
-        'status', 'payment_status', 'public_token', 'portal_enabled',
+        'status', 'payment_status', 'public_token', 'portal_enabled', 'hide_prices', 'gallery_skipped',
         'confirmed_at', 'cancelled_at', 'completed_at',
-        'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_status', 'eboekhouden_synced_at', 'eboekhouden_relation_id',
+        'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_status', 'eboekhouden_synced_at', 'eboekhouden_relation_id', 'eboekhouden_skip_invoice',
         'intake_data', 'intake_current_step', 'intake_completed', 'intake_completed_at',
         'strip_format', 'pickup_preference', 'pickup_contact_person', 'pickup_contact_time',
         'review_mail_sent_at',
+        'delivery_staff_id', 'pickup_staff_id', 'delivery_open', 'pickup_open',
     ];
 
     protected $casts = [
@@ -36,9 +39,14 @@ class Booking extends Model
         'is_multi_day'        => 'boolean',
         'delivery_at'         => 'datetime',
         'pickup_at'           => 'datetime',
-        'customer_pickup_at'  => 'datetime',
-        'customer_return_at'  => 'datetime',
+        'customer_pickup_at'       => 'datetime',
+        'customer_return_at'       => 'datetime',
+        'customer_pickup_approved' => 'boolean',
         'portal_enabled'      => 'boolean',
+        'delivery_open'       => 'boolean',
+        'pickup_open'         => 'boolean',
+        'hide_prices'         => 'boolean',
+        'gallery_skipped'     => 'boolean',
         'confirmed_at'        => 'datetime',
         'cancelled_at'        => 'datetime',
         'completed_at'        => 'datetime',
@@ -48,6 +56,7 @@ class Booking extends Model
         'strip_comments'        => 'array',
         'strip_designs'         => 'array',
         'strip_intake_data'     => 'array',
+        'delivery_instructions_images' => 'array',
         'intake_completed'      => 'boolean',
         'intake_completed_at'   => 'datetime',
         'review_mail_sent_at'   => 'datetime',
@@ -146,6 +155,11 @@ class Booking extends Model
     /** Bereken openstaand bedrag (total_price - betaald) */
     public function getAmountDueAttribute(): float
     {
+        // Handmatig op betaald gezet → geen openstaand bedrag
+        if (in_array($this->payment_status, ['paid', 'cancelled', 'refunded'])) {
+            return 0.0;
+        }
+
         $betaald = $this->payments()
             ->where('status', 'paid')
             ->sum('amount');
@@ -185,5 +199,25 @@ class Booking extends Model
     public function items(): HasMany
     {
         return $this->hasMany(BookingItem::class);
+    }
+
+    public function deliveryStaff(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'delivery_staff_id')->withoutGlobalScope(AccountScope::class);
+    }
+
+    public function pickupStaff(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'pickup_staff_id')->withoutGlobalScope(AccountScope::class);
+    }
+
+    public function rideSignups(): HasMany
+    {
+        return $this->hasMany(RideSignup::class)->withoutGlobalScope(AccountScope::class);
+    }
+
+    public function stripTemplate(): BelongsTo
+    {
+        return $this->belongsTo(StripTemplate::class, 'strip_template_id')->withoutGlobalScope(AccountScope::class);
     }
 }
