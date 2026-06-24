@@ -169,6 +169,9 @@ document.addEventListener('change', function(e) {
     cursor: pointer;
 }
 .bk-row:hover { background: #fafaf9; }
+.bk-row-inactief { opacity: .45; background: #fafafa; }
+.bk-row-inactief:hover { opacity: .7; background: #f5f5f4; }
+.bk-status-badge { display: inline-block; width: fit-content; font-size: .62rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; margin-bottom: .1rem; }
 .bk-cell { min-width: 0; display: flex; flex-direction: column; gap: .3rem; }
 
 /* Kolom 1: wanneer */
@@ -253,6 +256,14 @@ document.addEventListener('change', function(e) {
             $bk = $betalingKleuren[$boeking->payment_status] ?? '#737373';
             $sk = $currentStrip ? ($stripKleuren[$currentStrip] ?? ['bg'=>'#f1f5f9','text'=>'#475569']) : null;
 
+            // Geannuleerd / no-show: rij vervagen + badge tonen (assets + agenda zijn al uitgesloten in de backend)
+            $inactief    = in_array($boeking->status, ['cancelled', 'no_show']);
+            $statusBadge = match($boeking->status) {
+                'cancelled' => ['txt' => '❌ Geannuleerd', 'bg' => '#fee2e2', 'fg' => '#b91c1c'],
+                'no_show'   => ['txt' => '🚫 No-show',     'bg' => '#fef3c7', 'fg' => '#92400e'],
+                default     => null,
+            };
+
             // Groepeer items op categorie
             $itemGroups = $boeking->items->filter(fn($i) => $i->asset)->groupBy(fn($i) => $i->asset->category);
 
@@ -265,10 +276,13 @@ document.addEventListener('change', function(e) {
             $adresDelen = array_filter([$boeking->event_address, $boeking->event_postcode, $boeking->event_city]);
             $volledigAdres = implode(', ', $adresDelen);
         @endphp
-        <div class="bk-row" data-href="{{ route('bookings.show', $boeking) }}">
+        <div class="bk-row{{ $inactief ? ' bk-row-inactief' : '' }}" data-href="{{ route('bookings.show', $boeking) }}">
 
             {{-- Kolom 1: wanneer --}}
             <div class="bk-cell">
+                @if($statusBadge)
+                    <span class="bk-status-badge" style="background:{{ $statusBadge['bg'] }};color:{{ $statusBadge['fg'] }};">{{ $statusBadge['txt'] }}</span>
+                @endif
                 <span class="bk-date">{{ $boeking->event_date?->isoFormat('ddd D MMM YYYY') }}</span>
                 @if($boeking->event_start_time)
                     <span class="bk-time">🕐 {{ substr($boeking->event_start_time,0,5) }}{{ $boeking->event_end_time ? '–'.substr($boeking->event_end_time,0,5) : '' }}</span>
