@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\ReturnTimeRequestedNotification;
 use App\Models\Booking;
 use App\Models\Payment;
+use App\Models\StripTemplate;
+use App\Models\CanvaTemplate;
 use App\Scopes\AccountScope;
 use App\Services\EBoekhoudenService;
 use App\Services\MailService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Mollie\Api\MollieApiClient;
 
@@ -20,10 +24,26 @@ class PortalController extends Controller
     {
         $booking = Booking::withoutGlobalScope(AccountScope::class)
             ->where('public_token', $token)
-            ->with(['items.asset', 'payments', 'account'])
+            ->with(['items.asset', 'payments', 'account', 'deliveryStaff', 'pickupStaff', 'stripTemplate'])
             ->firstOrFail();
 
-        return view('portal.booking', compact('booking'));
+        // Actieve templates voor dit account (voor de galerij van Optie 2)
+        $stripTemplates = StripTemplate::withoutGlobalScope(AccountScope::class)
+            ->where('account_id', $booking->account_id)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('number')
+            ->get();
+
+        // Canva-templates voor het Zelf-ontwerpen / Canva sub-pad
+        $canvaTemplates = CanvaTemplate::withoutGlobalScope(AccountScope::class)
+            ->where('account_id', $booking->account_id)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        return view('portal.booking', compact('booking', 'stripTemplates', 'canvaTemplates'));
     }
 
     /** Klant downloadt factuur PDF via e-boekhouden */
@@ -61,6 +81,131 @@ class PortalController extends Controller
         return view('portal.strip-design', compact('booking'));
     }
 
+    /** Stap 1: klant kiest een hoofdmethode. Sub-keuzes volgen in vervolgstappen. */
+    public function setStripMethod(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->with('account')
+            ->firstOrFail();
+
+        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
+            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
+        }
+
+        $validated = $request->validate([
+            'method' => ['required', 'in:self,template,custom'],
+        ]);
+
+        $booking->update([
+            'strip_design_method' => $validated['method'],
+            'strip_self_tool'     => null,
+            'strip_template_id'   => null,
+            'strip_status'        => null,
+            'strip_intake_data'   => null,
+        ]);
+
+        // Voor 'custom': mail wordt verstuurd zodra klant brief indient (bestaande admin_strip_input_received).
+        // Voor 'template': mail wordt verstuurd zodra klant template kiest.
+        // Voor 'self': mail wordt verstuurd zodra klant tool kiest (Canva/Photoshop).
+
+        return redirect()->route('portal.show', $token);
+    }
+
+    /** Stap 2a (Self): klant kiest tool — pas hier wordt admin op de hoogte gebracht. */
+    public function setStripSelfTool(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->with('account')
+            ->firstOrFail();
+
+        if ($booking->strip_design_method !== 'self') {
+            return back()->with('error', 'Eerst een ontwerpmethode kiezen.');
+        }
+        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
+            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
+        }
+
+        $validated = $request->validate([
+            'tool' => ['required', 'in:canva,photoshop'],
+        ]);
+
+        $booking->update([
+            'strip_self_tool' => $validated['tool'],
+            'strip_status'    => 'awaiting_customer_design',
+        ]);
+
+        if ($booking->account->email) {
+            app(MailService::class)->send('admin_strip_method_self', $booking, $booking->account->email);
+        }
+
+        return redirect()->route('portal.show', $token)
+            ->with('success', '✅ Genoteerd! Stuur je afgewerkte ontwerp naar ontwerp@flitsmoment.nl.');
+    }
+
+    /** Klant kiest een template uit de galerij. */
+    public function selectStripTemplate(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->with('account')
+            ->firstOrFail();
+
+        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
+            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
+        }
+
+        $request->validate([
+            'template_id' => ['required', 'integer', 'exists:strip_templates,id'],
+        ]);
+
+        // Verifieer dat het template van hetzelfde account én actief is
+        $template = StripTemplate::withoutGlobalScope(AccountScope::class)
+            ->where('id', $request->template_id)
+            ->where('account_id', $booking->account_id)
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        $booking->update([
+            'strip_design_method' => 'template',
+            'strip_self_tool'     => null,
+            'strip_template_id'   => $template->id,
+            'strip_status'        => 'waiting_input',
+        ]);
+
+        // Notify admin
+        if ($booking->account->email) {
+            app(MailService::class)->send('admin_strip_method_template', $booking, $booking->account->email);
+        }
+
+        return redirect()->route('portal.show', $token)
+            ->with('success', "✅ Template #{$template->number} gekozen — lever nu de tekst aan die op de strip moet komen.");
+    }
+
+    /** Klant wil terug naar het keuzemenu. Alleen toegestaan als status ∉ {accepted, ready}. */
+    public function resetStripChoice(string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->firstOrFail();
+
+        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
+            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
+        }
+
+        $booking->update([
+            'strip_design_method' => null,
+            'strip_self_tool'     => null,
+            'strip_template_id'   => null,
+            'strip_status'        => null,
+            'strip_intake_data'   => null,
+        ]);
+
+        return redirect()->route('portal.show', $token)
+            ->with('success', 'Je keuze is gereset. Kies opnieuw uit de 3 opties.');
+    }
+
     /** Klant levert input aan voor het fotostrip ontwerp */
     public function submitStripInput(Request $request, string $token): RedirectResponse
     {
@@ -81,10 +226,13 @@ class PortalController extends Controller
             return back()->with('error', 'Vul een omschrijving in of voeg een bestand toe.');
         }
 
-        // Upload bestanden
-        $uploadedFiles = [];
+        // Bestaande bestanden behouden bij her-inzending
+        $uploadedFiles = $booking->strip_intake_data['files'] ?? [];
+
+        // Nieuwe bestanden uploaden en toevoegen
         if ($request->hasFile('strip_input_files')) {
             foreach ($request->file('strip_input_files') as $file) {
+                if (count($uploadedFiles) >= 5) break;
                 $path = $file->store('strip-intake', 'public');
                 $uploadedFiles[] = [
                     'url'      => Storage::disk('public')->url($path),
@@ -99,12 +247,19 @@ class PortalController extends Controller
             'submitted_at' => now()->toIso8601String(),
         ];
 
-        $booking->update([
+        // Bij Optie 3 (custom) wordt deze route direct gebruikt zonder dat strip_design_method al gezet is.
+        // Bij Optie 2 (template) is method al 'template' en wordt alleen tekst aangeleverd.
+        $update = [
             'strip_intake_data' => $intakeData,
             'strip_status'      => 'designing',
-        ]);
+        ];
+        if (! $booking->strip_design_method) {
+            $update['strip_design_method'] = 'custom';
+        }
 
-        // Mail naar admin
+        $booking->update($update);
+
+        // Mail naar admin (bestaande template — body kan template-info tonen via {{boeking.strip_template_id}})
         $mail = app(MailService::class);
         if ($booking->account->email) {
             $mail->send('admin_strip_input_received', $booking, $booking->account->email);
@@ -212,6 +367,63 @@ class PortalController extends Controller
         return redirect()->route('portal.show', $token);
     }
 
+    /** Klant vraagt een ander terugbrengtijdstip aan */
+    public function requestReturnTime(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->with('account')
+            ->firstOrFail();
+
+        // Alleen To Go boekingen met een vastgesteld terugbrengmoment
+        if ($booking->booking_type !== 'to_go' || ! $booking->customer_return_at) {
+            return redirect()->route('portal.show', $token)->with('error', 'Niet beschikbaar voor deze boeking.');
+        }
+
+        // Bouw de toegestane tijdsloten (08:00 t/m 15:00 per 30 min)
+        $slots = [];
+        for ($h = 8; $h <= 15; $h++) {
+            $slots[] = str_pad($h, 2, '0', STR_PAD_LEFT) . ':00';
+            if ($h < 15) {
+                $slots[] = str_pad($h, 2, '0', STR_PAD_LEFT) . ':30';
+            }
+        }
+
+        $request->validate([
+            'return_time' => ['required', 'string', 'in:' . implode(',', $slots)],
+        ], [
+            'return_time.in' => 'Kies een geldig tijdstip uit de lijst.',
+        ]);
+
+        $requestedTime = $request->return_time;
+
+        // 10:00 is de standaard voorkeur — direct accepteren
+        if ($requestedTime === '10:00') {
+            $newReturnAt = $booking->customer_return_at->setTimeFromTimeString('10:00');
+            $booking->update([
+                'customer_return_at'      => $newReturnAt,
+                'proposed_return_time'    => null,
+                'proposed_return_status'  => 'approved',
+            ]);
+
+            return redirect()->route('portal.show', $token)
+                ->with('success', '✅ Terugbrengtijdstip bevestigd: ' . $newReturnAt->format('H:i') . ' uur.');
+        }
+
+        // Ander tijdstip — verzoek opslaan en mail sturen naar admin
+        $booking->update([
+            'proposed_return_time'   => $requestedTime,
+            'proposed_return_status' => 'pending',
+        ]);
+
+        if ($booking->account->email) {
+            Mail::to($booking->account->email)->send(new ReturnTimeRequestedNotification($booking));
+        }
+
+        return redirect()->route('portal.show', $token)
+            ->with('success', '⏰ Je verzoek voor ' . $requestedTime . ' uur is ontvangen. We bevestigen dit zo snel mogelijk.');
+    }
+
     /** Start een Mollie betaling */
     public function startPayment(Request $request, string $token): RedirectResponse
     {
@@ -237,6 +449,7 @@ class PortalController extends Controller
             $mollie->setApiKey($booking->account->getMollieKey());
 
             $paymentData = [
+                'method'      => 'ideal',
                 'amount'      => [
                     'currency' => 'EUR',
                     'value'    => number_format($bedrag, 2, '.', ''),

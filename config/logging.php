@@ -127,6 +127,14 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        'eboekhouden-sync' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/eboekhouden.log'),
+            'level' => 'debug',
+            'days' => 30,
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

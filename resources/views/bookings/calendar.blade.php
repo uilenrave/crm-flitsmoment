@@ -2,14 +2,27 @@
 
 @section('title', 'Boekingen - Kalender')
 
+@push('styles')
+<style>
+@media (max-width: 640px) {
+  .cal-cell { min-height: 60px !important; padding: 0.375rem !important; }
+  .cal-cell .cal-day-num { font-size: .8rem !important; margin-bottom: .2rem !important; }
+  .cal-event { font-size: .65rem !important; padding: .2rem .3rem !important; }
+  .cal-header-day { padding: .5rem .25rem !important; font-size: .7rem !important; }
+  .cal-month-title { font-size: 1.25rem !important; }
+  .cal-legend { flex-wrap: wrap; gap: .5rem !important; }
+}
+</style>
+@endpush
+
 @section('content')
 <div style="padding:0 1.5rem;">
     {{-- Tabs --}}
     @include('bookings.tabs')
 
     {{-- Kalender Header met Navigatie --}}
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem;gap:1rem;">
-        <h2 style="font-size:1.875rem;font-weight:bold;margin:0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem;gap:1rem;flex-wrap:wrap;">
+        <h2 class="cal-month-title" style="font-size:1.875rem;font-weight:bold;margin:0;">
             {{ \App\Helpers\CalendarHelper::monthName($month) }} {{ $year }}
         </h2>
 
@@ -63,10 +76,10 @@
 
     {{-- Kalender Grid --}}
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:0.5rem;overflow:hidden;">
-        {{-- Dag Headers (Zo t/m Za) --}}
+        {{-- Dag Headers (Ma t/m Zo) --}}
         <div style="display:grid;grid-template-columns:repeat(7, 1fr);border-bottom:2px solid #e5e7eb;">
             @for($dow = 0; $dow < 7; $dow++)
-                <div style="padding:1rem;text-align:center;font-weight:bold;background:#f3f4f6;border-right:1px solid #e5e7eb;@if($dow === 6) border-right:none; @endif">
+                <div class="cal-header-day" style="padding:1rem;text-align:center;font-weight:bold;background:#f3f4f6;border-right:1px solid #e5e7eb;@if($dow === 6) border-right:none; @endif">
                     {{ \App\Helpers\CalendarHelper::dayName($dow) }}
                 </div>
             @endfor
@@ -86,8 +99,8 @@
 
             {{-- Grijs cellen vorige maand --}}
             @for($day = $startDay; $day <= $daysInPrevMonth; $day++)
-                <div style="min-height:120px;padding:0.75rem;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;background:#f9fafb;color:#9ca3af;">
-                    <div style="font-weight:500;margin-bottom:0.5rem;">{{ $day }}</div>
+                <div class="cal-cell" style="min-height:120px;padding:0.75rem;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;background:#f9fafb;color:#9ca3af;">
+                    <div class="cal-day-num" style="font-weight:500;margin-bottom:0.5rem;">{{ $day }}</div>
                 </div>
             @endfor
 
@@ -98,9 +111,9 @@
                     $events = $eventsByDay[$dateStr] ?? collect();
                     $isToday = $dateStr === now()->format('Y-m-d');
                 @endphp
-                <div style="min-height:120px;padding:0.75rem;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;background:@if($isToday) #f0f9ff; @else #fff; @endif overflow-y:auto;">
+                <div class="cal-cell" style="min-height:120px;padding:0.75rem;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;background:@if($isToday) #f0f9ff; @else #fff; @endif overflow-y:auto;">
                     {{-- Dag nummer --}}
-                    <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.95rem;@if($isToday) color:#2563eb; @endif">
+                    <div class="cal-day-num" style="font-weight:600;margin-bottom:0.5rem;font-size:0.95rem;@if($isToday) color:#2563eb; @endif">
                         {{ $day }}
                     </div>
 
@@ -111,7 +124,7 @@
                                 $isMultiDay = isset($event['is_multi_day']) && $event['is_multi_day'];
                             @endphp
                             <a href="{{ $event['url'] }}"
-                               style="display:block;padding:0.375rem 0.5rem;background:{{ $event['color'] }};color:{{ $isMultiDay ? '#000' : '#fff' }};font-size:0.75rem;border-radius:0.25rem;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all 0.2s;border:{{ $isMultiDay ? '2px solid #d4a000' : 'none' }};font-weight:{{ $isMultiDay ? '600' : 'normal' }};"
+                               class="cal-event" style="display:block;padding:0.375rem 0.5rem;background:{{ $event['color'] }};color:{{ $isMultiDay ? '#000' : '#fff' }};font-size:0.75rem;border-radius:0.25rem;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all 0.2s;border:{{ $isMultiDay ? '2px solid #d4a000' : 'none' }};font-weight:{{ $isMultiDay ? '600' : 'normal' }};"
                                title="{{ $event['title'] }}"
                                class="hover:opacity-80">
                                 {{ $isMultiDay ? '📅 ' : '' }}{{ substr($event['title'], 0, 25) }}...
@@ -127,8 +140,8 @@
                 $remainingCells = $totalCells - ($firstDay + $daysInMonth);
             @endphp
             @for($day = 1; $day <= $remainingCells; $day++)
-                <div style="min-height:120px;padding:0.75rem;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;background:#f9fafb;color:#9ca3af;">
-                    <div style="font-weight:500;margin-bottom:0.5rem;">{{ $day }}</div>
+                <div class="cal-cell" style="min-height:120px;padding:0.75rem;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;background:#f9fafb;color:#9ca3af;">
+                    <div class="cal-day-num" style="font-weight:500;margin-bottom:0.5rem;">{{ $day }}</div>
                 </div>
             @endfor
         </div>

@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Booking;
 use App\Models\Lead;
 use App\Models\Payment;
+use App\Models\Staff;
+use App\Models\StaffHours;
 use Carbon\Carbon;
 
 class AnalyticsService
@@ -86,15 +88,22 @@ class AnalyticsService
     {
         $dates = $this->getDateRange($dateRange);
 
-        // Total revenue from paid bookings
+        // Total revenue from all non-cancelled bookings
         $totalRevenue = Booking::where('account_id', $accountId)
-            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'cancelled')
             ->whereBetween('event_date', [$dates['start'], $dates['end']])
             ->sum('total_price');
 
-        // Average booking value
+        // Open (unpaid) revenue
+        $openRevenue = Booking::where('account_id', $accountId)
+            ->where('status', '!=', 'cancelled')
+            ->where('payment_status', '!=', 'paid')
+            ->whereBetween('event_date', [$dates['start'], $dates['end']])
+            ->sum('total_price');
+
+        // Average booking value (all non-cancelled)
         $bookingCount = Booking::where('account_id', $accountId)
-            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'cancelled')
             ->whereBetween('event_date', [$dates['start'], $dates['end']])
             ->count();
 
@@ -108,6 +117,7 @@ class AnalyticsService
 
         return [
             'total_revenue' => round($totalRevenue, 2),
+            'open_revenue' => round($openRevenue, 2),
             'average_booking_value' => $averageValue,
             'overdue_payments' => $overduePayments,
         ];
@@ -129,44 +139,66 @@ class AnalyticsService
     }
 
     /**
-     * Get trend data (monthly bookings and revenue for last 12 months)
+     * Get trend data for full calendar year (Jan–Dec), current vs previous year
      */
     public function getTrendData($accountId, $months = 12): array
     {
-        $bookingsByMonth = [];
-        $revenueByMonth = [];
-        $labels = [];
+        $currentYear = now()->year;
+        $prevYear    = $currentYear - 1;
+        $prev2Year   = $currentYear - 2;
+        $monthNames  = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+        $labels      = $monthNames;
 
-        for ($i = $months - 1; $i >= 0; $i--) {
-            $date = now()->subMonths($i);
-            $monthKey = $date->format('Y-m');
-            $monthLabel = $date->format('M Y');
+        // ── Eén query voor alle 3 jaren × 12 maanden, gegroepeerd ──
+        // Resultaat: rows met (year, month, count, sum) — caching in PHP, geen 72 losse queries meer.
+        $rows = Booking::where('account_id', $accountId)
+            ->where('status', '!=', 'cancelled')
+            ->whereBetween('event_date', [
+                now()->setYear($prev2Year)->startOfYear()->toDateString(),
+                now()->setYear($currentYear)->endOfYear()->toDateString(),
+            ])
+            ->selectRaw('YEAR(event_date) AS yr, MONTH(event_date) AS mo, COUNT(*) AS cnt, COALESCE(SUM(total_price),0) AS sum_price')
+            ->groupBy('yr', 'mo')
+            ->get()
+            ->keyBy(fn($r) => $r->yr . '-' . $r->mo);
 
-            $labels[] = $monthLabel;
+        $emptyMonths = array_fill(0, 12, 0);
+        $bookingsByMonth   = $emptyMonths;
+        $bookingsPrevYear  = $emptyMonths;
+        $bookingsPrev2Year = $emptyMonths;
+        $revenueByMonth    = $emptyMonths;
+        $revenuePrevYear   = $emptyMonths;
+        $revenuePrev2Year  = $emptyMonths;
 
-            // Count bookings for this month
-            $bookings = Booking::where('account_id', $accountId)
-                ->where('status', '!=', 'cancelled')
-                ->whereYear('event_date', $date->year)
-                ->whereMonth('event_date', $date->month)
-                ->count();
-
-            $bookingsByMonth[] = $bookings;
-
-            // Sum revenue for this month
-            $revenue = Booking::where('account_id', $accountId)
-                ->where('payment_status', 'paid')
-                ->whereYear('event_date', $date->year)
-                ->whereMonth('event_date', $date->month)
-                ->sum('total_price');
-
-            $revenueByMonth[] = round($revenue, 2);
+        foreach ([$currentYear => 'cur', $prevYear => 'prev', $prev2Year => 'prev2'] as $yr => $tag) {
+            for ($m = 1; $m <= 12; $m++) {
+                $r = $rows->get("$yr-$m");
+                $cnt = $r ? (int) $r->cnt : 0;
+                $sum = $r ? round((float) $r->sum_price, 2) : 0.0;
+                if ($tag === 'cur')   { $bookingsByMonth[$m-1]   = $cnt; $revenueByMonth[$m-1]   = $sum; }
+                if ($tag === 'prev')  { $bookingsPrevYear[$m-1]  = $cnt; $revenuePrevYear[$m-1]  = $sum; }
+                if ($tag === 'prev2') { $bookingsPrev2Year[$m-1] = $cnt; $revenuePrev2Year[$m-1] = $sum; }
+            }
         }
 
         return [
-            'labels' => $labels,
-            'bookings' => $bookingsByMonth,
-            'revenue' => $revenueByMonth,
+            'labels'               => $labels,
+            'bookings'             => $bookingsByMonth,
+            'bookings_prev_year'   => $bookingsPrevYear,
+            'bookings_prev2_year'  => $bookingsPrev2Year,
+            'revenue'              => $revenueByMonth,
+            'revenue_prev_year'    => $revenuePrevYear,
+            'revenue_prev2_year'   => $revenuePrev2Year,
+            'current_year'         => $currentYear,
+            'prev_year'            => $prevYear,
+            'prev2_year'           => $prev2Year,
+            // Year totals
+            'total_bookings_y0'    => array_sum($bookingsByMonth),
+            'total_bookings_y1'    => array_sum($bookingsPrevYear),
+            'total_bookings_y2'    => array_sum($bookingsPrev2Year),
+            'total_revenue_y0'     => round(array_sum($revenueByMonth), 2),
+            'total_revenue_y1'     => round(array_sum($revenuePrevYear), 2),
+            'total_revenue_y2'     => round(array_sum($revenuePrev2Year), 2),
         ];
     }
 
@@ -205,6 +237,44 @@ class AnalyticsService
             ->limit($limit)
             ->get(['id', 'lead_number', 'name', 'status_id', 'event_date', 'created_at'])
             ->toArray();
+    }
+
+    /**
+     * Get staff hours stats voor dashboard
+     */
+    public function getStaffHoursStats(int $accountId): array
+    {
+        $allEntries = StaffHours::where('account_id', $accountId)->get();
+
+        $pendingEntries = $allEntries->where('status', 'pending');
+        $approvedEntries = $allEntries->where('status', 'approved');
+        $paidEntries = $allEntries->where('status', 'paid');
+
+        // Per medewerker samenvatten
+        $staffIds = $allEntries->pluck('staff_id')->unique();
+        $staffMap = Staff::withoutGlobalScopes()
+            ->whereIn('id', $staffIds)
+            ->pluck('name', 'id');
+
+        $perStaff = $staffIds->map(function ($staffId) use ($allEntries, $staffMap) {
+            $staffEntries = $allEntries->where('staff_id', $staffId);
+            return [
+                'name'           => $staffMap[$staffId] ?? 'Onbekend',
+                'pending_hours'  => $staffEntries->where('status', 'pending')->sum('hours'),
+                'approved_hours' => $staffEntries->where('status', 'approved')->sum(fn($e) => $e->effective_hours),
+                'paid_hours'     => $staffEntries->where('status', 'paid')->sum(fn($e) => $e->effective_hours),
+                'km_allowance'   => $staffEntries->sum(fn($e) => $e->km_allowance),
+            ];
+        })->values()->toArray();
+
+        return [
+            'total_pending_entries' => $pendingEntries->count(),
+            'pending_hours'         => $pendingEntries->sum('hours'),
+            'approved_hours'        => $approvedEntries->sum(fn($e) => $e->effective_hours),
+            'paid_hours'            => $paidEntries->sum(fn($e) => $e->effective_hours),
+            'total_km_allowance'    => $allEntries->sum(fn($e) => $e->km_allowance),
+            'per_staff'             => $perStaff,
+        ];
     }
 
     /**

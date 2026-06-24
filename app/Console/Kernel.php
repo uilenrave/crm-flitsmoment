@@ -12,9 +12,15 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Sync payment statuses from e-boekhouden every 15 minutes
+        // Dagelijkse lead follow-up herinneringen om 08:00
+        $schedule->command('leads:send-followup-reminders')
+            ->dailyAt('08:00')
+            ->runInBackground()
+            ->name('lead-followup-reminders');
+
+        // Sync payment statuses from e-boekhouden once a day at 07:00
         $schedule->command('eboekhouden:sync-payments')
-            ->everyFifteenMinutes()
+            ->dailyAt('07:00')
             ->runInBackground()
             ->name('eboekhouden-payment-sync')
             ->onFailure(function () {

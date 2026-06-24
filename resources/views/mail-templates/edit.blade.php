@@ -117,7 +117,7 @@
             <form method="POST" action="{{ route('mail-templates.test', $template) }}">
                 @csrf
                 <button type="submit" class="btn btn-secondary"
-                    onclick="return confirm('Testmail versturen naar {{ auth()->user()->email }}?')"
+                    onclick="crmConfirm('Testmail versturen naar {{ auth()->user()->email }}?', () => this.closest('form').submit()); return false;"
                     style="font-size:.875rem;">
                     📨 Stuur testmail
                 </button>

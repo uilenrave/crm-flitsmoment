@@ -63,19 +63,23 @@ class LeadController extends Controller
             'name'            => ['required', 'string', 'max:150'],
             'email'           => ['nullable', 'email', 'max:255'],
             'phone'           => ['nullable', 'string', 'max:50'],
-            'event_date'      => ['nullable', 'date'],
-            'event_location'  => ['nullable', 'string'],
-            'event_address'   => ['nullable', 'string', 'max:255'],
-            'event_postcode'  => ['nullable', 'string', 'max:20'],
-            'event_city'      => ['nullable', 'string', 'max:100'],
-            'notes'           => ['nullable', 'string'],
-            'status_id'       => ['required', 'exists:lead_statuses,id'],
-            'source_id'       => ['nullable', 'exists:lead_sources,id'],
-            'event_type_id'   => ['nullable', 'exists:event_types,id'],
-            'assets'             => ['nullable', 'array'],
-            'assets.*.asset_id'  => ['required', 'exists:assets,id'],
-            'assets.*.quantity'  => ['nullable', 'integer', 'min:1'],
-            'assets.*.price'     => ['nullable', 'numeric', 'min:0'],
+            'event_date'       => ['nullable', 'date'],
+            'event_start_time' => ['nullable', 'string', 'max:10'],
+            'event_end_time'   => ['nullable', 'string', 'max:10'],
+            'event_location'   => ['nullable', 'string'],
+            'event_address'    => ['nullable', 'string', 'max:255'],
+            'event_postcode'   => ['nullable', 'string', 'max:20'],
+            'event_city'       => ['nullable', 'string', 'max:100'],
+            'notes'            => ['nullable', 'string'],
+            'follow_up_at'     => ['nullable', 'date'],
+            'booking_type'     => ['nullable', 'in:full_service,to_go'],
+            'status_id'        => ['required', 'exists:lead_statuses,id'],
+            'source_id'        => ['nullable', 'exists:lead_sources,id'],
+            'event_type_id'    => ['nullable', 'exists:event_types,id'],
+            'assets'              => ['nullable', 'array'],
+            'assets.*.asset_id'   => ['required', 'exists:assets,id'],
+            'assets.*.quantity'   => ['nullable', 'integer', 'min:1'],
+            'assets.*.price'      => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $assetsInput = $request->input('assets', []);
@@ -123,19 +127,23 @@ class LeadController extends Controller
             'name'            => ['required', 'string', 'max:150'],
             'email'           => ['nullable', 'email', 'max:255'],
             'phone'           => ['nullable', 'string', 'max:50'],
-            'event_date'      => ['nullable', 'date'],
-            'event_location'  => ['nullable', 'string'],
-            'event_address'   => ['nullable', 'string', 'max:255'],
-            'event_postcode'  => ['nullable', 'string', 'max:20'],
-            'event_city'      => ['nullable', 'string', 'max:100'],
-            'notes'           => ['nullable', 'string'],
-            'status_id'       => ['required', 'exists:lead_statuses,id'],
-            'source_id'       => ['nullable', 'exists:lead_sources,id'],
-            'event_type_id'   => ['nullable', 'exists:event_types,id'],
-            'assets'             => ['nullable', 'array'],
-            'assets.*.asset_id'  => ['required', 'exists:assets,id'],
-            'assets.*.quantity'  => ['nullable', 'integer', 'min:1'],
-            'assets.*.price'     => ['nullable', 'numeric', 'min:0'],
+            'event_date'       => ['nullable', 'date'],
+            'event_start_time' => ['nullable', 'string', 'max:10'],
+            'event_end_time'   => ['nullable', 'string', 'max:10'],
+            'event_location'   => ['nullable', 'string'],
+            'event_address'    => ['nullable', 'string', 'max:255'],
+            'event_postcode'   => ['nullable', 'string', 'max:20'],
+            'event_city'       => ['nullable', 'string', 'max:100'],
+            'notes'            => ['nullable', 'string'],
+            'follow_up_at'     => ['nullable', 'date'],
+            'booking_type'     => ['nullable', 'in:full_service,to_go'],
+            'status_id'        => ['required', 'exists:lead_statuses,id'],
+            'source_id'        => ['nullable', 'exists:lead_sources,id'],
+            'event_type_id'    => ['nullable', 'exists:event_types,id'],
+            'assets'              => ['nullable', 'array'],
+            'assets.*.asset_id'   => ['required', 'exists:assets,id'],
+            'assets.*.quantity'   => ['nullable', 'integer', 'min:1'],
+            'assets.*.price'      => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $assetsInput = $request->input('assets', []);
@@ -199,14 +207,82 @@ class LeadController extends Controller
         return back()->with('success', 'Notitie toegevoegd.');
     }
 
+    public function updateFollowUp(Request $request, Lead $lead): RedirectResponse
+    {
+        $request->validate(['follow_up_at' => ['nullable', 'date']]);
+        $lead->update(['follow_up_at' => $request->follow_up_at ?: null]);
+        return back();
+    }
+
+    /** Mobiele bellijst: alle actieve leads, gesorteerd op urgentie van het belmoment */
+    public function callList(): View
+    {
+        $leads = Lead::with(['status', 'eventType', 'activities'])
+            ->whereNull('archived_at')
+            ->get();
+
+        $today = now()->startOfDay();
+
+        // Groepeer: te laat → vandaag → gepland → zonder belafspraak
+        $groups = [
+            'overdue'   => collect(),
+            'today'     => collect(),
+            'planned'   => collect(),
+            'unplanned' => collect(),
+        ];
+
+        foreach ($leads as $lead) {
+            if (! $lead->follow_up_at) {
+                $groups['unplanned']->push($lead);
+            } elseif ($lead->follow_up_at->lt($today)) {
+                $groups['overdue']->push($lead);
+            } elseif ($lead->follow_up_at->isSameDay($today)) {
+                $groups['today']->push($lead);
+            } else {
+                $groups['planned']->push($lead);
+            }
+        }
+
+        $groups['overdue']   = $groups['overdue']->sortBy('follow_up_at')->values();
+        $groups['today']     = $groups['today']->sortBy('created_at')->values();
+        $groups['planned']   = $groups['planned']->sortBy('follow_up_at')->values();
+        $groups['unplanned'] = $groups['unplanned']->sortByDesc('created_at')->values();
+
+        return view('leads.call-list', compact('groups'));
+    }
+
+    /** Lead akkoord: status → gewonnen (NIET archiveren — desktop converteert naar boeking) */
+    public function akkoord(Lead $lead): RedirectResponse
+    {
+        if ($lead->isArchived()) {
+            return back()->with('error', 'Deze lead is al gearchiveerd.');
+        }
+
+        $wonStatus = LeadStatus::whereIn('name', ['gewonnen', 'won'])->first();
+        if ($wonStatus) {
+            $lead->update(['status_id' => $wonStatus->id]);
+        }
+
+        LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => auth()->id(),
+            'activity_type' => 'status_change',
+            'title'         => 'Akkoord 🎉',
+            'description'   => 'Lead is akkoord — kan omgezet worden naar boeking.',
+            'new_status'    => $wonStatus?->name,
+        ]);
+
+        return back()->with('success', "🎉 {$lead->name} staat op akkoord — zet om naar boeking via de computer.");
+    }
+
     public function afwijzen(Request $request, Lead $lead): RedirectResponse
     {
         if ($lead->isArchived()) {
             return back()->with('error', 'Deze lead is al gearchiveerd.');
         }
 
-        // Zet status op 'lost' als die bestaat
-        $lostStatus = LeadStatus::where('name', 'lost')->first();
+        // Zet status op 'verloren'/'lost' als die bestaat
+        $lostStatus = LeadStatus::whereIn('name', ['verloren', 'lost'])->first();
         if ($lostStatus) {
             $lead->status_id = $lostStatus->id;
         }

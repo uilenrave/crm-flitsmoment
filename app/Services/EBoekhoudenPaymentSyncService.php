@@ -26,7 +26,7 @@ class EBoekhoudenPaymentSyncService
         $skipped = 0;
 
         try {
-            // Get all unpaid bookings with e-boekhouden invoice IDs
+            // Get all unpaid bookings that have either an invoice ID or invoice number
             $query = Booking::where('payment_status', '!=', 'paid');
 
             if ($accountId) {
@@ -34,7 +34,10 @@ class EBoekhoudenPaymentSyncService
             }
 
             $unpaidBookings = $query
-                ->whereNotNull('eboekhouden_invoice_id')
+                ->where(function ($q) {
+                    $q->whereNotNull('eboekhouden_invoice_id')
+                      ->orWhereNotNull('eboekhouden_invoice_number');
+                })
                 ->where('status', '!=', 'cancelled')
                 ->get();
 
@@ -42,59 +45,18 @@ class EBoekhoudenPaymentSyncService
 
             foreach ($unpaidBookings as $booking) {
                 try {
-                    // Check if invoice was already synced recently (within 5 minutes)
-                    if ($booking->eboekhouden_synced_at && now()->diffInMinutes($booking->eboekhouden_synced_at) < 5) {
-                        $skipped++;
-                        continue;
-                    }
+                    $result = $this->syncSingleBooking($booking);
 
-                    // Fetch invoice status from e-boekhouden
-                    $invoiceData = $this->ebService->getInvoiceStatus($booking->eboekhouden_invoice_id);
-
-                    if (!$invoiceData) {
-                        Log::channel('eboekhouden-sync')->warning("Could not fetch invoice {$booking->eboekhouden_invoice_id} for booking {$booking->id}");
-                        $errors++;
-                        continue;
-                    }
-
-                    // Check if invoice is marked as "betaald" (paid)
-                    $isPaidInEb = $this->isBetaald($invoiceData);
-
-                    if ($isPaidInEb && $booking->payment_status !== 'paid') {
-                        // Create payment record for this sync
-                        Payment::create([
-                            'account_id' => $booking->account_id,
-                            'booking_id' => $booking->id,
-                            'provider' => 'eboekhouden',
-                            'provider_payment_id' => $booking->eboekhouden_invoice_id,
-                            'amount' => $booking->total_price,
-                            'currency' => 'EUR',
-                            'description' => "E-boekhouden invoice {$booking->eboekhouden_invoice_id}",
-                            'status' => 'paid',
-                            'paid_at' => now(),
-                            'eboekhouden_synced_at' => now(),
-                        ]);
-
-                        // Update booking payment status
-                        $booking->update([
-                            'payment_status' => 'paid',
-                            'eboekhouden_synced_at' => now(),
-                        ]);
-
-                        // Send notification email to admin
-                        $this->sendPaymentReceivedNotification($booking);
-
-                        Log::channel('eboekhouden-sync')->info("Synced booking {$booking->id}: unpaid → paid");
+                    if ($result['status'] === 'paid') {
                         $synced++;
-                    } else {
-                        // Update sync timestamp even if not paid yet
-                        $booking->update(['eboekhouden_synced_at' => now()]);
+                        Log::channel('eboekhouden-sync')->info("Synced booking {$booking->id}: unpaid → paid");
+                    } elseif ($result['status'] === 'error') {
+                        $errors++;
+                        Log::channel('eboekhouden-sync')->warning("Error syncing booking {$booking->id}: {$result['message']}");
                     }
-
                 } catch (\Exception $e) {
                     Log::channel('eboekhouden-sync')->error("Error syncing booking {$booking->id}: " . $e->getMessage());
                     $errors++;
-                    continue;
                 }
             }
 

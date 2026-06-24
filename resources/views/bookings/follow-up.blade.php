@@ -71,12 +71,21 @@
                         <div id="msg-{{ $boeking->id }}" style="font-size:.72rem;margin-top:.2rem;display:none;"></div>
                     </td>
                     <td>
-                        <button onclick="saveGallery({{ $boeking->id }})"
-                            id="btn-{{ $boeking->id }}"
-                            class="btn btn-primary btn-sm"
-                            style="white-space:nowrap;font-size:.75rem;">
-                            📤 Verstuur mail
-                        </button>
+                        <div style="display:flex;gap:.4rem;align-items:center;">
+                            <button onclick="saveGallery({{ $boeking->id }})"
+                                id="btn-{{ $boeking->id }}"
+                                class="btn btn-primary btn-sm"
+                                style="white-space:nowrap;font-size:.75rem;">
+                                📤 Verstuur mail
+                            </button>
+                            <button onclick="skipGallery({{ $boeking->id }})"
+                                id="skip-{{ $boeking->id }}"
+                                class="btn btn-secondary btn-sm"
+                                style="white-space:nowrap;font-size:.75rem;color:#64748b;"
+                                title="Verbergen zonder galerij te versturen">
+                                Overslaan
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 @endforeach
@@ -126,6 +135,14 @@ function saveGallery(bookingId) {
             btn.style.background = '#16a34a';
             input.disabled = true;
 
+            // Branded deellink tonen
+            if (data.share_url) {
+                const shareDiv = document.createElement('div');
+                shareDiv.style.cssText = 'margin-top:.4rem;font-size:.8rem;color:#065f46;';
+                shareDiv.innerHTML = '🔗 <a href="' + data.share_url + '" target="_blank" style="color:#065f46;font-weight:600;">' + data.share_url + '</a>';
+                msg.after(shareDiv);
+            }
+
             setTimeout(() => {
                 row.style.transition = 'opacity .4s';
                 row.style.opacity = '0';
@@ -153,6 +170,36 @@ function saveGallery(bookingId) {
         btn.disabled = false;
         btn.textContent = '📤 Verstuur mail';
     });
+}
+
+function skipGallery(bookingId) {
+    crmConfirm('Boeking overslaan? Hij verdwijnt uit deze lijst zonder dat er een galerij verstuurd wordt.', () => {
+
+    const btn = document.getElementById('skip-' + bookingId);
+    btn.disabled = true;
+    btn.textContent = '⏳';
+
+    fetch('/bookings/' + bookingId + '/gallery-overslaan', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json',
+        },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const row = document.getElementById('row-' + bookingId);
+            row.style.transition = 'opacity .3s';
+            row.style.opacity = '0';
+            setTimeout(() => {
+                row.remove();
+                if (document.querySelectorAll('#follow-up-list tr').length === 0) location.reload();
+            }, 300);
+        }
+    });
+
+    }); // end crmConfirm
 }
 </script>
 @endsection

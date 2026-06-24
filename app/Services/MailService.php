@@ -117,9 +117,32 @@ class MailService
         }
     }
 
+    /**
+     * Stuur een eenvoudige notificatiemail zonder template (bijv. tegenvoorstel To Go).
+     */
+    public function sendRaw(string $toEmail, string $subject, string $htmlBody): void
+    {
+        if (! $toEmail) return;
+        try {
+            Mail::html($htmlBody, function ($msg) use ($toEmail, $subject) {
+                $msg->to($toEmail)->subject($subject);
+            });
+        } catch (\Exception $e) {
+            \Log::error("MailService sendRaw fout: " . $e->getMessage());
+        }
+    }
+
     private function replaceVars(string $text, Booking $booking): string
     {
         $booking->loadMissing('account');
+
+        // Verwijder {{#toon_prijs}}...{{/toon_prijs}} blokken als prijzen verborgen zijn,
+        // anders alleen de tags zelf weghalen en de inhoud tonen.
+        if ($booking->hide_prices) {
+            $text = preg_replace('/\{\{#toon_prijs\}\}.*?\{\{\/toon_prijs\}\}/s', '', $text);
+        } else {
+            $text = str_replace(['{{#toon_prijs}}', '{{/toon_prijs}}'], '', $text);
+        }
 
         $adres = collect([
             $booking->event_address,
@@ -128,24 +151,57 @@ class MailService
         ])->filter()->implode(', ');
 
         $vars = [
-            '{{klant_naam}}'         => $booking->customer_name ?? '',
-            '{{klant_voornaam}}'     => explode(' ', $booking->customer_name ?? '')[0],
-            '{{klant_email}}'        => $booking->customer_email ?? '',
-            '{{boeking_nummer}}'     => $booking->booking_number ?? '',
-            '{{event_datum}}'        => $booking->event_date?->translatedFormat('l j F Y') ?? '',
-            '{{event_locatie}}'      => $booking->event_location ?? '',
-            '{{event_adres}}'        => $adres,
-            '{{totaal_prijs}}'       => '€ ' . number_format((float) $booking->total_price, 2, ',', '.'),
-            '{{openstaand_bedrag}}'  => '€ ' . number_format((float) $booking->amount_due, 2, ',', '.'),
-            '{{portal_link}}'        => $booking->public_token ? route('portal.show', $booking->public_token) : '',
-            '{{gallery_link}}'       => $booking->gallery_url ?? '',
-            '{{ontwerp_link}}'       => $booking->strip_design_url ?? '',
-            '{{opmerkingen_klant}}' => $booking->strip_notes ?? '',
-            '{{bedrijf_naam}}'       => $booking->account->name ?? config('app.name'),
-            '{{strip_formaat}}'      => $booking->strip_format ?? '—',
+            '{{klant_naam}}'          => $booking->customer_name ?? '',
+            '{{klant_voornaam}}'      => explode(' ', $booking->customer_name ?? '')[0],
+            '{{klant_email}}'         => $booking->customer_email ?? '',
+            '{{boeking_nummer}}'      => $booking->booking_number ?? '',
+            '{{event_datum}}'         => $booking->event_date?->translatedFormat('l j F Y') ?? '',
+            '{{event_locatie}}'       => $booking->event_location ?? '',
+            '{{event_adres}}'         => $adres,
+            '{{totaal_prijs}}'        => $booking->hide_prices ? '' : '€ ' . number_format((float) $booking->total_price, 2, ',', '.'),
+            '{{openstaand_bedrag}}'   => $booking->hide_prices ? '' : '€ ' . number_format((float) $booking->amount_due, 2, ',', '.'),
+            '{{portal_link}}'         => $booking->public_token ? route('portal.show', $booking->public_token) : '',
+            '{{gallery_link}}'        => $booking->gallery_token
+                                             ? route('gallery.show', $booking->gallery_token)
+                                             : ($booking->gallery_url ?? ''),
+            '{{ontwerp_link}}'        => $booking->strip_design_url ?? '',
+            '{{opmerkingen_klant}}'   => $booking->strip_notes ?? '',
+            '{{bedrijf_naam}}'        => $booking->account->name ?? config('app.name'),
+            '{{strip_formaat}}'       => $booking->strip_format ?? '—',
+            '{{crm_boeking_link}}'    => route('bookings.show', $booking->id),
+            '{{to_go_tijden_sectie}}' => $this->buildToGoTijdenSectie($booking),
         ];
 
         return str_replace(array_keys($vars), array_values($vars), $text);
+    }
+
+    private function buildToGoTijdenSectie(Booking $booking): string
+    {
+        if ($booking->booking_type !== 'to_go') return '';
+        $s3 = $booking->intake_data['step_3'] ?? [];
+        $pickupTime = $s3['pickup_time'] ?? null;
+        $returnTime = $s3['return_time'] ?? null;
+        $pickupDate = $s3['pickup_date'] ?? null;
+        $returnDate = $s3['return_date'] ?? null;
+        if (! $pickupTime || ! $returnTime) return '';
+
+        $pickupLabel = $pickupDate
+            ? \Carbon\Carbon::parse($pickupDate)->translatedFormat('l j F') . ' om ' . $pickupTime
+            : $pickupTime;
+        $returnLabel = $returnDate
+            ? \Carbon\Carbon::parse($returnDate)->translatedFormat('l j F') . ' om ' . $returnTime
+            : $returnTime;
+
+        $needsApproval = ($pickupTime !== '10:00' || $returnTime !== '10:00');
+        $badge = $needsApproval
+            ? '<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px;">⏳ Goedkeuring vereist</span>'
+            : '<span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px;">✅ Automatisch goedgekeurd</span>';
+
+        return '
+  <tr style="background:#fff7ed;"><td style="padding:8px 12px;font-weight:600;border:1px solid #fed7aa;">📦 Ophalen bij ons</td>
+    <td style="padding:8px 12px;border:1px solid #fed7aa;">' . $pickupLabel . '</td></tr>
+  <tr style="background:#fff7ed;"><td style="padding:8px 12px;font-weight:600;border:1px solid #fed7aa;">🔄 Terugbrengen</td>
+    <td style="padding:8px 12px;border:1px solid #fed7aa;">' . $returnLabel . $badge . '</td></tr>';
     }
 
     private function replaceOfferVars(string $text, Offer $offer): string

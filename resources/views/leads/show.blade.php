@@ -10,7 +10,7 @@
 @endsection
 
 @section('content')
-<div style="display:grid;grid-template-columns:1fr 340px;gap:1.25rem;align-items:start;">
+<div style="display:grid;grid-template-columns:1fr 340px;gap:1.25rem;align-items:start;" class="leads-show-grid">
 
     {{-- Hoofdkaart --}}
     <div>
@@ -41,8 +41,27 @@
                     <p style="font-size:.875rem;">{{ $lead->event_date?->format('d M Y') ?? '—' }}</p>
                 </div>
                 <div>
+                    <label>Tijd</label>
+                    <p style="font-size:.875rem;">
+                        @if($lead->event_start_time || $lead->event_end_time)
+                            {{ $lead->event_start_time ?? '?' }} – {{ $lead->event_end_time ?? '?' }}
+                        @else
+                            —
+                        @endif
+                    </p>
+                </div>
+                <div>
                     <label>Type event</label>
                     <p style="font-size:.875rem;">{{ $lead->eventType?->name ?? '—' }}</p>
+                </div>
+                <div>
+                    <label>Type boeking</label>
+                    <p style="font-size:.875rem;">
+                        @if($lead->booking_type === 'full_service') 🎯 Full Service
+                        @elseif($lead->booking_type === 'to_go') 🧳 To Go
+                        @else —
+                        @endif
+                    </p>
                 </div>
                 <div style="grid-column:span 2;">
                     <label>Locatie</label>
@@ -90,7 +109,7 @@
                         <tr>
                             <td><strong>{{ $asset->name }}</strong></td>
                             <td style="color:#64748b;font-size:.875rem;">{{ $asset->category_label }}</td>
-                            <td style="text-align:right;">€ {{ number_format($asset->price, 2, ',', '.') }}</td>
+                            <td style="text-align:right;">€ {{ number_format($asset->pivot->price ?? $asset->price, 2, ',', '.') }}</td>
                             <td style="text-align:center;">{{ $asset->pivot->quantity }}</td>
                         </tr>
                         @endforeach
@@ -170,7 +189,7 @@
                 @if($activiteit->description)
                     <p style="font-size:.8rem;color:#475569;white-space:pre-line;">{{ $activiteit->description }}</p>
                 @endif
-                <span style="font-size:.7rem;color:#94a3b8;">door {{ $activiteit->user->full_name }}</span>
+                <span style="font-size:.7rem;color:#94a3b8;">door {{ $activiteit->user?->full_name ?? 'Systeem' }}</span>
             </div>
             @empty
             <p style="color:#64748b;font-size:.875rem;">Nog geen activiteiten.</p>
@@ -195,9 +214,29 @@
                     <span style="color:#64748b;">Aangemaakt</span>
                     <span>{{ $lead->created_at->format('d-m-Y') }}</span>
                 </div>
-                <div style="padding:.5rem 0;display:flex;justify-content:space-between;">
+                <div style="padding:.5rem 0;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;">
                     <span style="color:#64748b;">Bijgewerkt</span>
                     <span>{{ $lead->updated_at->format('d-m-Y') }}</span>
+                </div>
+                <div style="padding:.5rem 0;display:flex;justify-content:space-between;align-items:center;">
+                    <span style="color:#64748b;">📅 Opvolging</span>
+                    @if($lead->follow_up_at)
+                        @if($lead->follow_up_at->isPast() && !$lead->follow_up_at->isToday())
+                            <span style="font-weight:600;color:#dc2626;">
+                                {{ $lead->follow_up_at->format('d M Y') }}
+                                <span style="font-size:.7rem;background:#fee2e2;padding:.1rem .35rem;border-radius:999px;">achterstallig</span>
+                            </span>
+                        @elseif($lead->follow_up_at->isToday())
+                            <span style="font-weight:600;color:#d97706;">
+                                Vandaag
+                                <span style="font-size:.7rem;background:#fef3c7;padding:.1rem .35rem;border-radius:999px;">⏰</span>
+                            </span>
+                        @else
+                            <span style="font-weight:600;color:#374151;">{{ $lead->follow_up_at->format('d M Y') }}</span>
+                        @endif
+                    @else
+                        <a href="{{ route('leads.edit', $lead) }}" style="font-size:.75rem;color:#94a3b8;text-decoration:none;">Instellen →</a>
+                    @endif
                 </div>
             </div>
         </div>
@@ -231,7 +270,7 @@
                             @csrf
                             <textarea name="reden" rows="2" placeholder="Optioneel: reden van afwijzing..." style="width:100%;padding:.5rem;border:1px solid #e2e8f0;border-radius:.375rem;font-size:.8rem;margin-bottom:.5rem;resize:none;"></textarea>
                             <button type="submit" class="btn btn-danger" style="width:100%;justify-content:center;"
-                                onclick="return confirm('Lead afwijzen en archiveren?')">
+                                onclick="crmConfirm('Lead afwijzen en archiveren?', () => this.closest('form').submit()); return false;">
                                 Bevestig afwijzing
                             </button>
                         </form>
@@ -240,7 +279,7 @@
             @endif
 
             <div style="margin-top:.75rem;">
-                <form method="POST" action="{{ route('leads.destroy', $lead) }}" onsubmit="return confirm('Weet u zeker dat u deze lead permanent wilt verwijderen?')">
+                <form method="POST" action="{{ route('leads.destroy', $lead) }}" data-confirm="Weet u zeker dat u deze lead permanent wilt verwijderen?">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="btn btn-danger" style="width:100%;justify-content:center;opacity:.6;font-size:.8rem;">Verwijderen</button>

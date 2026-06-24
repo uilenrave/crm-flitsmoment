@@ -28,11 +28,13 @@ class AssetController extends Controller
             'category'    => ['required', 'in:photobooth,background,prop_box,extra'],
             'description' => ['nullable', 'string'],
             'price'       => ['required', 'numeric', 'min:0'],
-            'stock'       => ['required', 'integer', 'min:0'],
-            'is_active'   => ['nullable', 'boolean'],
+            'stock'        => ['required', 'integer', 'min:0'],
+            'ignore_stock' => ['nullable', 'boolean'],
+            'is_active'    => ['nullable', 'boolean'],
         ]);
 
-        $data['is_active'] = $request->boolean('is_active', true);
+        $data['is_active']    = $request->boolean('is_active', true);
+        $data['ignore_stock'] = $request->boolean('ignore_stock', false);
 
         Asset::create($data);
 
@@ -56,11 +58,13 @@ class AssetController extends Controller
             'category'    => ['required', 'in:photobooth,background,prop_box,extra'],
             'description' => ['nullable', 'string'],
             'price'       => ['required', 'numeric', 'min:0'],
-            'stock'       => ['required', 'integer', 'min:0'],
-            'is_active'   => ['nullable', 'boolean'],
+            'stock'        => ['required', 'integer', 'min:0'],
+            'ignore_stock' => ['nullable', 'boolean'],
+            'is_active'    => ['nullable', 'boolean'],
         ]);
 
-        $data['is_active'] = $request->boolean('is_active', false);
+        $data['is_active']    = $request->boolean('is_active', false);
+        $data['ignore_stock'] = $request->boolean('ignore_stock', false);
 
         $asset->update($data);
 

@@ -49,7 +49,7 @@
                 <input type="password" id="password" name="password" required>
             </div>
             <div class="remember">
-                <input type="checkbox" id="remember" name="remember">
+                <input type="checkbox" id="remember" name="remember" checked>
                 <label for="remember">Ingelogd blijven</label>
             </div>
             <button type="submit" class="btn">Inloggen</button>

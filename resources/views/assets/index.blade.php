@@ -25,7 +25,7 @@
                 {{ $catLabels[$cat] ?? $cat }}
             </h3>
             <div class="table-wrap">
-                <table style="table-layout:fixed;width:100%;">
+                <table class="table-card-mobile" style="table-layout:fixed;width:100%;">
                     <colgroup>
                         <col style="width:25%;">
                         <col style="width:10%;">
@@ -47,24 +47,24 @@
                     <tbody>
                         @foreach($items as $asset)
                         <tr>
-                            <td><strong title="{{ $asset->name }}">{{ $asset->name }}</strong></td>
-                            <td>€ {{ number_format($asset->price, 2, ',', '.') }}</td>
-                            <td style="text-align:center;">
+                            <td data-label="Naam"><strong title="{{ $asset->name }}">{{ $asset->name }}</strong></td>
+                            <td data-label="Prijs">€ {{ number_format($asset->price, 2, ',', '.') }}</td>
+                            <td data-label="Voorraad" style="text-align:center;">
                                 <span style="font-weight:600;{{ $asset->stock === 0 ? 'color:#dc2626;' : ($asset->stock <= 2 ? 'color:#d97706;' : 'color:#16a34a;') }}">
                                     {{ $asset->stock }}
                                 </span>
                             </td>
-                            <td style="color:#64748b;" title="{{ $asset->description }}">{{ $asset->description }}</td>
-                            <td>
+                            <td data-label="Omschrijving" style="color:#64748b;" title="{{ $asset->description }}">{{ $asset->description }}</td>
+                            <td data-label="Status">
                                 @if($asset->is_active)
                                     <span class="badge" style="background:#dcfce7;color:#16a34a;">Actief</span>
                                 @else
                                     <span class="badge" style="background:#f1f5f9;color:#64748b;">Inactief</span>
                                 @endif
                             </td>
-                            <td style="white-space:nowrap;">
+                            <td class="no-label" style="white-space:nowrap;">
                                 <a href="{{ route('assets.edit', $asset) }}" class="btn btn-sm btn-secondary">Bewerken</a>
-                                <form method="POST" action="{{ route('assets.destroy', $asset) }}" style="display:inline;" onsubmit="return confirm('Zeker weten?')">
+                                <form method="POST" action="{{ route('assets.destroy', $asset) }}" style="display:inline;" data-confirm="Zeker weten?">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;">Verwijder</button>
                                 </form>

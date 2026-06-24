@@ -12,16 +12,18 @@ class Lead extends Model
 {
     protected $fillable = [
         'account_id', 'lead_number', 'name', 'email', 'phone',
-        'event_date', 'event_location', 'event_address', 'event_postcode', 'event_city', 'notes',
-        'status_id', 'source_id', 'event_type_id', 'assigned_to',
+        'event_date', 'event_start_time', 'event_end_time',
+        'event_location', 'event_address', 'event_postcode', 'event_city', 'notes',
+        'status_id', 'source_id', 'event_type_id', 'booking_type', 'assigned_to',
         'archived_at', 'archive_reason',
-        'total_price',
+        'total_price', 'follow_up_at',
     ];
 
     protected $casts = [
-        'event_date'  => 'date',
-        'archived_at' => 'datetime',
-        'total_price' => 'decimal:2',
+        'event_date'   => 'date',
+        'follow_up_at' => 'date',
+        'archived_at'  => 'datetime',
+        'total_price'  => 'decimal:2',
     ];
 
     public function isArchived(): bool
@@ -45,7 +47,16 @@ class Lead extends Model
                 $model->account_id = auth()->user()?->account_id;
             }
             if (! $model->lead_number) {
-                $model->lead_number = static::generateLeadNumber($model->account_id);
+                // Retry bij race condition (gelijktijdige requests)
+                $attempts = 0;
+                do {
+                    $model->lead_number = static::generateLeadNumber($model->account_id);
+                    $attempts++;
+                    $exists = static::withoutGlobalScope(AccountScope::class)
+                        ->where('account_id', $model->account_id)
+                        ->where('lead_number', $model->lead_number)
+                        ->exists();
+                } while ($exists && $attempts < 10);
             }
         });
     }
@@ -53,14 +64,25 @@ class Lead extends Model
     public static function generateLeadNumber(int $accountId): string
     {
         $account = Account::find($accountId);
-        $prefix = $account ? strtoupper($account->code) : 'CRM';
-        $year = date('Y');
-        $count = static::withoutGlobalScope(AccountScope::class)
+        $prefix  = $account ? strtoupper($account->code) : 'CRM';
+        $year    = date('Y');
+
+        // Gebruik max() van het hoogste nummer ipv count() —
+        // voorkomt duplicaten bij verwijderde leads of gelijktijdige requests.
+        $last = static::withoutGlobalScope(AccountScope::class)
             ->where('account_id', $accountId)
             ->whereYear('created_at', $year)
-            ->count() + 1;
+            ->where('lead_number', 'like', "{$prefix}-{$year}-%")
+            ->max('lead_number');
 
-        return "{$prefix}-{$year}-" . str_pad($count, 3, '0', STR_PAD_LEFT);
+        if ($last) {
+            $lastNum = (int) substr($last, strrpos($last, '-') + 1);
+            $next    = $lastNum + 1;
+        } else {
+            $next = 1;
+        }
+
+        return "{$prefix}-{$year}-" . str_pad($next, 3, '0', STR_PAD_LEFT);
     }
 
     public function account(): BelongsTo

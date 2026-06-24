@@ -11,11 +11,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Asset extends Model
 {
     protected $fillable = [
-        'account_id', 'name', 'category', 'description', 'price', 'stock', 'is_active',
+        'account_id', 'name', 'category', 'description', 'price', 'stock', 'ignore_stock', 'is_active',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'is_active'    => 'boolean',
+        'ignore_stock' => 'boolean',
         'price'     => 'decimal:2',
     ];
 

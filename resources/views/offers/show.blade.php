@@ -148,7 +148,7 @@
                 <form method="POST" action="{{ route('offers.send', $offer) }}" style="margin-bottom:.75rem;">
                     @csrf
                     <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;"
-                        onclick="return confirm('Offerte per email versturen naar {{ $offer->lead?->email }}?')">
+                        onclick="crmConfirm('Offerte per email versturen naar {{ $offer->lead?->email }}?', () => this.closest('form').submit()); return false;">
                         ✉ Verstuur per email
                     </button>
                 </form>
@@ -174,7 +174,7 @@
 
             @if($offer->status === 'draft')
                 <form method="POST" action="{{ route('offers.destroy', $offer) }}"
-                    onsubmit="return confirm('Weet u zeker dat u deze offerte wilt verwijderen?')" style="margin-top:.75rem;">
+                    data-confirm="Weet u zeker dat u deze offerte wilt verwijderen?" style="margin-top:.75rem;">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="btn btn-danger" style="width:100%;justify-content:center;opacity:.6;font-size:.8rem;">Verwijderen</button>

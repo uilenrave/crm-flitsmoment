@@ -4,7 +4,7 @@
 @push('styles')
 <style>
 .pac-container { z-index: 9999; }
-.assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; margin-top: .5rem; }
+.assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .75rem; margin-top: .5rem; }
 .asset-card { border: 2px solid #e2e8f0; border-radius: .5rem; padding: .875rem; cursor: pointer; transition: border-color .15s, background .15s; position: relative; }
 .asset-card:has(input[type=checkbox]:checked) { border-color: #2563eb; background: #eff6ff; }
 .asset-card input[type=checkbox] { position: absolute; opacity: 0; }
@@ -108,6 +108,22 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
             <div class="form-group">
                 <label>Eventdatum</label>
                 <input type="date" name="event_date" value="{{ old('event_date', $lead->event_date?->format('Y-m-d')) }}">
+            </div>
+            <div class="form-group">
+                <label>Tijd van</label>
+                <input type="time" name="event_start_time" value="{{ old('event_start_time', $lead->event_start_time) }}">
+            </div>
+            <div class="form-group">
+                <label>Tijd tot</label>
+                <input type="time" name="event_end_time" value="{{ old('event_end_time', $lead->event_end_time) }}">
+            </div>
+            <div class="form-group">
+                <label>Type boeking</label>
+                <select name="booking_type">
+                    <option value="">Onbekend</option>
+                    <option value="full_service" @selected(old('booking_type', $lead->booking_type) === 'full_service')>Full Service</option>
+                    <option value="to_go" @selected(old('booking_type', $lead->booking_type) === 'to_go')>To Go</option>
+                </select>
             </div>
             <div class="form-group">
                 <label>Type event</label>
@@ -220,6 +236,26 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
         <div class="form-group">
             <label>Notities</label>
             <textarea name="notes" rows="4" style="resize:vertical;">{{ old('notes', $lead->notes) }}</textarea>
+        </div>
+
+        <hr style="margin:1.25rem 0;border:none;border-top:1px solid #e2e8f0;">
+
+        <div class="form-group" style="max-width:280px;">
+            <label style="display:flex;align-items:center;gap:.4rem;">
+                📅 Opvolging inplannen
+                @if($lead->follow_up_at)
+                    @if($lead->follow_up_at->isPast() && !$lead->follow_up_at->isToday())
+                        <span style="font-size:.72rem;background:#fee2e2;color:#dc2626;padding:.1rem .45rem;border-radius:999px;font-weight:700;">achterstallig</span>
+                    @elseif($lead->follow_up_at->isToday())
+                        <span style="font-size:.72rem;background:#fef3c7;color:#d97706;padding:.1rem .45rem;border-radius:999px;font-weight:700;">vandaag</span>
+                    @endif
+                @endif
+            </label>
+            <input type="date" name="follow_up_at"
+                   value="{{ old('follow_up_at', $lead->follow_up_at?->format('Y-m-d')) }}">
+            <div style="font-size:.75rem;color:#94a3b8;margin-top:.25rem;">
+                Je ontvangt om 08:00 een e-mail als de datum is bereikt. Laat leeg om geen herinnering in te stellen.
+            </div>
         </div>
 
         <div style="display:flex;gap:.75rem;">

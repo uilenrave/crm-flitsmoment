@@ -2,9 +2,10 @@
 @section('title', 'Boeking bewerken')
 
 @push('styles')
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <style>
 .pac-container { z-index: 9999; }
-.assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .75rem; margin-top: .5rem; }
+.assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .75rem; margin-top: .5rem; }
 .asset-card { border: 2px solid #e2e8f0; border-radius: .5rem; padding: .875rem; cursor: pointer; transition: border-color .15s, background .15s; position: relative; }
 .asset-card:has(input:checked) { border-color: #2563eb; background: #eff6ff; }
 .asset-card input[type=checkbox] { position: absolute; opacity: 0; }
@@ -14,53 +15,12 @@
 .asset-card:has(input:checked) .asset-qty { display: flex; }
 /* Photobooth unit-selector card */
 .asset-pb-selected { border-color: #2563eb; background: #eff6ff; }
-
-/* Datum en tijd input styling */
-input[type="date"],
-input[type="time"],
-input[type="datetime-local"] {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    background: #ffffff;
-    font-family: inherit;
-    transition: border-color 0.15s, background-color 0.15s;
-}
-
-input[type="date"]:focus,
-input[type="time"]:focus,
-input[type="datetime-local"]:focus {
-    outline: none;
-    border-color: #2563eb;
-    background-color: #f0f9ff;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-input[type="date"]:hover,
-input[type="time"]:hover,
-input[type="datetime-local"]:hover {
-    border-color: #9ca3af;
-}
-
-/* Webkit browsers (Chrome, Safari, Edge) calendar icon styling */
-input[type="date"]::-webkit-calendar-picker-indicator,
-input[type="time"]::-webkit-calendar-picker-indicator,
-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-    cursor: pointer;
-    border-radius: 0.25rem;
-    padding: 0.25rem;
-}
-
-input[type="date"]::-webkit-calendar-picker-indicator:hover,
-input[type="time"]::-webkit-calendar-picker-indicator:hover,
-input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
-    background-color: #f3f4f6;
-}
+.flatpickr-input { background: #fff !important; }
 </style>
 @endpush
 
 @section('content')
+<div style="display:grid;grid-template-columns:minmax(0,760px) minmax(280px,320px);gap:1.25rem;align-items:start;" class="bk-edit-layout">
 <div class="card" style="max-width:760px;">
     <div class="card-header">
         <span class="card-title">{{ $booking->booking_number }} bewerken</span>
@@ -130,6 +90,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
             </div>
         </div>
 
+        <div class="form-group" style="margin-top:.75rem;">
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500;">
+                <input type="hidden" name="hide_prices" value="0">
+                <input type="checkbox" name="hide_prices" value="1"
+                    @checked(old('hide_prices', $booking->hide_prices))
+                    style="width:1rem;height:1rem;cursor:pointer;">
+                <span>🏪 Reseller / doorverhuur — verberg prijzen in het klantportaal</span>
+            </label>
+            <div style="font-size:.75rem;color:#94a3b8;margin-top:.3rem;padding-left:1.5rem;">
+                De klant ziet het portaal zonder kosten, betalingsknop en factuur. Handig als een feestlocatie de boeking doorfactureert aan hun klant.
+            </div>
+        </div>
+
         <hr style="margin:1.25rem 0;border:none;border-top:1px solid #e2e8f0;">
 
         {{-- ── Type & evenement ── --}}
@@ -146,15 +119,15 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
         <div class="form-grid">
             <div class="form-group">
                 <label>Eventdatum *</label>
-                <input type="date" name="event_date" value="{{ old('event_date', $booking->event_date->format('Y-m-d')) }}" required>
+                <input type="text" name="event_date" class="fp-date" value="{{ old('event_date', $booking->event_date->format('Y-m-d')) }}" required autocomplete="off">
             </div>
             <div class="form-group">
                 <label>Starttijd</label>
-                <input type="time" name="event_start_time" value="{{ old('event_start_time', $booking->event_start_time) }}">
+                <input type="text" name="event_start_time" class="fp-time" value="{{ old('event_start_time', $booking->event_start_time) }}" autocomplete="off" placeholder="--:--">
             </div>
             <div class="form-group">
                 <label>Eindtijd</label>
-                <input type="time" name="event_end_time" value="{{ old('event_end_time', $booking->event_end_time) }}">
+                <input type="text" name="event_end_time" class="fp-time" value="{{ old('event_end_time', $booking->event_end_time) }}" autocomplete="off" placeholder="--:--">
             </div>
         </div>
 
@@ -169,7 +142,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
         {{-- Multi-day end date (conditionally shown) --}}
         <div id="end_date_container" class="form-group" style="display:{{ old('is_multi_day', $booking->is_multi_day) ? 'block' : 'none' }};margin-top:.75rem;">
             <label>Einddatum *</label>
-            <input type="date" name="event_end_date" id="event_end_date" value="{{ old('event_end_date', $booking->event_end_date?->format('Y-m-d')) }}">
+            <input type="text" name="event_end_date" id="event_end_date" class="fp-date" value="{{ old('event_end_date', $booking->event_end_date?->format('Y-m-d')) }}" autocomplete="off">
         </div>
 
         {{-- Full Service datums --}}
@@ -177,13 +150,13 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
             <div class="form-grid">
                 <div class="form-group">
                     <label>Bezorgdatum & tijd</label>
-                    <input type="datetime-local" name="delivery_at"
-                        value="{{ old('delivery_at', $booking->delivery_at?->format('Y-m-d\TH:i')) }}">
+                    <input type="text" name="delivery_at" class="fp-datetime" autocomplete="off"
+                        value="{{ old('delivery_at', $booking->delivery_at?->format('Y-m-d H:i')) }}">
                 </div>
                 <div class="form-group">
                     <label>Ophaaldatum & tijd (door ons)</label>
-                    <input type="datetime-local" name="pickup_at"
-                        value="{{ old('pickup_at', $booking->pickup_at?->format('Y-m-d\TH:i')) }}">
+                    <input type="text" name="pickup_at" class="fp-datetime" autocomplete="off"
+                        value="{{ old('pickup_at', $booking->pickup_at?->format('Y-m-d H:i')) }}">
                 </div>
             </div>
         </div>
@@ -193,13 +166,13 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
             <div class="form-grid">
                 <div class="form-group">
                     <label>Ophalen bij ons (datum & tijd)</label>
-                    <input type="datetime-local" name="customer_pickup_at"
-                        value="{{ old('customer_pickup_at', $booking->customer_pickup_at?->format('Y-m-d\TH:i')) }}">
+                    <input type="text" name="customer_pickup_at" class="fp-datetime" autocomplete="off"
+                        value="{{ old('customer_pickup_at', $booking->customer_pickup_at?->format('Y-m-d H:i')) }}">
                 </div>
                 <div class="form-group">
                     <label>Terugbrengen (datum & tijd)</label>
-                    <input type="datetime-local" name="customer_return_at"
-                        value="{{ old('customer_return_at', $booking->customer_return_at?->format('Y-m-d\TH:i')) }}">
+                    <input type="text" name="customer_return_at" class="fp-datetime" autocomplete="off"
+                        value="{{ old('customer_return_at', $booking->customer_return_at?->format('Y-m-d H:i')) }}">
                 </div>
             </div>
         </div>
@@ -241,6 +214,88 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
             <label>Opmerkingen</label>
             <textarea name="event_notes" rows="3" style="resize:vertical;">{{ old('event_notes', $booking->event_notes) }}</textarea>
         </div>
+
+        {{-- ── Leverinstructies (alleen voor admin, zichtbaar voor personeel) ── --}}
+        <div class="form-group" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:.75rem;padding:1rem 1.1rem;">
+            <label style="display:flex;align-items:center;gap:.4rem;font-weight:600;color:#92400e;">
+                🚚 Leverinstructies voor personeel
+            </label>
+            <div style="font-size:.78rem;color:#92400e;margin-bottom:.6rem;">
+                Alleen zichtbaar voor jou en het ingeplande personeel — niet voor de klant.
+            </div>
+            <textarea name="delivery_instructions" rows="4" style="resize:vertical;width:100%;background:#fff;"
+                      placeholder="Bijv. via achteringang, lift met code 1234, parkeren in vak 7…">{{ old('delivery_instructions', $booking->delivery_instructions) }}</textarea>
+            @error('delivery_instructions') <div class="error-msg">{{ $message }}</div> @enderror
+
+            {{-- Bestaande afbeeldingen --}}
+            @if(!empty($booking->delivery_instructions_images))
+                <div style="margin-top:.75rem;">
+                    <div style="font-size:.72rem;font-weight:600;color:#92400e;margin-bottom:.4rem;">Bestaande afbeeldingen</div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem;">
+                        @foreach($booking->delivery_instructions_images as $img)
+                            <div style="position:relative;border:1px solid #fcd34d;border-radius:.5rem;overflow:hidden;background:#fff;">
+                                <a href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($img) }}" target="_blank">
+                                    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($img) }}"
+                                         style="width:100%;height:90px;object-fit:cover;display:block;">
+                                </a>
+                                <button type="button" data-img-path="{{ $img }}" class="delete-delivery-img"
+                                        style="position:absolute;top:4px;right:4px;background:rgba(220,38,38,.92);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.85rem;line-height:1;">×</button>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            {{-- Nieuwe upload --}}
+            <div style="margin-top:.75rem;">
+                <label style="font-size:.72rem;font-weight:600;color:#92400e;display:block;margin-bottom:.3rem;">Foto's toevoegen (optioneel)</label>
+                <input type="file" name="delivery_instructions_files[]" accept="image/jpeg,image/png,image/webp" multiple
+                       style="font-size:.85rem;">
+                <div style="font-size:.7rem;color:#92400e;margin-top:.25rem;">JPG/PNG/WEBP, max 8 MB per bestand. Meerdere foto's kunnen worden geselecteerd.</div>
+                @error('delivery_instructions_files.*') <div class="error-msg">{{ $message }}</div> @enderror
+            </div>
+        </div>
+
+        <hr style="margin:1.25rem 0;border:none;border-top:1px solid #e2e8f0;">
+
+        {{-- ── Team / medewerkers ── --}}
+        <h3 style="font-size:.875rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem;">Team</h3>
+
+        @if($staffMembers->isEmpty())
+        <p style="font-size:.875rem;color:#94a3b8;margin-bottom:1rem;">
+            Nog geen medewerkers aangemaakt.
+            <a href="{{ route('staff.create') }}" style="color:#7c3aed;">Toevoegen →</a>
+        </p>
+        @else
+        <div class="form-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label id="delivery-staff-label">
+                    {{ old('booking_type', $booking->booking_type) === 'to_go' ? 'Afgever (To Go)' : 'Bezorger' }}
+                </label>
+                <select name="delivery_staff_id" class="form-control">
+                    <option value="">— Niemand —</option>
+                    @foreach($staffMembers as $person)
+                    <option value="{{ $person->id }}"
+                        {{ old('delivery_staff_id', $booking->delivery_staff_id) == $person->id ? 'selected' : '' }}>
+                        {{ $person->name }}
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="form-group" id="pickup-staff-group" style="margin-bottom:0;">
+                <label id="pickup-staff-label">{{ old('booking_type', $booking->booking_type) === 'to_go' ? 'Ophaler (To Go)' : 'Ophaler' }}</label>
+                <select name="pickup_staff_id" class="form-control">
+                    <option value="">— Niemand —</option>
+                    @foreach($staffMembers as $person)
+                    <option value="{{ $person->id }}"
+                        {{ old('pickup_staff_id', $booking->pickup_staff_id) == $person->id ? 'selected' : '' }}>
+                        {{ $person->name }}
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+        </div>
+        @endif
 
         <hr style="margin:1.25rem 0;border:none;border-top:1px solid #e2e8f0;">
 
@@ -299,6 +354,8 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
                                       data-asset-id="{{ $asset->id }}"
                                       data-selected="{{ $isSel ? '1' : '0' }}"
                                       data-booked="{{ $isOtherBooked ? '1' : '0' }}"
+                                      data-warning="0"
+                                      data-warning-msg=""
                                       onclick="toggleUnit(this)"
                                       title="{{ $isOtherBooked ? 'Al geboekt door een andere boeking' : 'Unit '.$u }}"
                                       style="display:inline-flex;align-items:center;padding:.2rem .55rem;border-radius:.375rem;font-size:.75rem;font-weight:700;cursor:{{ $isOtherBooked ? 'not-allowed' : 'pointer' }};user-select:none;border:2px solid {{ $isSel ? '#2563eb' : ($isOtherBooked ? '#ef4444' : '#cbd5e1') }};background:{{ $isSel ? '#dbeafe' : ($isOtherBooked ? '#fee2e2' : '#f8fafc') }};color:{{ $isSel ? '#1e40af' : ($isOtherBooked ? '#991b1b' : '#475569') }};">
@@ -314,6 +371,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
                                 @endif
                             @endforeach
                         </div>
+
+                        {{-- Waarschuwingsbanner (verschijnt als een unit met korte tussentijd geselecteerd is) --}}
+                        <div id="unit-warning-{{ $asset->id }}" style="display:none;background:#fef3c7;border:1px solid #fcd34d;border-radius:.4rem;padding:.4rem .65rem;font-size:.77rem;color:#92400e;margin-top:.4rem;line-height:1.5;"></div>
 
                         {{-- Prijs per unit --}}
                         <div style="display:flex;align-items:center;gap:.4rem;margin-top:.25rem;">
@@ -398,6 +458,64 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 
         <hr style="margin:1.25rem 0;border:none;border-top:1px solid #e2e8f0;">
 
+        {{-- ── Fotostrip status, methode en template ── --}}
+        <h3 style="font-size:.875rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem;">🎨 Fotostrip workflow</h3>
+        <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:.75rem;padding:1rem 1.1rem;margin-bottom:1.25rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Status</label>
+                    <select name="strip_status" class="form-control">
+                        <option value="" @selected(old('strip_status', $booking->strip_status) === null)>— Geen —</option>
+                        <option value="waiting_input"            @selected(old('strip_status', $booking->strip_status)==='waiting_input')>⏳ Wacht op input klant</option>
+                        <option value="awaiting_customer_design" @selected(old('strip_status', $booking->strip_status)==='awaiting_customer_design')>📨 Wacht op design van klant</option>
+                        <option value="designing"                @selected(old('strip_status', $booking->strip_status)==='designing')>🎨 Ontwerpen</option>
+                        <option value="review"                   @selected(old('strip_status', $booking->strip_status)==='review')>👀 Wachten op goedkeuring</option>
+                        <option value="accepted"                 @selected(old('strip_status', $booking->strip_status)==='accepted')>✅ Goedgekeurd</option>
+                        <option value="ready"                    @selected(old('strip_status', $booking->strip_status)==='ready')>🎉 Ontwerp staat klaar</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Methode</label>
+                    <select name="strip_design_method" class="form-control" id="strip-method-select" onchange="stripToggleAdminFields()">
+                        <option value="" @selected(old('strip_design_method', $booking->strip_design_method) === null)>— Klant heeft niet gekozen —</option>
+                        <option value="self"     @selected(old('strip_design_method', $booking->strip_design_method)==='self')>🎨 Klant ontwerpt zelf</option>
+                        <option value="template" @selected(old('strip_design_method', $booking->strip_design_method)==='template')>📋 Template uit galerij</option>
+                        <option value="custom"   @selected(old('strip_design_method', $booking->strip_design_method)==='custom')>✏️ Wij ontwerpen</option>
+                    </select>
+                </div>
+                <div class="form-group" id="strip-tool-group" style="margin-bottom:0;">
+                    <label>Tool <span style="font-weight:400;color:#94a3b8;">(bij "Zelf ontwerpen")</span></label>
+                    <select name="strip_self_tool" class="form-control">
+                        <option value="" @selected(old('strip_self_tool', $booking->strip_self_tool) === null)>—</option>
+                        <option value="canva"     @selected(old('strip_self_tool', $booking->strip_self_tool)==='canva')>🎨 Canva</option>
+                        <option value="photoshop" @selected(old('strip_self_tool', $booking->strip_self_tool)==='photoshop')>🖌 Photoshop</option>
+                    </select>
+                </div>
+                <div class="form-group" id="strip-template-group" style="margin-bottom:0;">
+                    <label>Template <span style="font-weight:400;color:#94a3b8;">(bij "Template uit galerij")</span></label>
+                    <select name="strip_template_id" class="form-control">
+                        <option value="" @selected(old('strip_template_id', $booking->strip_template_id) === null)>— Geen —</option>
+                        @foreach(\App\Models\StripTemplate::orderBy('number')->get() as $tpl)
+                            <option value="{{ $tpl->id }}" @selected(old('strip_template_id', $booking->strip_template_id) == $tpl->id)>
+                                #{{ $tpl->number }}{{ $tpl->name ? ' — '.$tpl->name : '' }} · {{ $tpl->theme_label }} · {{ $tpl->format_label }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+            <div style="font-size:.72rem;color:#92400e;margin-top:.75rem;">
+                💡 Deze velden worden normaal door de klant ingevuld via het portaal. Hier kun je ze handmatig overschrijven.
+            </div>
+        </div>
+        <script>
+            function stripToggleAdminFields() {
+                const m = document.getElementById('strip-method-select').value;
+                document.getElementById('strip-tool-group').style.opacity     = m === 'self'     ? '1' : '.5';
+                document.getElementById('strip-template-group').style.opacity = m === 'template' ? '1' : '.5';
+            }
+            document.addEventListener('DOMContentLoaded', stripToggleAdminFields);
+        </script>
+
         {{-- ── Gallerij & Prijs & status ── --}}
         <h3 style="font-size:.875rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem;">Gallerij, prijs & status</h3>
         <div class="form-grid">
@@ -410,16 +528,6 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
                 <label>Totaalprijs (€) <span style="font-weight:400;color:#94a3b8;">— automatisch berekend</span></label>
                 <input type="number" id="total_price" name="total_price" value="{{ old('total_price', $booking->total_price) }}" step="0.01" min="0" required
                     readonly style="background:#f8fafc;cursor:default;color:#64748b;">
-            </div>
-            <div class="form-group">
-                <label>Fotostrip status</label>
-                <select name="strip_status">
-                    <option value="waiting_input" @selected(old('strip_status', $booking->strip_status)==='waiting_input')>⏳ Input aanleveren</option>
-                    <option value="designing"     @selected(old('strip_status', $booking->strip_status)==='designing')>🎨 Ontwerpen</option>
-                    <option value="review"        @selected(old('strip_status', $booking->strip_status)==='review')>👀 Wachten op goedkeuring</option>
-                    <option value="accepted"      @selected(old('strip_status', $booking->strip_status)==='accepted')>✅ Goedgekeurd</option>
-                    <option value="ready"         @selected(old('strip_status', $booking->strip_status)==='ready')>🎉 Ontwerp staat klaar</option>
-                </select>
             </div>
             <div class="form-group">
                 <label>Boekingstatus</label>
@@ -448,10 +556,119 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
         </div>
     </form>
 </div>
+
+{{-- Rechter-paneels: andere ritten op event-datum en op ophaal-datum --}}
+<div class="day-logistics-stack">
+    @include('bookings._day_logistics_panel', [
+        'panelId'     => 'event',
+        'title'       => '📅 Andere ritten op eventdatum',
+        'watchNames'  => ['event_date'],
+        'excludeId'   => $booking->id,
+        'initialDate' => $booking->event_date?->toDateString(),
+    ])
+    @include('bookings._day_logistics_panel', [
+        'panelId'     => 'pickup',
+        'title'       => '↩ Andere ritten op ophaaldatum',
+        'watchNames'  => ['pickup_at', 'customer_return_at'],
+        'excludeId'   => $booking->id,
+        'initialDate' => $booking->pickup_at?->toDateString() ?? $booking->customer_return_at?->toDateString(),
+    ])
+</div>
+
+</div>{{-- /bk-edit-layout grid --}}
+
+<style>
+@media (max-width: 980px) {
+    .bk-edit-layout { display: block !important; }
+    .bk-edit-layout > div > .card { max-width: 100% !important; }
+}
+</style>
 @endsection
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
+// ── Flatpickr initialisatie ───────────────────────────────────
+const fpNl = {
+    firstDayOfWeek: 1,
+    weekAbbreviation: 'Wk',
+    weekdays: { shorthand:['zo','ma','di','wo','do','vr','za'], longhand:['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'] },
+    months: { shorthand:['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'], longhand:['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'] },
+};
+// Live input commit: waarde opslaan zodra het format compleet is tijdens typen
+function fpLive(picker, regex) {
+    picker.input.addEventListener('input', function() {
+        const v = this.value.trim();
+        if (regex.test(v)) picker.setDate(v, true);
+    });
+}
+
+// Bereken ophaal- en retourdatum voor To Go op basis van eventdatum
+// Weekdag → ophalen maandag die week, retour vrijdag die week
+// Vrijdag → ophalen die vrijdag, retour maandag erna
+// Zaterdag → ophalen vrijdag ervoor, retour maandag erna
+// Zondag → ophalen vrijdag ervoor, retour die maandag
+function calculateToGoDates(dateStr) {
+    if (!dateStr) return;
+    if (document.getElementById('booking_type').value !== 'to_go') return;
+
+    // Datum parsen in lokale tijdzone (niet UTC) om dag-verschuiving te voorkomen
+    const parts = dateStr.split('-').map(Number);
+    const d   = new Date(parts[0], parts[1] - 1, parts[2]); // lokale midnight
+    const dow = d.getDay(); // 0=zo, 1=ma, 2=di, 3=wo, 4=do, 5=vr, 6=za
+
+    const addDays = (date, n) => {
+        const r = new Date(date);
+        r.setDate(r.getDate() + n);
+        return r;
+    };
+
+    let pickup, ret;
+    if (dow === 5) {            // vrijdag → ophalen vrijdag, retour maandag
+        pickup = addDays(d, 0);
+        ret    = addDays(d, 3);
+    } else if (dow === 6) {     // zaterdag → ophalen vrijdag, retour maandag
+        pickup = addDays(d, -1);
+        ret    = addDays(d, 2);
+    } else if (dow === 0) {     // zondag → ophalen vrijdag, retour maandag
+        pickup = addDays(d, -2);
+        ret    = addDays(d, 1);
+    } else {                    // ma t/m do → ophalen maandag die week, retour vrijdag die week
+        pickup = addDays(d, -(dow - 1));
+        ret    = addDays(d, 5 - dow);
+    }
+
+    const fmt = (date) => {
+        const y   = date.getFullYear();
+        const m   = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day} 10:00`;
+    };
+
+    const pickupEl = document.querySelector('[name="customer_pickup_at"]');
+    const returnEl = document.querySelector('[name="customer_return_at"]');
+    if (pickupEl?._flatpickr) pickupEl._flatpickr.setDate(fmt(pickup), true);
+    if (returnEl?._flatpickr) returnEl._flatpickr.setDate(fmt(ret), true);
+}
+
+document.querySelectorAll('.fp-date').forEach(el => {
+    const onChange = el.name === 'event_date'
+        ? [(dates, dateStr) => { calculateToGoDates(dateStr); fetchUnitAvailability(); }]
+        : [];
+    const p = flatpickr(el, { dateFormat:'Y-m-d', locale:fpNl, disableMobile:true, allowInput:true, onChange });
+    fpLive(p, /^\d{4}-\d{2}-\d{2}$/);
+});
+document.querySelectorAll('.fp-datetime').forEach(el => {
+    const p = flatpickr(el, { enableTime:true, dateFormat:'Y-m-d H:i', time_24hr:true, minuteIncrement:15, locale:fpNl, disableMobile:true, allowInput:true,
+        defaultHour: 10, defaultMinute: 0,
+        onChange: fetchUnitAvailability });
+    fpLive(p, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+});
+document.querySelectorAll('.fp-time').forEach(el => {
+    const p = flatpickr(el, { enableTime:true, noCalendar:true, dateFormat:'H:i', time_24hr:true, minuteIncrement:15, disableMobile:true, allowInput:true });
+    fpLive(p, /^\d{2}:\d{2}$/);
+});
+
 // ── Unit toggle (span + hidden input aanpak) ──────────────────
 function toggleUnit(span) {
     if (span.dataset.booked === '1') return;
@@ -461,65 +678,129 @@ function toggleUnit(span) {
     const container = document.getElementById('unit-inputs-' + assetId);
     const card      = span.closest('.asset-card');
     const existing  = container.querySelector(`input[value="${unit}"]`);
+    const isWarn    = span.dataset.warning === '1';
 
     if (existing) {
         existing.remove();
-        span.dataset.selected  = '0';
-        span.style.borderColor = '#cbd5e1';
-        span.style.background  = '#f8fafc';
-        span.style.color       = '#475569';
+        span.dataset.selected = '0';
+        if (isWarn) {
+            span.style.borderColor = '#f59e0b';
+            span.style.background  = '#fef3c7';
+            span.style.color       = '#92400e';
+        } else {
+            span.style.borderColor = '#cbd5e1';
+            span.style.background  = '#f8fafc';
+            span.style.color       = '#475569';
+        }
     } else {
-        const inp  = document.createElement('input');
-        inp.type   = 'hidden';
-        inp.name   = `assets[${assetId}][units][]`;
-        inp.value  = unit;
+        const inp = document.createElement('input');
+        inp.type  = 'hidden';
+        inp.name  = `assets[${assetId}][units][]`;
+        inp.value = unit;
         container.appendChild(inp);
-        span.dataset.selected  = '1';
-        span.style.borderColor = '#2563eb';
-        span.style.background  = '#dbeafe';
-        span.style.color       = '#1e40af';
+        span.dataset.selected = '1';
+        if (isWarn) {
+            span.style.borderColor = '#d97706';
+            span.style.background  = '#fef9c3';
+            span.style.color       = '#92400e';
+        } else {
+            span.style.borderColor = '#2563eb';
+            span.style.background  = '#dbeafe';
+            span.style.color       = '#1e40af';
+        }
     }
+
+    updateUnitWarningBanner(assetId, card);
 
     const anySelected = container.querySelectorAll('input[type=hidden]').length > 0;
     card.style.borderColor = anySelected ? '#2563eb' : '';
     card.style.background  = anySelected ? '#eff6ff' : '';
-
     calcTotaal();
+}
+
+function updateUnitWarningBanner(assetId, card) {
+    const banner    = document.getElementById('unit-warning-' + assetId);
+    const container = document.getElementById('unit-inputs-' + assetId);
+    if (!banner) return;
+    const msgs = [];
+    container.querySelectorAll('input[type=hidden]').forEach(inp => {
+        const s = card.querySelector(`span[data-unit="${inp.value}"]`);
+        if (s?.dataset.warning === '1' && s.dataset.warningMsg) {
+            msgs.push('⚠️ Unit ' + inp.value + ': ' + s.dataset.warningMsg);
+        }
+    });
+    banner.innerHTML    = msgs.join('<br>');
+    banner.style.display = msgs.length ? 'block' : 'none';
 }
 
 // ── Unit beschikbaarheid ophalen bij datumwijziging ───────────
 const EXCLUDE_BOOKING_ID = {{ $booking->id }};
 
 function fetchUnitAvailability() {
-    const eventDate    = document.querySelector('[name="event_date"]')?.value;
-    const eventEndDate = document.querySelector('[name="event_end_date"]')?.value || eventDate;
+    const eventDate         = document.querySelector('[name="event_date"]')?.value;
+    const eventEndDate      = document.querySelector('[name="event_end_date"]')?.value || eventDate;
+    const bookingType       = document.querySelector('[name="booking_type"]')?.value || '';
+    const deliveryAt        = document.querySelector('[name="delivery_at"]')?.value || '';
+    const pickupAt          = document.querySelector('[name="pickup_at"]')?.value || '';
+    const customerPickupAt  = document.querySelector('[name="customer_pickup_at"]')?.value || '';
+    const customerReturnAt  = document.querySelector('[name="customer_return_at"]')?.value || '';
     if (!eventDate) return;
 
-    fetch(`/bookings/unit-availability?event_date=${eventDate}&event_end_date=${eventEndDate}&exclude_booking_id=${EXCLUDE_BOOKING_ID}`, {
+    const params = new URLSearchParams({ event_date: eventDate, event_end_date: eventEndDate,
+        booking_type: bookingType, delivery_at: deliveryAt, pickup_at: pickupAt,
+        customer_pickup_at: customerPickupAt, customer_return_at: customerReturnAt,
+        exclude_booking_id: EXCLUDE_BOOKING_ID });
+    fetch(`/bookings/unit-availability?${params}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
     .then(r => r.json())
     .then(data => {
         document.querySelectorAll('.asset-card[data-photobooth]').forEach(card => {
-            const assetId   = card.dataset.assetId;
-            const booked    = data[assetId] || [];
-            const container = document.getElementById('unit-inputs-' + assetId);
+            const assetId    = card.dataset.assetId;
+            const assetData  = data[assetId] || {};
+            const booked     = Array.isArray(assetData) ? assetData : (assetData.booked  || []);
+            const warning    = Array.isArray(assetData) ? []        : (assetData.warning || []);
+            const warnInfo   = Array.isArray(assetData) ? {}        : (assetData.warningInfo || {});
+            const container  = document.getElementById('unit-inputs-' + assetId);
+
             card.querySelectorAll('span[data-unit]').forEach(span => {
-                const unit     = parseInt(span.dataset.unit);
-                const isBooked = booked.includes(unit);
+                const unit      = parseInt(span.dataset.unit);
+                const isBooked  = booked.includes(unit);
+                const isWarning = !isBooked && warning.includes(unit);
+
                 if (isBooked) {
-                    span.dataset.booked = '1';
-                    span.style.borderColor = '#ef4444';
-                    span.style.background  = '#fee2e2';
-                    span.style.color       = '#991b1b';
-                    span.style.cursor      = 'not-allowed';
-                    span.title             = 'Al geboekt door een andere boeking';
+                    span.dataset.booked      = '1';
+                    span.dataset.warning     = '0';
+                    span.dataset.warningMsg  = '';
+                    span.style.borderColor   = '#ef4444';
+                    span.style.background    = '#fee2e2';
+                    span.style.color         = '#991b1b';
+                    span.style.cursor        = 'not-allowed';
+                    span.title               = '🔒 Bezet — tijdconflict met andere boeking';
                     container?.querySelector(`input[value="${unit}"]`)?.remove();
-                    span.dataset.selected  = '0';
+                    span.dataset.selected    = '0';
+                } else if (isWarning) {
+                    const msg = warnInfo[unit]?.message || '';
+                    span.dataset.booked      = '0';
+                    span.dataset.warning     = '1';
+                    span.dataset.warningMsg  = msg;
+                    span.style.cursor        = 'pointer';
+                    span.title               = '⚠️ ' + (msg || 'Korte tijd tussen boekingen');
+                    if (span.dataset.selected === '1') {
+                        span.style.borderColor = '#d97706';
+                        span.style.background  = '#fef9c3';
+                        span.style.color       = '#92400e';
+                    } else {
+                        span.style.borderColor = '#f59e0b';
+                        span.style.background  = '#fef3c7';
+                        span.style.color       = '#92400e';
+                    }
                 } else {
-                    span.dataset.booked = '0';
-                    span.style.cursor   = 'pointer';
-                    span.title          = 'Unit ' + unit;
+                    span.dataset.booked      = '0';
+                    span.dataset.warning     = '0';
+                    span.dataset.warningMsg  = '';
+                    span.style.cursor        = 'pointer';
+                    span.title               = 'Unit ' + unit;
                     if (span.dataset.selected === '1') {
                         span.style.borderColor = '#2563eb';
                         span.style.background  = '#dbeafe';
@@ -531,13 +812,15 @@ function fetchUnitAvailability() {
                     }
                 }
             });
+            updateUnitWarningBanner(assetId, card);
         });
         calcTotaal();
     })
     .catch(() => {});
 }
 
-document.querySelector('[name="event_date"]')?.addEventListener('change', fetchUnitAvailability);
+// Haal bij paginaload ook de beschikbaarheid op (voor initieel weergeven van warnings)
+document.addEventListener('DOMContentLoaded', fetchUnitAvailability);
 document.querySelector('[name="event_end_date"]')?.addEventListener('change', fetchUnitAvailability);
 document.getElementById('is_multi_day')?.addEventListener('change', function() {
     if (!this.checked) fetchUnitAvailability();
@@ -573,6 +856,16 @@ function toggleType() {
     const type = document.getElementById('booking_type').value;
     document.getElementById('fs-fields').style.display   = type === 'full_service' ? '' : 'none';
     document.getElementById('togo-fields').style.display = type === 'to_go'        ? '' : 'none';
+    // Bij wisselen naar To Go: datums direct berekenen op basis van huidige eventdatum
+    if (type === 'to_go') {
+        const eventDate = document.querySelector('[name="event_date"]')?.value;
+        calculateToGoDates(eventDate);
+    }
+    // Team labels
+    const delivLabel  = document.getElementById('delivery-staff-label');
+    const pickupLabel = document.getElementById('pickup-staff-label');
+    if (delivLabel)  delivLabel.textContent  = type === 'to_go' ? 'Afgever (To Go)' : 'Bezorger';
+    if (pickupLabel) pickupLabel.textContent = type === 'to_go' ? 'Ophaler (To Go)' : 'Ophaler';
 }
 toggleType();
 
@@ -597,7 +890,7 @@ function toggleEndDate() {
     } else {
         container.style.display = 'none';
         input.required = false;
-        input.value = '';
+        input._flatpickr?.clear();
     }
 }
 
@@ -678,6 +971,26 @@ function berekenReiskosten() {
 ['event_address','event_postcode','event_city'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', berekenReiskosten);
+});
+
+// ── Leverinstructies: afbeelding verwijderen via AJAX ──
+document.querySelectorAll('.delete-delivery-img').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const path = this.dataset.imgPath;
+        const wrapper = this.closest('div');
+        crmConfirm('Deze afbeelding verwijderen?', () => {
+            fetch(@json(route('bookings.delivery-image-delete', $booking)), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: '_method=DELETE&_token=' + encodeURIComponent(@json(csrf_token())) + '&path=' + encodeURIComponent(path),
+            })
+            .then(r => { if (r.ok) wrapper.remove(); })
+            .catch(() => alert('Verwijderen mislukt'));
+        });
+    });
 });
 </script>
 <script

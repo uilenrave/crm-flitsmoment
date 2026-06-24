@@ -39,6 +39,11 @@
             <div class="form-group">
                 <label>Voorraad *</label>
                 <input type="number" name="stock" value="{{ old('stock', $asset->stock) }}" min="0" required>
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;margin-top:.5rem;font-size:.8rem;color:#64748b;">
+                    <input type="checkbox" name="ignore_stock" value="1" {{ old('ignore_stock', $asset->ignore_stock) ? 'checked' : '' }}
+                        style="width:14px;height:14px;">
+                    Niet tonen in planning (bijv. reiskosten, wegwerpartikelen)
+                </label>
             </div>
             <div class="form-group" style="grid-column:span 2;">
                 <label>Beschrijving</label>

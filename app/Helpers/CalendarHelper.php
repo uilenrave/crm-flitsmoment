@@ -127,12 +127,12 @@ class CalendarHelper
     }
 
     /**
-     * Eerste dag van de maand (0=zondag, 6=zaterdag)
+     * Eerste dag van de maand (0=maandag, 6=zondag)
      */
     public static function firstDayOfMonth(int $year, int $month): int
     {
         $date = Carbon::createFromDate($year, $month, 1);
-        return $date->dayOfWeek; // 0=Sunday in Carbon
+        return ($date->dayOfWeek + 6) % 7; // Carbon: 0=Sunday → omzetten naar 0=Monday
     }
 
     /**
@@ -177,11 +177,11 @@ class CalendarHelper
     }
 
     /**
-     * Dag naam (Nederlands)
+     * Dag naam (Nederlands), 0=maandag t/m 6=zondag
      */
     public static function dayName(int $dayOfWeek): string
     {
-        $days = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'];
+        $days = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
         return $days[$dayOfWeek] ?? '';
     }
 

@@ -54,6 +54,17 @@ Schedule::call(function () {
             }
         });
 
+    // ── 4. 14 dagen voor event: nog geen fotostrip-methode gekozen → klant ──
+    Booking::withoutGlobalScope(AccountScope::class)
+        ->with('account')
+        ->where('status', 'confirmed')
+        ->whereDate('event_date', now()->addDays(14))
+        ->whereNull('strip_design_method')
+        ->whereNotNull('customer_email')
+        ->each(function (Booking $booking) use ($mail) {
+            $mail->send('customer_strip_choice_reminder', $booking, $booking->customer_email);
+        });
+
 })->daily()->at('08:00')->name('dagelijkse-mail-automatisering')->withoutOverlapping();
 
 /**

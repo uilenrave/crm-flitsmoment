@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Intake — {{ $booking->account->name }}</title>
+    <title>{{ $booking->booking_type === 'to_go' ? 'Ophaal- & retourgegevens' : 'Bezorg- & ophaalgegevens' }} — {{ $booking->account->name }}</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -119,35 +119,6 @@
             max-height: 500px; opacity: 1; margin-top: 1rem;
         }
 
-        /* File upload */
-        .upload-zone {
-            border: 2px dashed var(--border);
-            border-radius: .75rem;
-            padding: 1.5rem;
-            text-align: center;
-            cursor: pointer;
-            transition: all .2s;
-            background: #fafaf9;
-        }
-        .upload-zone:hover, .upload-zone.dragover {
-            border-color: var(--primary);
-            background: #fffbeb;
-        }
-        .upload-zone-icon { font-size: 1.75rem; margin-bottom: .5rem; }
-        .upload-zone-text { font-size: .85rem; color: var(--muted); }
-        .upload-zone-text strong { color: var(--primary-dark); }
-        .file-list { margin-top: .75rem; text-align: left; }
-        .file-item {
-            display: flex; align-items: center; gap: .5rem;
-            font-size: .8rem; padding: .375rem .5rem;
-            background: var(--bg); border-radius: .375rem;
-            margin-bottom: .375rem;
-        }
-        .file-item-remove {
-            margin-left: auto; cursor: pointer; color: #dc2626;
-            font-weight: 700; font-size: .9rem; border: none; background: none;
-        }
-
         /* Input fields */
         .form-input, .form-textarea {
             width: 100%;
@@ -194,6 +165,8 @@
             color: var(--muted); font-weight: 600; font-size: .9rem;
             padding: .75rem 1.5rem; border-radius: .75rem;
             cursor: pointer; transition: all .2s;
+            text-decoration: none;
+            display: inline-flex; align-items: center;
         }
         .btn-back:hover { border-color: var(--muted); color: var(--text); }
 
@@ -221,9 +194,6 @@
         .btn-next.loading { pointer-events: none; opacity: .7; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* External link */
-        .ext-link { color: var(--primary-dark); font-weight: 600; text-decoration: underline; }
-
         @media (max-width: 480px) {
             .step-card { padding: 1.75rem 1.25rem; }
             .step-question { font-size: 1.15rem; }
@@ -234,64 +204,64 @@
         }
     </style>
 </head>
+@php
+$isToGo = $booking->booking_type === 'to_go';
+$pageTitle = $isToGo ? 'Ophaal- & retourgegevens' : 'Bezorg- & ophaalgegevens';
+$totalDisplaySteps = $isToGo ? 1 : 2;
+
+// Voorgestelde ophaal- en retourmomenten voor To Go
+$suggestedPickupDate  = null;
+$suggestedPickupLabel = null;
+$suggestedPickupTime  = '10:00';
+$suggestedReturnDate  = null;
+$suggestedReturnLabel = null;
+$suggestedReturnTime  = '10:00';
+
+if ($isToGo && $booking->event_date) {
+    if ($booking->customer_pickup_at) {
+        $pickupCarbonDate = $booking->customer_pickup_at;
+        $returnCarbonDate = $booking->customer_return_at ?? $booking->customer_pickup_at->copy()->addDays(2);
+        $suggestedPickupTime = $pickupCarbonDate->format('H:i');
+        $suggestedReturnTime = $returnCarbonDate->format('H:i');
+    } else {
+        $eDate = \Carbon\Carbon::parse($booking->event_date);
+        $dow   = $eDate->dayOfWeek;
+
+        if (in_array($dow, [0, 5, 6])) {
+            $daysBack         = ($dow - 5 + 7) % 7;
+            $daysForward      = $dow === 0 ? 1 : (8 - $dow) % 7;
+            $pickupCarbonDate = $eDate->copy()->subDays($daysBack);
+            $returnCarbonDate = $eDate->copy()->addDays($daysForward);
+        } else {
+            $pickupCarbonDate = $eDate->copy()->subDays($dow - 1);
+            $returnCarbonDate = $eDate->copy()->addDays(5 - $dow);
+        }
+    }
+
+    $suggestedPickupDate  = $pickupCarbonDate->format('Y-m-d');
+    $suggestedPickupLabel = $pickupCarbonDate->translatedFormat('l j F');
+    $suggestedReturnDate  = $returnCarbonDate->format('Y-m-d');
+    $suggestedReturnLabel = $returnCarbonDate->translatedFormat('l j F');
+}
+@endphp
 <body>
 
 <header class="intake-header">
-    <div class="intake-header-left">{{ $booking->account->name }}</div>
-    <div class="intake-header-right" id="step-indicator">Stap 1 van 3</div>
+    <div class="intake-header-left">{{ $pageTitle }}</div>
+    <div class="intake-header-right" id="step-indicator">Stap 1 van {{ $totalDisplaySteps }}</div>
 </header>
 
 <div class="progress-wrap">
-    <div class="progress-bar" id="progress-bar" style="width: 33%"></div>
+    <div class="progress-bar" id="progress-bar" style="width: {{ $isToGo ? 100 : 50 }}%"></div>
 </div>
 
 <div class="steps-viewport">
 
-    {{-- ─── STAP 1: Fotostrip Design ─── --}}
-    <div class="intake-step active" id="step-1">
+    @if(!$isToGo)
+    {{-- ─── STAP 2 (display: 1) — BEZORGING — alleen Full Service ─── --}}
+    <div class="intake-step active" id="step-2">
         <div class="step-card">
-            <div class="step-number">Stap 1 van 3</div>
-            <h2 class="step-question">Wil je een eigen ontwerp voor de fotostrip, of kies je uit een van onze templates?</h2>
-
-            <form id="form-step-1" enctype="multipart/form-data">
-                <label class="option-card" onclick="selectOption(1, 'self_input')">
-                    <input type="radio" name="design_choice" value="self_input">
-                    <div class="option-title">Ik lever zelf input aan</div>
-                    <div class="option-desc">Stuur je uitnodiging, logo, huisstijl of kleurkeuze en wij ontwerpen jouw fotostrip.</div>
-                </label>
-
-                <label class="option-card" onclick="selectOption(1, 'template')">
-                    <input type="radio" name="design_choice" value="template">
-                    <div class="option-title">Ik gebruik een van jullie templates</div>
-                    <div class="option-desc">Je krijgt toegang tot onze Photoshop en Canva templates om zelf een ontwerp te maken.</div>
-                </label>
-
-                <div class="sub-fields" id="upload-section">
-                    <div class="form-label">Upload je bestanden (logo, uitnodiging, branding)</div>
-                    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-                        <div class="upload-zone-icon">📎</div>
-                        <div class="upload-zone-text"><strong>Klik om bestanden te kiezen</strong><br>of sleep ze hierheen (max 5 bestanden, 20MB per stuk)</div>
-                    </div>
-                    <input type="file" id="file-input" name="branding_files[]" multiple accept="image/*,.pdf,.ai,.psd,.svg" style="display:none">
-                    <div class="file-list" id="file-list"></div>
-                </div>
-
-                <div class="field-error" id="error-1"></div>
-            </form>
-
-            <div class="btn-row">
-                <a href="{{ route('portal.show', $booking->public_token) }}" class="btn-back">Terug naar boeking</a>
-                <button class="btn-next" onclick="nextStep(1)" id="btn-1" disabled>
-                    Volgende <span class="spinner"></span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    {{-- ─── STAP 2: Bezorgtijd ─── --}}
-    <div class="intake-step" id="step-2">
-        <div class="step-card">
-            <div class="step-number">Stap 2 van 3</div>
+            <div class="step-number">Stap 1 van 2</div>
             <h2 class="step-question">Heb je een gewenste of specifieke bezorgtijd?</h2>
 
             <form id="form-step-2">
@@ -311,18 +281,83 @@
             </form>
 
             <div class="btn-row">
-                <button class="btn-back" onclick="prevStep(2)">Vorige</button>
+                <a href="{{ route('portal.show', $booking->public_token) }}" class="btn-back">Terug naar boeking</a>
                 <button class="btn-next" onclick="nextStep(2)" id="btn-2">
                     Volgende <span class="spinner"></span>
                 </button>
             </div>
         </div>
     </div>
+    @endif
 
-    {{-- ─── STAP 3: Ophalen ─── --}}
-    <div class="intake-step" id="step-3">
+    {{-- ─── STAP 3 — OPHALEN (Full Service) / OPHAAL & RETOUR (To Go) ─── --}}
+    <div class="intake-step {{ $isToGo ? 'active' : '' }}" id="step-3">
         <div class="step-card">
-            <div class="step-number">Stap 3 van 3</div>
+            <div class="step-number">{{ $isToGo ? 'Eenmalige stap' : 'Stap 2 van 2' }}</div>
+
+            @if($isToGo)
+            <h2 class="step-question">Wanneer wil je de photobooth ophalen en terugbrengen?</h2>
+
+            @php
+            $timeSlots = [];
+            for ($h = 8; $h <= 15; $h++) {
+                $timeSlots[] = str_pad($h, 2, '0', STR_PAD_LEFT) . ':00';
+                if ($h < 15) $timeSlots[] = str_pad($h, 2, '0', STR_PAD_LEFT) . ':30';
+            }
+            $savedStep3 = $booking->intake_data['step_3'] ?? [];
+            $savedPickupTime = $savedStep3['pickup_time'] ?? '10:00';
+            $savedReturnTime = $savedStep3['return_time'] ?? '10:00';
+            @endphp
+
+            <form id="form-step-3" data-always-enabled="1">
+                <input type="hidden" name="pickup_option" value="suggested">
+                <input type="hidden" name="pickup_date" value="{{ $suggestedPickupDate }}">
+                <input type="hidden" name="return_date" value="{{ $suggestedReturnDate }}">
+
+                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:1.1rem 1.25rem;margin-bottom:1.25rem;">
+                    <p style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin:0 0 .75rem 0;">Vaste datums</p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                        <div>
+                            <p style="font-size:.75rem;color:#6b7280;margin:0 0 .15rem 0;">📦 Ophalen bij ons</p>
+                            <p style="font-size:.95rem;font-weight:700;color:#111827;margin:0;">{{ $suggestedPickupLabel }}</p>
+                        </div>
+                        <div>
+                            <p style="font-size:.75rem;color:#6b7280;margin:0 0 .15rem 0;">🔄 Terugbrengen</p>
+                            <p style="font-size:.95rem;font-weight:700;color:#111827;margin:0;">{{ $suggestedReturnLabel }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Ophaaltijdstip</label>
+                        <select class="form-input" name="pickup_time">
+                            @foreach($timeSlots as $slot)
+                            <option value="{{ $slot }}" @selected($slot === $savedPickupTime)>{{ $slot }}{{ $slot === '10:00' ? ' ⭐' : '' }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Retourtijdstip</label>
+                        <select class="form-input" name="return_time">
+                            @foreach($timeSlots as $slot)
+                            <option value="{{ $slot }}" @selected($slot === $savedReturnTime)>{{ $slot }}{{ $slot === '10:00' ? ' ⭐' : '' }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:.75rem;color:#9ca3af;margin:0 0 1rem 0;">⭐ = onze voorkeur</p>
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.75rem 1rem;font-size:.82rem;color:#166534;">
+                    📍 <strong>Ophalen & terugbrengen bij:</strong><br>
+                    Ravenswade 132, 3439 LD Nieuwegein
+                    &nbsp;·&nbsp;
+                    <a href="https://maps.google.com/?q=Ravenswade+132+3439+LD+Nieuwegein" target="_blank" style="color:#166534;text-decoration:underline;">Bekijk op kaart →</a>
+                </div>
+
+                <div class="field-error" id="error-3"></div>
+            </form>
+
+            @else
             <h2 class="step-question">Wanneer kunnen we de photobooth ophalen na het event?</h2>
 
             <form id="form-step-3">
@@ -341,7 +376,7 @@
                 <div class="sub-fields" id="pickup-details">
                     <div class="form-group">
                         <label class="form-label" for="pickup_time">Gewenst ophaaltijdstip</label>
-                        <input type="time" class="form-input" id="pickup_time" name="pickup_time" value="09:00">
+                        <input type="time" class="form-input" id="pickup_time" name="pickup_time" value="09:00" step="900">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="pickup_contact">Contactpersoon ter plaatse</label>
@@ -352,10 +387,15 @@
 
                 <div class="field-error" id="error-3"></div>
             </form>
+            @endif
 
             <div class="btn-row">
+                @if($isToGo)
+                <a href="{{ route('portal.show', $booking->public_token) }}" class="btn-back">Terug naar boeking</a>
+                @else
                 <button class="btn-back" onclick="prevStep(3)">Vorige</button>
-                <button class="btn-next" onclick="nextStep(3)" id="btn-3" disabled>
+                @endif
+                <button class="btn-next" onclick="nextStep(3)" id="btn-3" {{ $isToGo ? '' : 'disabled' }}>
                     Verstuur <span class="spinner"></span>
                 </button>
             </div>
@@ -368,7 +408,7 @@
             <div class="completion-icon">🎉</div>
             <h2 class="completion-title">Bedankt!</h2>
             <p class="completion-text">
-                Je intake is compleet. We hebben alle informatie ontvangen en gaan ermee aan de slag.<br>
+                Je {{ $isToGo ? 'ophaal- & retourgegevens zijn' : 'bezorg- & ophaalgegevens zijn' }} compleet. We hebben alles ontvangen en gaan ermee aan de slag.<br>
                 Je kunt je boeking altijd bekijken via onderstaande link.
             </p>
             <a href="{{ route('portal.show', $booking->public_token) }}" class="btn-portal">
@@ -380,45 +420,52 @@
 </div>
 
 <script>
-const TOKEN = '{{ $booking->public_token }}';
-const CSRF  = document.querySelector('meta[name="csrf-token"]').content;
-const TOTAL = 3;
-let current = {{ max(1, ($booking->intake_current_step ?? 0) + 1) }};
-let savedData = @json($booking->intake_data ?? []);
-let selectedFiles = [];
+const TOKEN   = '{{ $booking->public_token }}';
+const CSRF    = document.querySelector('meta[name="csrf-token"]').content;
+const IS_TOGO = {{ $isToGo ? 'true' : 'false' }};
+const TOTAL_DISPLAY = {{ $totalDisplaySteps }};
 
-// Init: restore saved state
+// Interne stappen: 2 (bezorging) en 3 (ophalen/togo)
+// Display stappen: 1 en 2 (FS) of alleen 1 (ToGo)
+const internalToDisplay = s => IS_TOGO ? 1 : (s === 2 ? 1 : 2);
+
+// Bepaal de start-stap op basis van wat al ingevuld is
+let current = (function() {
+    const cs = {{ (int) ($booking->intake_current_step ?? 0) }};
+    if (IS_TOGO) return 3;            // ToGo heeft alleen stap 3
+    if (cs >= 2) return 3;            // Stap 2 al gedaan → ga naar stap 3
+    return 2;                          // Anders begin bij stap 2
+})();
+
+let savedData = @json($booking->intake_data ?? []);
+
 document.addEventListener('DOMContentLoaded', () => {
     restoreSavedData();
     showStep(current, false);
 });
 
 function restoreSavedData() {
-    for (let s = 1; s <= TOTAL; s++) {
-        const key = 'step_' + s;
-        if (!savedData[key]) continue;
-        const d = savedData[key];
-        const form = document.getElementById('form-step-' + s);
-        if (!form) continue;
-
-        if (s === 1 && d.design_choice) {
-            const r = form.querySelector(`input[value="${d.design_choice}"]`);
-            if (r) { r.checked = true; r.closest('.option-card').classList.add('selected'); }
-            if (d.design_choice === 'self_input') document.getElementById('upload-section').classList.add('open');
-            enableBtn(1);
+    if (savedData.step_2) {
+        const d = savedData.step_2;
+        if (d.delivery_time_preference) {
+            const el = document.getElementById('delivery_time');
+            if (el) el.value = d.delivery_time_preference;
         }
-        if (s === 2) {
-            if (d.delivery_time_preference) document.getElementById('delivery_time').value = d.delivery_time_preference;
-            if (d.delivery_notes) document.getElementById('delivery_notes').value = d.delivery_notes;
-            enableBtn(2);
+        if (d.delivery_notes) {
+            const el = document.getElementById('delivery_notes');
+            if (el) el.value = d.delivery_notes;
         }
-        if (s === 3 && d.pickup_preference) {
-            const r = form.querySelector(`input[value="${d.pickup_preference}"]`);
+        enableBtn(2);
+    }
+    if (savedData.step_3 && savedData.step_3.pickup_preference) {
+        const form = document.getElementById('form-step-3');
+        if (form) {
+            const r = form.querySelector(`input[value="${savedData.step_3.pickup_preference}"]`);
             if (r) { r.checked = true; r.closest('.option-card').classList.add('selected'); }
-            if (d.pickup_preference === 'next_morning') {
-                document.getElementById('pickup-details').classList.add('open');
-                if (d.pickup_time) document.getElementById('pickup_time').value = d.pickup_time;
-                if (d.pickup_contact_person) document.getElementById('pickup_contact').value = d.pickup_contact_person;
+            if (savedData.step_3.pickup_preference === 'next_morning') {
+                document.getElementById('pickup-details')?.classList.add('open');
+                if (savedData.step_3.pickup_time) document.getElementById('pickup_time').value = savedData.step_3.pickup_time;
+                if (savedData.step_3.pickup_contact_person) document.getElementById('pickup_contact').value = savedData.step_3.pickup_contact_person;
             }
             enableBtn(3);
         }
@@ -427,8 +474,10 @@ function restoreSavedData() {
 
 function showStep(step, animate = true) {
     document.querySelectorAll('.intake-step').forEach(el => {
-        const id = parseInt(el.id.replace('step-', '')) || 99;
-        if (id === step || el.id === 'step-done' && step > TOTAL) {
+        const idAttr = el.id.replace('step-', '');
+        const isDone = el.id === 'step-done';
+        const id = isDone ? 99 : parseInt(idAttr);
+        if ((isDone && step > 3) || id === step) {
             el.classList.add('active');
             el.classList.remove('left');
         } else if (id < step) {
@@ -439,10 +488,12 @@ function showStep(step, animate = true) {
         }
     });
 
-    const pct = step <= TOTAL ? (step / TOTAL * 100) : 100;
+    const ds  = step > 3 ? TOTAL_DISPLAY : internalToDisplay(step);
+    const pct = step > 3 ? 100 : (ds / TOTAL_DISPLAY * 100);
     document.getElementById('progress-bar').style.width = pct + '%';
-    document.getElementById('step-indicator').textContent = step <= TOTAL ? `Stap ${step} van ${TOTAL}` : 'Klaar!';
+    document.getElementById('step-indicator').textContent = step > 3 ? 'Klaar!' : `Stap ${ds} van ${TOTAL_DISPLAY}`;
     current = step;
+    enableBtn(step);
 }
 
 function selectOption(step, value) {
@@ -454,12 +505,9 @@ function selectOption(step, value) {
         radio.closest('.option-card').classList.add('selected');
     }
 
-    // Conditional sub-fields
-    if (step === 1) {
-        document.getElementById('upload-section').classList.toggle('open', value === 'self_input');
-    }
     if (step === 3) {
-        document.getElementById('pickup-details').classList.toggle('open', value === 'next_morning');
+        const pickupDetails = document.getElementById('pickup-details');
+        if (pickupDetails) pickupDetails.classList.toggle('open', value === 'next_morning');
     }
 
     enableBtn(step);
@@ -469,12 +517,12 @@ function enableBtn(step) {
     const btn = document.getElementById('btn-' + step);
     if (!btn) return;
 
-    if (step === 2) {
-        btn.disabled = false; // text fields are always optional
-        return;
-    }
+    // Stap 2 (bezorging): altijd inschakelen — alle velden optioneel
+    if (step === 2) { btn.disabled = false; return; }
 
     const form = document.getElementById('form-step-' + step);
+    if (form && form.dataset.alwaysEnabled === '1') { btn.disabled = false; return; }
+
     const checked = form.querySelector('input[type="radio"]:checked');
     btn.disabled = !checked;
 }
@@ -487,12 +535,6 @@ async function nextStep(step) {
 
     const form = document.getElementById('form-step-' + step);
     const formData = new FormData(form);
-
-    // For step 1, append selected files
-    if (step === 1 && selectedFiles.length) {
-        formData.delete('branding_files[]');
-        selectedFiles.forEach(f => formData.append('branding_files[]', f));
-    }
 
     try {
         const res = await fetch(`/boeking/${TOKEN}/intake/${step}`, {
@@ -517,7 +559,7 @@ async function nextStep(step) {
         btn.classList.remove('loading');
 
         if (data.completed) {
-            showStep(TOTAL + 1);
+            showStep(99);
         } else {
             showStep(data.next_step);
         }
@@ -528,52 +570,7 @@ async function nextStep(step) {
 }
 
 function prevStep(step) {
-    if (step > 1) showStep(step - 1);
-}
-
-// ─── File Upload ───
-const uploadZone = document.getElementById('upload-zone');
-const fileInput = document.getElementById('file-input');
-const fileListEl = document.getElementById('file-list');
-
-['dragenter', 'dragover'].forEach(e => {
-    uploadZone.addEventListener(e, (ev) => { ev.preventDefault(); uploadZone.classList.add('dragover'); });
-});
-['dragleave', 'drop'].forEach(e => {
-    uploadZone.addEventListener(e, (ev) => { ev.preventDefault(); uploadZone.classList.remove('dragover'); });
-});
-uploadZone.addEventListener('drop', (ev) => {
-    const files = [...ev.dataTransfer.files];
-    addFiles(files);
-});
-fileInput.addEventListener('change', () => {
-    addFiles([...fileInput.files]);
-    fileInput.value = '';
-});
-
-function addFiles(files) {
-    files.forEach(f => {
-        if (selectedFiles.length >= 5) return;
-        if (f.size > 20 * 1024 * 1024) return;
-        selectedFiles.push(f);
-    });
-    renderFileList();
-    enableBtn(1);
-}
-
-function removeFile(idx) {
-    selectedFiles.splice(idx, 1);
-    renderFileList();
-}
-
-function renderFileList() {
-    fileListEl.innerHTML = selectedFiles.map((f, i) => `
-        <div class="file-item">
-            <span>📄 ${f.name}</span>
-            <span style="color:var(--muted);font-size:.75rem;">${(f.size / 1024 / 1024).toFixed(1)} MB</span>
-            <button type="button" class="file-item-remove" onclick="removeFile(${i})">✕</button>
-        </div>
-    `).join('');
+    if (step === 3 && !IS_TOGO) showStep(2);
 }
 </script>
 </body>

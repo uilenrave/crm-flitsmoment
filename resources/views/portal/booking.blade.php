@@ -137,24 +137,33 @@
         <p>Hier vindt u alle details van uw boeking bij {{ $booking->account->name }}.</p>
     </div>
 
-    {{-- Intake voortgang --}}
+    {{-- Bezorg- & ophaalgegevens voortgang --}}
     @php
-        $intakeSteps = [
-            1 => ['icon' => '🎨', 'label' => 'Fotostrip ontwerp',  'desc' => 'Kies je ontwerp of upload je eigen'],
-            2 => ['icon' => '🚚', 'label' => 'Bezorging',         'desc' => 'Wanneer bezorgen we de booth?'],
-            3 => ['icon' => '📦', 'label' => 'Ophalen',           'desc' => 'Ophaalmoment en contactpersoon'],
-        ];
-        $currentStep = (int) $booking->intake_current_step;
-        $completedSteps = $currentStep;
-        $totalSteps = 3;
+        $isToGoBooking = $booking->booking_type === 'to_go';
+        $sectionTitle  = $isToGoBooking ? 'Ophaal- & retourgegevens' : 'Bezorg- & ophaalgegevens';
+        if ($isToGoBooking) {
+            $intakeSteps = [
+                3 => ['icon' => '📦', 'label' => 'Ophaal- & retourmoment', 'desc' => 'Kies een tijdstip voor ophalen en terugbrengen'],
+            ];
+            $totalSteps = 1;
+            $currentStep = (int) $booking->intake_current_step;
+            $completedSteps = $currentStep >= 3 ? 1 : 0;
+        } else {
+            $intakeSteps = [
+                2 => ['icon' => '🚚', 'label' => 'Bezorging', 'desc' => 'Wanneer en hoe bezorgen we de booth?'],
+                3 => ['icon' => '📦', 'label' => 'Ophalen',   'desc' => 'Ophaalmoment en contactpersoon'],
+            ];
+            $totalSteps = 2;
+            $currentStep = (int) $booking->intake_current_step;
+            $completedSteps = $currentStep >= 3 ? 2 : ($currentStep >= 2 ? 1 : 0);
+        }
         $progressPercent = $booking->intake_completed ? 100 : round(($completedSteps / $totalSteps) * 100);
     @endphp
 
     @if($booking->show_intake || $booking->intake_completed)
     <div class="section" style="border:2px solid {{ $booking->intake_completed ? '#86efac' : '#fcd34d' }};">
         <div class="section-header" style="background:{{ $booking->intake_completed ? '#f0fdf4' : '#fffbeb' }};">
-            <div class="section-icon" style="background:{{ $booking->intake_completed ? '#dcfce7' : '#fef3c7' }};">📋</div>
-            <span class="section-title">Intake formulier</span>
+            <span class="section-title">{{ $sectionTitle }}</span>
             @if($booking->intake_completed)
                 <span style="margin-left:auto;font-size:.8rem;font-weight:600;color:#16a34a;background:#dcfce7;padding:.25rem .75rem;border-radius:9999px;">✅ Compleet</span>
             @else
@@ -171,13 +180,16 @@
 
             {{-- Stappenlijst --}}
             <div style="padding:.5rem 0;">
+                @php $displayIndex = 0; @endphp
                 @foreach($intakeSteps as $stepNum => $step)
                     @php
-                        $isDone = $stepNum <= $completedSteps || $booking->intake_completed;
-                        $isCurrent = !$booking->intake_completed && $stepNum === $completedSteps + 1;
+                        $displayIndex++;
+                        $isDone = $booking->intake_completed || $displayIndex <= $completedSteps;
+                        $isCurrent = !$booking->intake_completed && $displayIndex === $completedSteps + 1;
                         $isUpcoming = !$isDone && !$isCurrent;
+                        $isLast = $displayIndex === $totalSteps;
                     @endphp
-                    <div style="display:flex;align-items:center;gap:.875rem;padding:.75rem 1.25rem;{{ $isCurrent ? 'background:#fffbeb;' : '' }}{{ $stepNum < $totalSteps ? 'border-bottom:1px solid #f3f4f6;' : '' }}">
+                    <div style="display:flex;align-items:center;gap:.875rem;padding:.75rem 1.25rem;{{ $isCurrent ? 'background:#fffbeb;' : '' }}{{ !$isLast ? 'border-bottom:1px solid #f3f4f6;' : '' }}">
                         {{-- Status indicator --}}
                         <div style="width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.85rem;
                             {{ $isDone ? 'background:#dcfce7;' : ($isCurrent ? 'background:#fef3c7;box-shadow:0 0 0 3px rgba(252,211,77,0.3);' : 'background:#f3f4f6;') }}">
@@ -220,13 +232,87 @@
                    style="display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,#fcd34d,#f59e0b);color:#78350f;padding:.875rem 2rem;border-radius:.5rem;font-weight:700;font-size:1rem;text-decoration:none;box-shadow:0 4px 12px rgba(252,211,77,0.3);transition:transform .15s,box-shadow .15s;">
                     {{ $completedSteps > 0 ? '▶ Ga verder met stap ' . ($completedSteps + 1) : '▶ Start het formulier' }}
                 </a>
-                <p style="font-size:.8rem;color:#92400e;margin-top:.75rem;">Duurt ongeveer 3 minuten</p>
+                <p style="font-size:.8rem;color:#92400e;margin-top:.75rem;">Duurt minder dan een minuut · {{ $totalSteps === 1 ? '1 stap' : $totalSteps . ' stappen' }}</p>
             </div>
             @elseif($booking->intake_completed_at)
-            <div style="padding:1rem 1.25rem;border-top:1px solid #e5e7eb;text-align:center;background:#f0fdf4;">
-                <p style="font-size:.85rem;color:#16a34a;">
-                    Ingevuld op {{ $booking->intake_completed_at->translatedFormat('j F Y \o\m H:i') }}
-                </p>
+            {{-- To Go: wachten op goedkeuring tijden --}}
+            @if($isToGoBooking && !$booking->customer_pickup_approved)
+            <div style="padding:1rem 1.25rem;border-top:1px solid #fed7aa;background:#fff7ed;display:flex;align-items:center;gap:.75rem;">
+                <span style="font-size:1.25rem;">⏳</span>
+                <div>
+                    <p style="font-size:.875rem;font-weight:600;color:#92400e;margin:0 0 .15rem 0;">We beoordelen nog je gekozen tijdstippen</p>
+                    <p style="font-size:.8rem;color:#b45309;margin:0;">Je hoort zo snel mogelijk van ons ter bevestiging.</p>
+                </div>
+            </div>
+            @endif
+            {{-- Samenvatting ingevulde antwoorden --}}
+            @php
+                $s2 = $booking->intake_data['step_2'] ?? [];
+                $s3 = $booking->intake_data['step_3'] ?? [];
+                $isToGo = $booking->booking_type === 'to_go';
+            @endphp
+            <div style="border-top:1px solid #e5e7eb;">
+                <div style="padding:.75rem 1.25rem;background:#f0fdf4;display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:.85rem;color:#16a34a;font-weight:600;">✅ Ingevuld op {{ $booking->intake_completed_at->translatedFormat('j F Y \o\m H:i') }}</span>
+                    <button onclick="var b=this.parentElement.parentElement.querySelector('.intake-summary-body');b.style.display=b.style.display==='none'?'flex':'none';this.textContent=b.style.display==='none'?'Bekijk antwoorden ▾':'Verberg antwoorden ▴';" style="font-size:.8rem;color:#16a34a;background:none;border:none;cursor:pointer;font-weight:600;">Bekijk antwoorden ▾</button>
+                </div>
+                <div class="intake-summary-wrap">
+                    <div class="intake-summary-body" style="padding:1rem 1.25rem;display:none;flex-direction:column;gap:1rem;">
+
+                        {{-- Stap 2: Bezorging --}}
+                        @if($s2)
+                        <div>
+                            <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:.5rem;">🚚 {{ $isToGo ? 'Ophaalmoment voorkeur' : 'Bezorging' }}</div>
+                            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:.5rem;padding:.75rem 1rem;font-size:.875rem;display:flex;flex-direction:column;gap:.375rem;">
+                                @if($s2['delivery_time_preference'] ?? '')
+                                    <div><span style="color:#6b7280;">Voorkeur:</span> {{ $s2['delivery_time_preference'] }}</div>
+                                @endif
+                                @if($s2['delivery_notes'] ?? '')
+                                    <div><span style="color:#6b7280;">Bijzonderheden:</span> {{ $s2['delivery_notes'] }}</div>
+                                @endif
+                                @if(!($s2['delivery_time_preference'] ?? '') && !($s2['delivery_notes'] ?? ''))
+                                    <span style="color:#9ca3af;">Geen bijzonderheden opgegeven</span>
+                                @endif
+                            </div>
+                        </div>
+                        @endif
+
+                        {{-- Stap 3: Ophalen --}}
+                        @if($s3)
+                        <div>
+                            <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:.5rem;">📦 {{ $isToGo ? 'Ophaal- & retourmoment' : 'Ophalen' }}</div>
+                            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:.5rem;padding:.75rem 1rem;font-size:.875rem;display:flex;flex-direction:column;gap:.375rem;">
+                                @if($isToGo)
+                                    @if(($s3['pickup_option'] ?? '') === 'suggested')
+                                        @if($s3['pickup_date'] ?? '')
+                                            <div><span style="color:#6b7280;">Ophalen:</span> {{ \Carbon\Carbon::parse($s3['pickup_date'])->translatedFormat('j F Y') }} om {{ $s3['pickup_time'] ?? '—' }}</div>
+                                        @endif
+                                        @if($s3['return_date'] ?? '')
+                                            <div><span style="color:#6b7280;">Terugbrengen:</span> {{ \Carbon\Carbon::parse($s3['return_date'])->translatedFormat('j F Y') }} om {{ $s3['return_time'] ?? '—' }}</div>
+                                        @endif
+                                    @else
+                                        <div><span style="color:#d97706;font-weight:600;">Tegenvoorstel ingediend:</span></div>
+                                        @if($s3['custom_proposal'] ?? '')
+                                            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:.375rem;padding:.5rem .75rem;white-space:pre-line;">{{ $s3['custom_proposal'] }}</div>
+                                        @endif
+                                    @endif
+                                @else
+                                    @if($s3['pickup_preference'] ?? '')
+                                        <div><span style="color:#6b7280;">Voorkeur:</span> {{ $s3['pickup_preference'] === 'same_evening' ? 'Zelfde avond ophalen' : 'Volgende ochtend ophalen' }}</div>
+                                    @endif
+                                    @if($s3['pickup_time'] ?? '')
+                                        <div><span style="color:#6b7280;">Gewenst tijdstip:</span> {{ $s3['pickup_time'] }}</div>
+                                    @endif
+                                    @if($s3['pickup_contact_person'] ?? '')
+                                        <div><span style="color:#6b7280;">Contactpersoon bij ophalen:</span> {{ $s3['pickup_contact_person'] }}</div>
+                                    @endif
+                                @endif
+                            </div>
+                        </div>
+                        @endif
+
+                    </div>
+                </div>
             </div>
             @endif
         </div>
@@ -240,50 +326,8 @@
     </style>
     @endif
 
-    {{-- ─── Fotostrip Templates (alleen als klant "template" koos) ─── --}}
-    @if(($booking->intake_data['step_1']['design_choice'] ?? null) === 'template')
-    <div class="section" style="border:2px solid #a78bfa;">
-        <div class="section-header" style="background:#f5f3ff;">
-            <div class="section-icon" style="background:#ede9fe;">🎨</div>
-            <span class="section-title">Fotostrip templates</span>
-            <span style="margin-left:auto;font-size:.75rem;font-weight:600;color:#6d28d9;background:#ede9fe;padding:.25rem .625rem;border-radius:9999px;">5×15 cm</span>
-        </div>
-        <div class="section-body">
-            <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.25rem;">
-                Kies een template, download het bestand en pas het aan in Photoshop of Canva. Stuur het afgewerkte ontwerp naar ons.
-            </p>
-
-            {{-- Template previews + downloads --}}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1.5rem;">
-                @foreach([
-                    ['file' => 'template1', 'name' => 'Template 1'],
-                    ['file' => 'template2', 'name' => 'Template 2'],
-                    ['file' => 'template3', 'name' => 'Template 3'],
-                    ['file' => 'template4', 'name' => 'Template 4'],
-                ] as $tpl)
-                <div style="border:1px solid var(--border);border-radius:.75rem;overflow:hidden;transition:box-shadow .2s;">
-                    {{-- Preview op donkere achtergrond --}}
-                    <div style="background:#1f2937;padding:1rem;display:flex;align-items:center;justify-content:center;min-height:140px;">
-                        <img src="/templates/{{ $tpl['file'] }}.webp" alt="{{ $tpl['name'] }}"
-                             style="max-width:100%;max-height:120px;object-fit:contain;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
-                    </div>
-                    <div style="padding:.75rem;display:flex;align-items:center;justify-content:space-between;">
-                        <span style="font-weight:600;font-size:.85rem;">{{ $tpl['name'] }}</span>
-                        <a href="/templates/{{ $tpl['file'] }}.zip" download
-                           style="display:inline-flex;align-items:center;gap:.25rem;font-size:.75rem;font-weight:600;color:#7c3aed;text-decoration:none;background:#ede9fe;padding:.3rem .625rem;border-radius:.375rem;transition:background .15s;">
-                            📥 ZIP
-                        </a>
-                    </div>
-                </div>
-                @endforeach
-            </div>
-
-            <p style="font-size:.8rem;color:var(--muted);margin-top:.5rem;padding-top:1rem;border-top:1px solid var(--border);">
-                💡 Tip: Stuur je afgewerkte ontwerp naar ons via e-mail of upload het via de fotostrip-designpagina.
-            </p>
-        </div>
-    </div>
-    @endif
+    {{-- ─── Fotostrip ontwerp: 3 opties met sub-flows ─── --}}
+    @include('portal._strip_options', ['booking' => $booking, 'stripTemplates' => $stripTemplates ?? collect()])
 
     {{-- ─── Boekingdetails ─── --}}
     <div class="section">
@@ -349,6 +393,14 @@
                         <div class="value">{{ $booking->customer_return_at->translatedFormat('l j F') }} om {{ $booking->customer_return_at->format('H:i') }}</div>
                     </div>
                     @endif
+                    <div class="detail-item full">
+                        <label>Ophaaladres</label>
+                        <div class="value">Ravenswade 132, 3439 LD Nieuwegein</div>
+                        <a href="https://maps.google.com/?q=Ravenswade+132+3439+LD+Nieuwegein" target="_blank" class="map-link">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            Bekijk op Google Maps
+                        </a>
+                    </div>
                 @endif
 
                 <div class="detail-item full">
@@ -366,6 +418,56 @@
                         </a>
                     @endif
                 </div>
+
+                {{-- Toegewezen medewerkers (alleen tonen als minstens één persoon ingepland is) --}}
+                @if($booking->deliveryStaff || $booking->pickupStaff)
+                @php $isToGo = $booking->booking_type === 'to_go'; @endphp
+                <div class="detail-item full">
+                    <label>Wie staat er voor je klaar?</label>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-top:.4rem;">
+                        @if($booking->deliveryStaff)
+                            @php $s = $booking->deliveryStaff; @endphp
+                            <div style="display:flex;align-items:center;gap:.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:.75rem;">
+                                <div style="width:52px;height:52px;border-radius:50%;background:#e2e8f0;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    @if($s->photo_path)
+                                        <img src="{{ $s->photo_url }}" alt="{{ $s->name }}" style="width:100%;height:100%;object-fit:cover;">
+                                    @else
+                                        <span style="font-size:1.4rem;color:#94a3b8;">👤</span>
+                                    @endif
+                                </div>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;">
+                                        {{ $isToGo ? '📦 Bij afhalen' : '🚚 Bezorging' }}
+                                    </div>
+                                    <div style="font-size:.95rem;color:#1e293b;line-height:1.35;margin-top:.15rem;">
+                                        {{ $isToGo ? 'Je haalt de photobooth op bij ' : 'De photobooth wordt bezorgd door ' }}<strong>{{ $s->name }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                        @if($booking->pickupStaff)
+                            @php $s = $booking->pickupStaff; @endphp
+                            <div style="display:flex;align-items:center;gap:.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:.75rem;">
+                                <div style="width:52px;height:52px;border-radius:50%;background:#e2e8f0;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    @if($s->photo_path)
+                                        <img src="{{ $s->photo_url }}" alt="{{ $s->name }}" style="width:100%;height:100%;object-fit:cover;">
+                                    @else
+                                        <span style="font-size:1.4rem;color:#94a3b8;">👤</span>
+                                    @endif
+                                </div>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;">
+                                        {{ $isToGo ? '↩️ Bij terugbrengen' : '↩️ Ophalen' }}
+                                    </div>
+                                    <div style="font-size:.95rem;color:#1e293b;line-height:1.35;margin-top:.15rem;">
+                                        {{ $isToGo ? 'Je brengt de photobooth terug bij ' : 'De photobooth wordt opgehaald door ' }}<strong>{{ $s->name }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+                @endif
 
                 <div class="detail-item full">
                     <label>Fotostrip status</label>
@@ -388,7 +490,8 @@
     </div>
 
     {{-- ─── Fotostrip input aanleveren ─── --}}
-    @if(in_array($booking->strip_status, ['waiting_input', 'designing']) || ! $booking->strip_intake_data)
+    {{-- Toon sectie als er al input is ingeleverd (altijd zichtbaar) OF als we nog op input wachten --}}
+    @if($booking->strip_intake_data || $booking->strip_status === 'waiting_input')
     <div class="section">
         <div class="section-header">
             <div class="section-icon" style="background:#fef3c7;">✏️</div>
@@ -396,7 +499,7 @@
         </div>
         <div class="section-body">
             @if($booking->strip_intake_data)
-                {{-- Al eerder ingevuld — toon bevestiging + mogelijkheid om bij te werken --}}
+                {{-- Al eerder ingevuld — toon ingediende content (altijd zichtbaar) --}}
                 <div class="alert alert-success" style="margin-bottom:1.25rem;">
                     ✅ Je input is ontvangen op {{ \Carbon\Carbon::parse($booking->strip_intake_data['submitted_at'])->format('d M Y \o\m H:i') }}. We zijn bezig met je ontwerp!
                 </div>
@@ -416,13 +519,17 @@
                     @endforeach
                 </div>
                 @endif
+                {{-- "Input bijwerken" alleen tonen als de status nog wacht op input --}}
+                @if($booking->strip_status === 'waiting_input')
                 <details style="margin-top:1rem;">
                     <summary style="font-size:.8rem;color:#6b7280;cursor:pointer;">Input bijwerken</summary>
                     <div style="margin-top:.75rem;">
                         @include('portal._strip_input_form', ['token' => $booking->public_token])
                     </div>
                 </details>
+                @endif
             @else
+                {{-- Nog niets ingevuld en status is waiting_input — toon formulier --}}
                 <p style="margin-bottom:1rem;color:var(--muted);font-size:.9rem;">Vertel ons wat je wilt voor jouw fotostrip! Omschrijf je wensen of voeg referentieafbeeldingen toe.</p>
                 @include('portal._strip_input_form', ['token' => $booking->public_token])
             @endif
@@ -439,9 +546,15 @@
         </div>
         <div class="section-body">
             @if($booking->strip_status === 'designing')
+                @if($booking->strip_feedback)
                 <div class="alert" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:.5rem;padding:.875rem 1rem;margin-bottom:1rem;">
                     ✏️ Je feedback is ontvangen! We verwerken je opmerkingen en sturen een nieuw ontwerp zodra dat klaar is.
                 </div>
+                @else
+                <div class="alert" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:.5rem;padding:.875rem 1rem;margin-bottom:1rem;">
+                    🎨 We werken aan je ontwerp! Je ontvangt een bericht zodra het klaar staat ter beoordeling.
+                </div>
+                @endif
             @elseif($booking->strip_status === 'accepted')
                 <div class="alert alert-success" style="margin-bottom:1rem;">
                     ✅ U heeft dit ontwerp goedgekeurd. We zetten het in op uw evenement!
@@ -499,7 +612,7 @@
                     @csrf
                     <input type="hidden" name="action" value="accept">
                     <button type="submit" class="btn-accept"
-                        onclick="return confirm('Weet u zeker dat u het ontwerp goedkeurt?')">
+                        onclick="crmConfirm('Weet u zeker dat u het ontwerp goedkeurt?', () => this.closest('form').submit()); return false;">
                         ✅ Ontwerp goedkeuren
                     </button>
                 </form>
@@ -570,6 +683,7 @@
     </div>
 
     {{-- ─── Factuur downloaden ─── --}}
+    @unless($booking->hide_prices)
     @if($booking->eboekhouden_invoice_id)
     <div class="section">
         <div class="section-header">
@@ -592,8 +706,10 @@
         </div>
     </div>
     @endif
+    @endunless
 
     {{-- ─── Boekingsoverzicht & kosten ─── --}}
+    @unless($booking->hide_prices)
     <div class="section">
         <div class="section-header">
             <div class="section-icon" style="background:#fefce8;">💰</div>
@@ -619,6 +735,7 @@
                             <td style="text-align:right;">€ {{ number_format($item->linetotal, 2, ',', '.') }}</td>
                         </tr>
                         @endforeach
+                        @if($booking->payment_method !== 'bij_levering')
                         @php $exBtw = $booking->total_price / 1.21; $btw = $booking->total_price - $exBtw; @endphp
                         <tr>
                             <td colspan="3" style="text-align:right;font-size:.8rem;color:var(--muted);">Subtotaal excl. BTW</td>
@@ -632,6 +749,12 @@
                             <td colspan="3" style="text-align:right;">Totaal incl. BTW</td>
                             <td style="text-align:right;">€ {{ number_format($booking->total_price, 2, ',', '.') }}</td>
                         </tr>
+                        @else
+                        <tr class="total-row">
+                            <td colspan="3" style="text-align:right;">Totaal</td>
+                            <td style="text-align:right;">€ {{ number_format($booking->total_price, 2, ',', '.') }}</td>
+                        </tr>
+                        @endif
                     </tbody>
                 </table>
             @else
@@ -654,10 +777,14 @@
         </div>
     </div>
 
+    @endunless
+
     {{-- ─── Betaling ─── --}}
+    @unless($booking->hide_prices)
     @if($openstaand > 0)
     <div class="payment-section">
-        @if($booking->customer_type === 'zakelijk')
+        @php $toonBtw = $booking->payment_method !== 'bij_levering' && $booking->account->mollie_enabled && $booking->payment_status !== 'paid'; @endphp
+        @if($booking->customer_type === 'zakelijk' && $toonBtw)
         @php $openExBtw = $openstaand / 1.21; $openBtw = $openstaand - $openExBtw; @endphp
         <div style="font-size:.875rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);">Openstaand bedrag</div>
         <div class="payment-amount">
@@ -667,7 +794,7 @@
             € {{ number_format($openstaand, 2, ',', '.') }} incl. BTW
             <span style="color:var(--muted);font-size:.8rem;">(BTW € {{ number_format($openBtw, 2, ',', '.') }})</span>
         </p>
-        @else
+        @elseif($toonBtw)
         <div style="font-size:.875rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);">Openstaand bedrag</div>
         <div class="payment-amount">
             <span>€</span> {{ number_format($openstaand, 2, ',', '.') }}
@@ -675,7 +802,9 @@
         @php $openExBtw2 = $openstaand / 1.21; $openBtw2 = $openstaand - $openExBtw2; @endphp
         <p class="payment-note" style="margin-top:.25rem;">excl. BTW € {{ number_format($openExBtw2, 2, ',', '.') }} &nbsp;|&nbsp; BTW € {{ number_format($openBtw2, 2, ',', '.') }}</p>
         @endif
-        @if($booking->payment_method === 'bij_levering' || !$booking->account->mollie_enabled)
+        @if($booking->payment_status === 'paid')
+        <p style="font-size:1rem;font-weight:600;color:#16a34a;margin:.5rem 0 0;">✓ Deze boeking is betaald.</p>
+        @elseif($booking->payment_method === 'bij_levering' || !$booking->account->mollie_enabled)
         <p style="font-size:1rem;font-weight:600;color:var(--text);margin:.5rem 0 0;">Betaling vindt plaats bij levering.</p>
         <p class="payment-note">U hoeft nu niets te betalen.</p>
         @else
@@ -697,7 +826,29 @@
         </div>
     </div>
     @endif
+    @endunless
 
 </div>
+
+{{-- Confirm modal (WKWebView ondersteunt geen native confirm()) --}}
+<div id="crm-confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:99999;align-items:center;justify-content:center;padding:1rem;">
+    <div style="background:#fff;border-radius:.875rem;padding:1.5rem;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+        <p id="crm-confirm-msg" style="margin:0 0 1.25rem;font-size:.95rem;color:#1e293b;line-height:1.55;"></p>
+        <div style="display:flex;gap:.625rem;justify-content:flex-end;">
+            <button id="crm-confirm-cancel" style="padding:.5rem 1.1rem;border:1px solid #e2e8f0;border-radius:.5rem;background:#fff;color:#64748b;font-size:.875rem;cursor:pointer;">Annuleer</button>
+            <button id="crm-confirm-ok" style="padding:.5rem 1.1rem;border:none;border-radius:.5rem;background:#2563eb;color:#fff;font-size:.875rem;font-weight:600;cursor:pointer;">Doorgaan</button>
+        </div>
+    </div>
+</div>
+<script>
+(function(){
+    var overlay=document.getElementById('crm-confirm-overlay'),msgEl=document.getElementById('crm-confirm-msg'),btnOk=document.getElementById('crm-confirm-ok'),btnCancel=document.getElementById('crm-confirm-cancel'),_cb=null;
+    window.crmConfirm=function(msg,cb){msgEl.textContent=msg;_cb=cb;overlay.style.display='flex';btnOk.focus();};
+    btnOk.addEventListener('click',function(){overlay.style.display='none';if(_cb){var c=_cb;_cb=null;c();}});
+    btnCancel.addEventListener('click',function(){overlay.style.display='none';_cb=null;});
+    overlay.addEventListener('click',function(e){if(e.target===overlay){overlay.style.display='none';_cb=null;}});
+    document.addEventListener('keydown',function(e){if(overlay.style.display!=='flex')return;if(e.key==='Escape'){overlay.style.display='none';_cb=null;}if(e.key==='Enter'){btnOk.click();}});
+})();
+</script>
 </body>
 </html>

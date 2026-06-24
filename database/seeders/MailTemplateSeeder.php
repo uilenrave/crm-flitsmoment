@@ -253,6 +253,63 @@ class MailTemplateSeeder extends Seeder
             ],
 
             [
+                'key'            => 'admin_strip_method_self',
+                'name'           => 'Klant gaat zelf ontwerpen (admin)',
+                'description'    => 'Verstuurd zodra de klant kiest om zelf de fotostrip te ontwerpen in Canva of Photoshop.',
+                'recipient_type' => 'admin',
+                'subject'        => '🎨 Klant ontwerpt zelf — {{boeking_nummer}} ({{klant_naam}})',
+                'body'           => $this->wrap('Klant gaat zelf ontwerpen', '
+<p><strong>{{klant_naam}}</strong> heeft gekozen om de fotostrip <strong>zelf te ontwerpen</strong> voor boeking <strong>{{boeking_nummer}}</strong>.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border-collapse:collapse;">
+  <tr style="background:#f8fafc;"><td style="padding:8px 12px;font-weight:600;border:1px solid #e2e8f0;width:40%;">Event datum</td><td style="padding:8px 12px;border:1px solid #e2e8f0;">{{event_datum}}</td></tr>
+  <tr><td style="padding:8px 12px;font-weight:600;border:1px solid #e2e8f0;">Locatie</td><td style="padding:8px 12px;border:1px solid #e2e8f0;">{{event_locatie}}</td></tr>
+</table>
+<p>De klant gaat het ontwerp mailen naar <strong>ontwerp@flitsmoment.nl</strong> met onderwerp <strong>Fotostrip {{boeking_nummer}}</strong>.</p>
+<p>Zodra het binnen is, upload je het in het CRM zodat de klant het ter goedkeuring krijgt.</p>
+<p><a href="{{portal_link}}">Boeking bekijken in CRM</a></p>
+                '),
+            ],
+
+            [
+                'key'            => 'admin_strip_method_template',
+                'name'           => 'Klant koos template (admin)',
+                'description'    => 'Verstuurd zodra de klant een template uit de galerij heeft gekozen.',
+                'recipient_type' => 'admin',
+                'subject'        => '📋 Template gekozen — {{boeking_nummer}} ({{klant_naam}})',
+                'body'           => $this->wrap('Klant heeft een template gekozen', '
+<p><strong>{{klant_naam}}</strong> heeft een template gekozen voor boeking <strong>{{boeking_nummer}}</strong>.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border-collapse:collapse;">
+  <tr style="background:#f8fafc;"><td style="padding:8px 12px;font-weight:600;border:1px solid #e2e8f0;width:40%;">Event datum</td><td style="padding:8px 12px;border:1px solid #e2e8f0;">{{event_datum}}</td></tr>
+  <tr><td style="padding:8px 12px;font-weight:600;border:1px solid #e2e8f0;">Locatie</td><td style="padding:8px 12px;border:1px solid #e2e8f0;">{{event_locatie}}</td></tr>
+</table>
+<p>We wachten nu op de tekst die de klant op de strip wil zien. Je krijgt een nieuwe mail zodra dat binnen is.</p>
+<p><a href="{{portal_link}}">Boeking bekijken in CRM</a></p>
+                '),
+            ],
+
+            [
+                'key'            => 'customer_strip_choice_reminder',
+                'name'           => 'Fotostrip keuze herinnering (klant)',
+                'description'    => 'Verstuurd 14 dagen voor event als klant nog geen ontwerpmethode heeft gekozen.',
+                'recipient_type' => 'customer',
+                'subject'        => '🎨 Vergeet je niet je fotostrip-ontwerp te kiezen?',
+                'body'           => $this->wrap('Kies snel je fotostrip-ontwerp', '
+<p>Hallo <strong>{{klant_voornaam}}</strong>,</p>
+<p>Je event op <strong>{{event_datum}}</strong> komt eraan! We zien dat je nog geen ontwerpmethode hebt gekozen voor je fotostrip.</p>
+<p>Je hebt drie opties:</p>
+<ol style="padding-left:1.25rem;">
+  <li><strong>Zelf ontwerpen</strong> in Canva of Photoshop met onze templates</li>
+  <li><strong>Kies uit een template</strong> uit onze galerij en wij vullen je tekst in</li>
+  <li><strong>Wij ontwerpen het voor je</strong> op basis van jouw wensen</li>
+</ol>
+<p style="text-align:center;margin:28px 0;">
+  <a href="{{portal_link}}" style="background:#fcd34d;color:#78350f;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block;">Kies je ontwerpmethode</a>
+</p>
+<p>Met vriendelijke groet,<br><strong>{{bedrijf_naam}}</strong></p>
+                '),
+            ],
+
+            [
                 'key'            => 'admin_intake_completed',
                 'name'           => 'Intake compleet (admin)',
                 'description'    => 'Verstuurd als de klant de intake volledig heeft ingevuld.',

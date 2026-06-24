@@ -703,7 +703,7 @@ class EBoekhoudenService
             ->latest('paid_at')
             ->first();
 
-        $invoiceDate = $booking->confirmed_at ?? now();
+        $invoiceDate = now();
         $dueDate = $invoiceDate->copy()->addDays(30);
 
         // Get next invoice number (F00228 → F00229)
@@ -756,11 +756,13 @@ class EBoekhoudenService
 
             $data = $response->json();
             $invoiceNumber = $data['invoiceNumber'] ?? null;
+            $relationId    = $data['relationId'] ?? null;
 
             // Stap 2: controleer mutaties voor dit factuurnummer
             // Type 3 = Ontvangst (betaling ontvangen) → factuur is betaald
             $isPaid = false;
             if ($invoiceNumber) {
+                // 2a: exact-match query (snelste pad voor losse betalingen — 1 mutation per factuur)
                 $mutResp = Http::withHeaders([
                     'Authorization' => 'Bearer ' . $token,
                 ])->get(config('services.eboekhouden.api_url') . '/v1/mutation', [
@@ -770,24 +772,55 @@ class EBoekhoudenService
                 if ($mutResp->successful()) {
                     $mutations = $mutResp->json('items') ?? [];
                     foreach ($mutations as $mut) {
-                        if (($mut['type'] ?? 0) === 3) {
-                            $isPaid = true;
-                            break;
-                        }
+                        if (($mut['type'] ?? 0) === 3) { $isPaid = true; break; }
                     }
-
-                    Log::info('e-boekhouden: mutaties voor factuur', [
+                    Log::info('e-boekhouden: exact-match mutaties', [
                         'invoiceNumber' => $invoiceNumber,
                         'mutationCount' => count($mutations),
                         'isPaid'        => $isPaid,
-                        'types'         => array_column($mutations, 'type'),
                     ]);
+                }
+
+                // 2b: niet gevonden via exact-match? Dan zit de betaling waarschijnlijk in een
+                // GECOMBINEERDE mutatie (factuurnummer-veld bevat dan iets als
+                // "FM-F00273,FM-F00274,FM-F00275" — wat e-Boekhouden's exact-filter NIET matched).
+                // We querien op type=3 + relationId (uit de factuur) en zoeken lokaal naar onze
+                // factuur als deel van de comma-separated lijst.
+                if (! $isPaid && $relationId) {
+                    $combiResp = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . $token,
+                    ])->get(config('services.eboekhouden.api_url') . '/v1/mutation', [
+                        'type'       => 3,           // alleen ontvangsten
+                        'relationId' => $relationId, // beperkt tot dezelfde bank/Mollie-relatie
+                        'limit'      => 500,         // ruim genoeg voor jaaroverzicht per relatie
+                    ]);
+
+                    if ($combiResp->successful()) {
+                        $alleMutaties = $combiResp->json('items') ?? [];
+                        $combiHits = 0;
+                        foreach ($alleMutaties as $mut) {
+                            $mutInv = (string) ($mut['invoiceNumber'] ?? '');
+                            if (! str_contains($mutInv, $invoiceNumber)) continue;
+                            // Exact-in-list (voorkom dat FM-F00275 ook FM-F002751 matched)
+                            $invs = array_map('trim', explode(',', $mutInv));
+                            if (in_array($invoiceNumber, $invs, true)) {
+                                $isPaid = true;
+                                $combiHits++;
+                                break;
+                            }
+                        }
+                        Log::info('e-boekhouden: gecombineerde betaling check', [
+                            'invoiceNumber' => $invoiceNumber,
+                            'relationId'    => $relationId,
+                            'totaalMutaties'=> count($alleMutaties),
+                            'combiHits'     => $combiHits,
+                            'isPaid'        => $isPaid,
+                        ]);
+                    }
                 }
             }
 
-            // Voeg isPaid toe aan de response data
             $data['isPaid'] = $isPaid;
-
             return $data;
         } catch (\Exception $e) {
             Log::error('e-boekhouden: getInvoiceStatus exception', ['message' => $e->getMessage()]);

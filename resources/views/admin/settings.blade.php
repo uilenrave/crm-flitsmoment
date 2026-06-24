@@ -8,10 +8,65 @@
 @endif
 
 @foreach($accounts as $account)
+@php
+    $icalToken    = hash_hmac('sha256', (string) $account->id, config('app.key'));
+    $icalUrl      = url('/ical/' . $icalToken . '.ics');
+    $webhookUrl   = url('/webhook/lead/' . $icalToken);
+@endphp
 <div class="card" style="margin-bottom:1.5rem;">
     <h2 style="font-size:1rem;font-weight:700;margin-bottom:1.5rem;padding-bottom:.75rem;border-bottom:1px solid #e2e8f0;">
         {{ $account->name }}
     </h2>
+
+    {{-- iCal agenda koppeling ────────────────────────────── --}}
+    <div style="margin-bottom:1.5rem;padding:1.25rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:.5rem;">
+        <h3 style="font-size:.75rem;font-weight:600;color:#0369a1;text-transform:uppercase;letter-spacing:.04em;margin:0 0 .75rem;">📅 Agenda-koppeling (iCal / ICS)</h3>
+        <p style="font-size:.875rem;color:#374151;margin:0 0 .75rem;">
+            Voeg deze link toe aan Google Agenda, Apple Agenda of Outlook als <strong>URL-agenda</strong> om je boekingen, bezorgmomenten en ophaalmomenten automatisch te zien.
+        </p>
+        <div style="display:flex;gap:.5rem;align-items:center;">
+            <input type="text" id="ical-url-{{ $account->id }}" value="{{ $icalUrl }}" readonly
+                style="flex:1;font-family:monospace;font-size:.78rem;background:#fff;border:1px solid #cbd5e1;border-radius:.375rem;padding:.5rem .75rem;color:#1e293b;">
+            <button type="button" onclick="
+                navigator.clipboard.writeText('{{ $icalUrl }}');
+                this.textContent='✓ Gekopieerd';
+                this.style.background='#16a34a';
+                setTimeout(() => { this.textContent='Kopieer'; this.style.background=''; }, 2000);
+            " style="padding:.5rem 1rem;background:#0ea5e9;color:#fff;border:none;border-radius:.375rem;font-size:.875rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+                Kopieer
+            </button>
+        </div>
+        <p style="font-size:.78rem;color:#64748b;margin:.5rem 0 0;">
+            🔒 De link is beveiligd met een unieke token. Deel hem niet openbaar.
+            &nbsp;·&nbsp;
+            <strong>Google Agenda:</strong> Andere agenda's → Via URL → plak de link
+        </p>
+    </div>
+
+    {{-- Webhook voor leads ──────────────────────────────── --}}
+    <div style="margin-bottom:1.5rem;padding:1.25rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:.5rem;">
+        <h3 style="font-size:.75rem;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:.04em;margin:0 0 .75rem;">🔗 Webhook — Leads vanuit website</h3>
+        <p style="font-size:.875rem;color:#374151;margin:0 0 .75rem;">
+            Koppel je Elementor-formulier aan het CRM. Nieuwe inzendingen komen automatisch als lead binnen met bron <strong>Website</strong>.
+        </p>
+        <div style="display:flex;gap:.5rem;align-items:center;">
+            <input type="text" id="webhook-url-{{ $account->id }}" value="{{ $webhookUrl }}" readonly
+                style="flex:1;font-family:monospace;font-size:.78rem;background:#fff;border:1px solid #cbd5e1;border-radius:.375rem;padding:.5rem .75rem;color:#1e293b;">
+            <button type="button" onclick="
+                navigator.clipboard.writeText('{{ $webhookUrl }}');
+                this.textContent='✓ Gekopieerd';
+                this.style.background='#16a34a';
+                setTimeout(() => { this.textContent='Kopieer'; this.style.background=''; }, 2000);
+            " style="padding:.5rem 1rem;background:#22c55e;color:#fff;border:none;border-radius:.375rem;font-size:.875rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+                Kopieer
+            </button>
+        </div>
+        <p style="font-size:.78rem;color:#64748b;margin:.5rem 0 0;">
+            🔒 Beveiligd met dezelfde token als de agenda-koppeling. Deel niet openbaar.
+            &nbsp;·&nbsp;
+            <strong>Elementor:</strong> Formulier → Acties na verzenden → Webhook → plak de URL
+        </p>
+    </div>
 
     <form method="POST" action="{{ route('admin.settings.update', $account) }}">
         @csrf @method('PUT')

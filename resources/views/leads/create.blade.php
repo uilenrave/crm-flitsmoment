@@ -4,7 +4,7 @@
 @push('styles')
 <style>
 .pac-container { z-index: 9999; }
-.assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; margin-top: .5rem; }
+.assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .75rem; margin-top: .5rem; }
 .asset-card { border: 2px solid #e2e8f0; border-radius: .5rem; padding: .875rem; cursor: pointer; transition: border-color .15s, background .15s; position: relative; }
 .asset-card:has(input[type=checkbox]:checked) { border-color: #2563eb; background: #eff6ff; }
 .asset-card input[type=checkbox] { position: absolute; opacity: 0; }
