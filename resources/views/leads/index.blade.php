@@ -85,21 +85,35 @@
         @endif
     </form>
 
+    @php
+        // Klikbare sorteerkop: pijltje toont actieve kolom + richting, klik wisselt richting
+        $sortCol = request('sort', 'created_at');
+        $sortDir = request('dir', 'desc') === 'asc' ? 'asc' : 'desc';
+        $sortLink = function ($col, $label) use ($sortCol, $sortDir) {
+            $active  = $sortCol === $col;
+            $nextDir = ($active && $sortDir === 'asc') ? 'desc' : 'asc';
+            $arrow   = $active ? ($sortDir === 'asc' ? '▲' : '▼') : '↕';
+            $url     = request()->fullUrlWithQuery(['sort' => $col, 'dir' => $nextDir, 'page' => 1]);
+            $opacity = $active ? '.85' : '.3';
+            return '<a href="'.e($url).'" style="color:inherit;text-decoration:none;white-space:nowrap;cursor:pointer;">'
+                 . e($label) . ' <span style="font-size:.78em;opacity:'.$opacity.';">'.$arrow.'</span></a>';
+        };
+    @endphp
     <div class="table-wrap">
         <table class="table-card-mobile">
             <thead>
                 <tr>
-                    <th>Nummer</th>
-                    <th>Naam</th>
-                    <th>E-mail</th>
-                    <th>Event datum</th>
+                    <th>{!! $sortLink('lead_number', 'Nummer') !!}</th>
+                    <th>{!! $sortLink('name', 'Naam') !!}</th>
+                    <th>{!! $sortLink('email', 'E-mail') !!}</th>
+                    <th>{!! $sortLink('event_date', 'Event datum') !!}</th>
                     <th>Status</th>
                     @if($tab === 'archief')
                     <th>Reden</th>
-                    <th>Gearchiveerd</th>
+                    <th>{!! $sortLink('archived_at', 'Gearchiveerd') !!}</th>
                     @else
-                    <th>Opvolging</th>
-                    <th>Aangemaakt</th>
+                    <th>{!! $sortLink('follow_up_at', 'Opvolging') !!}</th>
+                    <th>{!! $sortLink('created_at', 'Aangemaakt') !!}</th>
                     @endif
                     <th></th>
                 </tr>

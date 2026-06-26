@@ -18,7 +18,7 @@ class LeadController extends Controller
     {
         $tab = $request->get('tab', 'actief'); // 'actief' of 'archief'
 
-        $query = Lead::with(['status', 'assignedTo'])->latest();
+        $query = Lead::with(['status', 'assignedTo']);
 
         if ($tab === 'archief') {
             $query->whereNotNull('archived_at');
@@ -36,6 +36,12 @@ class LeadController extends Controller
                   ->orWhere('lead_number', 'like', "%{$request->zoeken}%");
             });
         }
+
+        // Sortering via klikbare kolomkoppen (whitelist tegen SQL-injectie)
+        $sortable = ['lead_number', 'name', 'email', 'event_date', 'follow_up_at', 'created_at', 'archived_at'];
+        $sort = in_array($request->get('sort'), $sortable, true) ? $request->get('sort') : 'created_at';
+        $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
+        $query->orderBy($sort, $dir);
 
         $leads     = $query->paginate(20)->withQueryString();
         $statussen = LeadStatus::where('is_active', true)->orderBy('sort_order')->get();
