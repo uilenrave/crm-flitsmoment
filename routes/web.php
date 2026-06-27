@@ -97,6 +97,7 @@ Route::middleware('auth')->group(function () {
     Route::post('leads/{lead}/afwijzen', [LeadController::class, 'afwijzen'])->name('leads.afwijzen');
     Route::post('leads/{lead}/akkoord', [LeadController::class, 'akkoord'])->name('leads.akkoord');
     Route::patch('leads/{lead}/follow-up', [LeadController::class, 'updateFollowUp'])->name('leads.follow-up');
+    Route::patch('leads/{lead}/kans', [LeadController::class, 'updateChance'])->name('leads.kans');
 
     // Boekingen
     // Routes MUST come before resource route to avoid {booking} catching them

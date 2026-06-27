@@ -16,14 +16,15 @@ class Lead extends Model
         'event_location', 'event_address', 'event_postcode', 'event_city', 'notes',
         'status_id', 'source_id', 'event_type_id', 'booking_type', 'assigned_to',
         'archived_at', 'archive_reason',
-        'total_price', 'follow_up_at',
+        'total_price', 'follow_up_at', 'conversion_chance',
     ];
 
     protected $casts = [
-        'event_date'   => 'date',
-        'follow_up_at' => 'date',
-        'archived_at'  => 'datetime',
-        'total_price'  => 'decimal:2',
+        'event_date'        => 'date',
+        'follow_up_at'      => 'date',
+        'archived_at'       => 'datetime',
+        'total_price'       => 'decimal:2',
+        'conversion_chance' => 'integer',
     ];
 
     public function isArchived(): bool

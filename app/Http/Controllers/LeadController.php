@@ -8,6 +8,7 @@ use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\LeadSource;
 use App\Models\LeadStatus;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -38,7 +39,7 @@ class LeadController extends Controller
         }
 
         // Sortering via klikbare kolomkoppen (whitelist tegen SQL-injectie)
-        $sortable = ['lead_number', 'name', 'email', 'event_date', 'follow_up_at', 'created_at', 'archived_at'];
+        $sortable = ['lead_number', 'name', 'email', 'event_date', 'follow_up_at', 'created_at', 'archived_at', 'conversion_chance'];
         $sort = in_array($request->get('sort'), $sortable, true) ? $request->get('sort') : 'created_at';
         $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
         $query->orderBy($sort, $dir);
@@ -218,6 +219,16 @@ class LeadController extends Controller
         $request->validate(['follow_up_at' => ['nullable', 'date']]);
         $lead->update(['follow_up_at' => $request->follow_up_at ?: null]);
         return back();
+    }
+
+    /** AJAX: inschatting conversiekans bijwerken vanuit het overzicht (1=laag, 2=gemiddeld, 3=hoog) */
+    public function updateChance(Request $request, Lead $lead): JsonResponse
+    {
+        $data = $request->validate([
+            'conversion_chance' => ['nullable', 'integer', 'in:1,2,3'],
+        ]);
+        $lead->update(['conversion_chance' => $data['conversion_chance'] ?? null]);
+        return response()->json(['ok' => true, 'value' => $lead->conversion_chance]);
     }
 
     /** Mobiele bellijst: alle actieve leads, gesorteerd op urgentie van het belmoment */

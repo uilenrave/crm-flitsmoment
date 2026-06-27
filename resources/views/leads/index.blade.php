@@ -10,6 +10,9 @@
 
 @push('styles')
 <style>
+.kans-select { padding: .25rem .5rem; border: 1px solid #e2e8f0; border-radius: .375rem; font-size: .78rem; font-weight: 600; background: #fff; color: #94a3b8; cursor: pointer; transition: opacity .15s; }
+.kans-select:focus { outline: none; box-shadow: 0 0 0 2px rgba(124,58,237,.12); }
+.kans-select.saving { opacity: .5; pointer-events: none; }
 .fu-badge { cursor: pointer; }
 .fu-badge:hover { opacity: .8; }
 .fu-form { display: none; align-items: center; gap: .3rem; flex-wrap: nowrap; }
@@ -98,6 +101,13 @@
             return '<a href="'.e($url).'" style="color:inherit;text-decoration:none;white-space:nowrap;cursor:pointer;">'
                  . e($label) . ' <span style="font-size:.78em;opacity:'.$opacity.';">'.$arrow.'</span></a>';
         };
+
+        // Conversiekans: waarde => label + kleuren
+        $kansOpties = [
+            1 => ['label' => 'Laag',      'kleur' => '#dc2626', 'bg' => '#fef2f2'],
+            2 => ['label' => 'Gemiddeld', 'kleur' => '#d97706', 'bg' => '#fffbeb'],
+            3 => ['label' => 'Hoog',      'kleur' => '#16a34a', 'bg' => '#f0fdf4'],
+        ];
     @endphp
     <div class="table-wrap">
         <table class="table-card-mobile">
@@ -108,6 +118,7 @@
                     <th>{!! $sortLink('email', 'E-mail') !!}</th>
                     <th>{!! $sortLink('event_date', 'Event datum') !!}</th>
                     <th>Status</th>
+                    <th>{!! $sortLink('conversion_chance', 'Kans') !!}</th>
                     @if($tab === 'archief')
                     <th>Reden</th>
                     <th>{!! $sortLink('archived_at', 'Gearchiveerd') !!}</th>
@@ -133,6 +144,14 @@
                                 {{ $lead->status->display_name }}
                             </span>
                         @endif
+                    </td>
+                    <td data-label="Kans">
+                        <select class="kans-select" data-url="{{ route('leads.kans', $lead) }}" onchange="kansChange(this)">
+                            <option value="">—</option>
+                            @foreach($kansOpties as $val => $opt)
+                                <option value="{{ $val }}" @selected($lead->conversion_chance == $val)>{{ $opt['label'] }}</option>
+                            @endforeach
+                        </select>
                     </td>
                     @if($tab === 'archief')
                     <td data-label="Reden">
@@ -240,6 +259,38 @@ function fuCancel(id) {
     document.querySelector('#fu-cell-' + id + ' .fu-badge').style.display = '';
     document.getElementById('fu-form-' + id).style.display = 'none';
 }
+
+// ── Conversiekans: AJAX-dropdown vanuit het overzicht ──
+const KANS_CSRF  = '{{ csrf_token() }}';
+const KANS_KLEUR = {
+    '1': { c: '#dc2626', b: '#fef2f2' },
+    '2': { c: '#d97706', b: '#fffbeb' },
+    '3': { c: '#16a34a', b: '#f0fdf4' },
+};
+function kansStyle(sel) {
+    const k = KANS_KLEUR[sel.value];
+    if (k) {
+        sel.style.color = k.c; sel.style.background = k.b;
+        sel.style.borderColor = k.c + '55'; sel.style.fontWeight = '700';
+    } else {
+        sel.style.color = '#94a3b8'; sel.style.background = '#fff';
+        sel.style.borderColor = '#e2e8f0'; sel.style.fontWeight = '600';
+    }
+}
+function kansChange(sel) {
+    sel.classList.add('saving');
+    fetch(sel.dataset.url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': KANS_CSRF },
+        body: JSON.stringify({ conversion_chance: sel.value || null }),
+    })
+    .then(r => r.json())
+    .then(() => { sel.classList.remove('saving'); kansStyle(sel); })
+    .catch(() => { sel.classList.remove('saving'); alert('Opslaan mislukt, probeer opnieuw.'); });
+}
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.kans-select').forEach(kansStyle);
+});
 </script>
 @endpush
 
