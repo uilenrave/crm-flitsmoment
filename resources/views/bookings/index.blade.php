@@ -54,10 +54,23 @@ function handleDrop(event, id) {
     }
 }
 
+const STRIP_MAX_BYTES = 2 * 1024 * 1024; // 2 MB — serverlimiet
+
 function showFilename(id, input) {
     const label = document.getElementById('filename-' + id);
     if (input.files && input.files[0]) {
-        label.textContent = '✓ ' + input.files[0].name;
+        const f = input.files[0];
+        if (f.size > STRIP_MAX_BYTES) {
+            const mb = (f.size / 1024 / 1024).toFixed(1);
+            label.innerHTML = '⚠️ Dit bestand is ' + mb + ' MB — maximaal 2 MB.'
+                + '<br><span style="font-weight:400;color:#64748b;">Exporteer de strip wat kleiner (lagere kwaliteit of resolutie) en probeer opnieuw.</span>';
+            label.style.color = '#dc2626';
+            label.style.display = 'block';
+            input.value = ''; // blokkeer de upload zodat de 413-foutpagina niet verschijnt
+            return;
+        }
+        label.textContent = '✓ ' + f.name;
+        label.style.color = '#f97316';
         label.style.display = 'block';
     }
 }

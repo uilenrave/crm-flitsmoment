@@ -445,6 +445,7 @@ class BookingController extends Controller
             'assets.*.quantity'    => ['nullable', 'integer', 'min:1'],
             'assets.*.price'       => ['nullable', 'numeric', 'min:0'],
             'strip_design_file'    => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:20480'],
+            'mockup'               => ['nullable', 'boolean'],
             'delivery_staff_id'    => ['nullable', 'exists:staff,id'],
             'pickup_staff_id'      => ['nullable', 'exists:staff,id'],
             'hide_prices'          => ['nullable', 'boolean'],
@@ -473,6 +474,9 @@ class BookingController extends Controller
                 Storage::disk('public')->delete($oldPath);
             }
             $path = $request->file('strip_design_file')->store('strip-designs', 'public');
+            if ($request->boolean('mockup')) {
+                $path = $this->maybeApplyMockup($path, $request->file('strip_design_file')->getMimeType());
+            }
             $data['strip_design_url'] = Storage::disk('public')->url($path);
         }
 
@@ -932,11 +936,32 @@ class BookingController extends Controller
         return response(view('bookings._design_modal', compact('booking'))->render());
     }
 
+    /**
+     * Stel desgewenst een mockup samen van een geüploade strip-afbeelding.
+     * Geeft het (mogelijk nieuwe) opslagpad terug; bij een PDF of een fout blijft het origineel.
+     */
+    private function maybeApplyMockup(string $path, ?string $mime): string
+    {
+        if (! str_starts_with((string) $mime, 'image/')) {
+            return $path;
+        }
+        try {
+            $blob     = app(\App\Services\StripMockupService::class)->render(Storage::disk('public')->path($path));
+            $mockPath = 'strip-designs/mockup_' . \Illuminate\Support\Str::random(20) . '.jpg';
+            Storage::disk('public')->put($mockPath, $blob);
+            return $mockPath;
+        } catch (\Throwable $e) {
+            \Log::error('Strip-mockup samenstellen mislukt: ' . $e->getMessage());
+            return $path;
+        }
+    }
+
     public function uploadStripDesign(Request $request, Booking $booking): RedirectResponse
     {
         $request->validate([
             'strip_design_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:20480'],
             'strip_design_url'  => ['nullable', 'url'],
+            'mockup'            => ['nullable', 'boolean'],
         ]);
 
         $oudDesignUrl = $booking->strip_design_url;
@@ -947,6 +972,16 @@ class BookingController extends Controller
             $file      = $request->file('strip_design_file');
             $filename  = $file->getClientOriginalName();
             $path      = $file->store('strip-designs', 'public');
+
+            // Mockup samenstellen als het vinkje aanstaat (alleen voor afbeeldingen)
+            if ($request->boolean('mockup')) {
+                $mockPath = $this->maybeApplyMockup($path, $file->getMimeType());
+                if ($mockPath !== $path) {
+                    $path     = $mockPath;
+                    $filename = pathinfo($filename, PATHINFO_FILENAME) . ' (mockup).jpg';
+                }
+            }
+
             $nieuweUrl = Storage::disk('public')->url($path);
         } elseif ($request->filled('strip_design_url')) {
             $nieuweUrl = $request->input('strip_design_url');

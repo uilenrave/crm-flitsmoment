@@ -11,7 +11,7 @@
          ondrop="handleDrop(event,'{{ $booking->id }}')">
         <div style="font-size:1.75rem;margin-bottom:.4rem;">🖼️</div>
         <div style="font-size:.875rem;font-weight:600;color:#374151;">Sleep een bestand hierheen</div>
-        <div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem;">of klik om te bladeren — JPG, PNG, GIF, WEBP, PDF (max 20 MB)</div>
+        <div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem;">of klik om te bladeren — JPG, PNG, GIF, WEBP, PDF (max 2 MB)</div>
         <div id="filename-{{ $booking->id }}" style="margin-top:.6rem;font-size:.8rem;color:#f97316;font-weight:600;display:none;"></div>
     </div>
     <input type="file" id="file-{{ $booking->id }}" name="strip_design_file" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf" style="display:none;"
@@ -22,9 +22,13 @@
         <span style="font-size:.75rem;color:#94a3b8;white-space:nowrap;">of link plakken</span>
         <div style="flex:1;height:1px;background:#e2e8f0;"></div>
     </div>
-    <div style="margin-bottom:1.25rem;">
+    <div style="margin-bottom:1rem;">
         <input type="url" name="strip_design_url" placeholder="https://drive.google.com/..." style="width:100%;box-sizing:border-box;">
     </div>
+    <label style="display:flex;align-items:center;gap:.5rem;margin-bottom:1.25rem;font-size:.85rem;color:#374151;cursor:pointer;padding:.6rem .75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+        <input type="checkbox" name="mockup" value="1" checked>
+        <span><strong>In mockup plaatsen</strong></span>
+    </label>
     <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-bottom:1.25rem;">
         <button type="button" onclick="closeDesignModal()" class="btn btn-secondary btn-sm">Annuleren</button>
         <button type="submit" class="btn btn-primary btn-sm">📤 Uploaden & mail sturen</button>

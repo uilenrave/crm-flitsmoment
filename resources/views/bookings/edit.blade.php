@@ -444,8 +444,14 @@
 
         <div class="form-grid">
             <div class="form-group" style="grid-column:span 2;">
-                <label>Nieuw ontwerp uploaden <span style="font-weight:400;color:#64748b;">(jpg, png, gif, webp, pdf — max 20MB)</span></label>
-                <input type="file" name="strip_design_file" accept="image/*,.pdf" style="padding:.375rem;">
+                <label>Nieuw ontwerp uploaden <span style="font-weight:400;color:#64748b;">(jpg, png, gif, webp, pdf — max 2 MB)</span></label>
+                <input type="file" name="strip_design_file" accept="image/*,.pdf" style="padding:.375rem;"
+                       onchange="(function(inp){var w=document.getElementById('strip-size-warn');if(!w)return;if(inp.files[0]&&inp.files[0].size>2*1024*1024){w.innerHTML='⚠️ Dit bestand is '+(inp.files[0].size/1048576).toFixed(1)+' MB — maximaal 2 MB.<br><span style=\'font-weight:400;color:#64748b;\'>Exporteer de strip wat kleiner en probeer opnieuw.</span>';w.style.display='block';inp.value='';}else{w.style.display='none';}})(this)">
+                <div id="strip-size-warn" style="display:none;margin-top:.4rem;font-size:.8rem;color:#dc2626;font-weight:600;"></div>
+                <label style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem;font-size:.85rem;color:#374151;cursor:pointer;">
+                    <input type="checkbox" name="mockup" value="1" checked>
+                    <span><strong>In mockup plaatsen</strong></span>
+                </label>
             </div>
         </div>
 
