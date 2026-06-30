@@ -26,7 +26,7 @@ class Booking extends Model
         'base_price', 'total_price', 'amount_total',
         'status', 'payment_status', 'public_token', 'portal_enabled', 'hide_prices', 'gallery_skipped',
         'confirmed_at', 'cancelled_at', 'completed_at',
-        'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_status', 'eboekhouden_synced_at', 'eboekhouden_relation_id', 'eboekhouden_skip_invoice', 'extra_invoices',
+        'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_status', 'eboekhouden_synced_at', 'eboekhouden_relation_id', 'eboekhouden_skip_invoice', 'extra_invoices', 'eboekhouden_pay_url',
         'intake_data', 'intake_current_step', 'intake_completed', 'intake_completed_at',
         'strip_format', 'pickup_preference', 'pickup_contact_person', 'pickup_contact_time',
         'review_mail_sent_at',

@@ -111,6 +111,36 @@ class EBoekhoudenService
     }
 
     /**
+     * Haal de Mollie-betaallink op die e-Boekhouden op de factuur-PDF plaatst.
+     * Die staat als /URI-annotatie (paynow.asp) in de PDF. Geeft de URL terug of null.
+     */
+    public function getPaymentUrl(string $invoiceId): ?string
+    {
+        try {
+            $pdfUrl = $this->getInvoicePdfUrl($invoiceId);
+            if (! $pdfUrl) {
+                return null;
+            }
+
+            $response = Http::timeout(20)->get($pdfUrl);
+            if (! $response->successful()) {
+                return null;
+            }
+
+            // De betaallink staat als klikbare /URI-annotatie in de PDF
+            if (preg_match('#/URI\s*\((https://secure\.e-boekhouden\.nl/bh/paynow\.asp[^)]+)\)#i', $response->body(), $m)) {
+                return $m[1];
+            }
+
+            Log::info('e-boekhouden: geen betaallink in factuur-PDF gevonden', ['invoiceId' => $invoiceId]);
+            return null;
+        } catch (\Exception $e) {
+            Log::error('e-boekhouden: getPaymentUrl exception', ['message' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
      * Maak factuur aan in e-boekhouden
      */
     public function createInvoice(Booking $booking): array

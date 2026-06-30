@@ -697,6 +697,7 @@ class BookingController extends Controller
         $result = $service->createInvoice($booking);
 
         if ($result['success']) {
+            $this->syncInvoicePayUrl($booking); // betaallink van de factuur-PDF ophalen voor het portaal
             $message = "✅ Factuur aangemaakt in e-boekhouden";
             if ($result['invoice_id']) {
                 $message .= " (ID: {$result['invoice_id']})";
@@ -705,6 +706,44 @@ class BookingController extends Controller
         } else {
             return redirect()->route('bookings.show', $booking)
                 ->with('error', "Fout bij factuur aanmaken: {$result['error']}");
+        }
+    }
+
+    /**
+     * Resolve het e-Boekhouden factuur-ID (als alleen het nummer bekend is) en haal de
+     * Mollie-betaallink van de factuur-PDF op, zodat het portaal de factuur kan tonen
+     * en de "Betaal nu"-knop naar e-Boekhoudens betaallink kan wijzen.
+     * Doet niets voor accounts zonder e-Boekhouden (bv. Den Haag).
+     */
+    private function syncInvoicePayUrl(Booking $booking): void
+    {
+        try {
+            if (! $booking->account?->eboekhouden_enabled) {
+                return;
+            }
+
+            $service = app(\App\Services\EBoekhoudenService::class)
+                ->withApiKey($booking->account->getEBoekhoudenApiKey());
+
+            $invoiceId = $booking->eboekhouden_invoice_id;
+
+            // Handmatig factuurnummer (geen ID) → ID opzoeken via het nummer
+            if (! $invoiceId && $booking->eboekhouden_invoice_number) {
+                $invoice   = $service->findInvoiceByNumber($booking->eboekhouden_invoice_number);
+                $invoiceId = $invoice['id'] ?? null;
+                if ($invoiceId) {
+                    $booking->eboekhouden_invoice_id = $invoiceId;
+                }
+            }
+
+            if (! $invoiceId) {
+                return;
+            }
+
+            $booking->eboekhouden_pay_url = $service->getPaymentUrl((string) $invoiceId);
+            $booking->save();
+        } catch (\Throwable $e) {
+            \Log::error('syncInvoicePayUrl fout: ' . $e->getMessage());
         }
     }
 
@@ -761,6 +800,9 @@ class BookingController extends Controller
         }
 
         $booking->update($update);
+
+        // ID opzoeken + Mollie-betaallink van de factuur-PDF ophalen voor het portaal
+        $this->syncInvoicePayUrl($booking);
 
         $msg = $isChange
             ? 'Factuurnummer gewijzigd. Betaalstatus is teruggezet naar "niet betaald" — controleer de status opnieuw.'

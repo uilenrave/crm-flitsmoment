@@ -805,6 +805,13 @@
         @if($booking->payment_method === 'bij_levering' || !$booking->account->mollie_enabled)
         <p style="font-size:1rem;font-weight:600;color:var(--text);margin:.5rem 0 0;">Betaling vindt plaats bij levering.</p>
         <p class="payment-note">U hoeft nu niets te betalen.</p>
+        @elseif($booking->account->eboekhouden_enabled && $booking->eboekhouden_pay_url)
+        {{-- e-Boekhouden-betaallink: betaling wordt automatisch aan de factuur gekoppeld --}}
+        <a href="{{ $booking->eboekhouden_pay_url }}" class="btn-pay" style="text-decoration:none;">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            Betaal nu via iDEAL
+        </a>
+        <p class="payment-note">Veilig betalen via Mollie &mdash; iDEAL, creditcard en meer</p>
         @else
         <form method="POST" action="{{ route('portal.payment-start', $booking->public_token) }}">
             @csrf
