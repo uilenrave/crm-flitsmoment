@@ -819,6 +819,45 @@
                         </label>
                     </form>
                 @endif
+
+                {{-- ── Aanvullende facturen (bijv. extra achtergrond achteraf) ── --}}
+                <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e7eb;">
+                    <div style="font-size:0.8rem;font-weight:600;color:#475569;margin-bottom:0.5rem;">📎 Aanvullende facturen</div>
+
+                    @if(!empty($booking->extra_invoices))
+                    <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.6rem;">
+                        @foreach($booking->extra_invoices as $i => $extra)
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:0.375rem;padding:0.4rem 0.6rem;">
+                            <div style="min-width:0;">
+                                <span style="font-weight:600;font-size:0.8rem;">{{ $extra['number'] }}</span>
+                                @if(!empty($extra['amount']))<span style="font-size:0.78rem;color:#64748b;"> — € {{ number_format($extra['amount'], 2, ',', '.') }}</span>@endif
+                                @if(!empty($extra['description']))<div style="font-size:0.72rem;color:#64748b;">{{ $extra['description'] }}</div>@endif
+                            </div>
+                            <form method="POST" action="{{ route('bookings.extra-invoice.remove', [$booking, $i]) }}" data-confirm="Deze aanvullende factuur ontkoppelen?">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" title="Ontkoppelen" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:0.9rem;">🗑</button>
+                            </form>
+                        </div>
+                        @endforeach
+                    </div>
+                    @endif
+
+                    <form method="POST" action="{{ route('bookings.extra-invoice.add', $booking) }}">
+                        @csrf
+                        <div style="display:flex;gap:0.4rem;align-items:stretch;margin-bottom:0.4rem;">
+                            <input type="text" name="number" placeholder="Factuurnummer" required
+                                style="flex:1;min-width:0;padding:0.4rem 0.6rem;border:1px solid #d1d5db;border-radius:0.375rem;font-size:0.8rem;">
+                            <input type="number" name="amount" step="0.01" min="0" placeholder="€"
+                                style="width:80px;padding:0.4rem 0.5rem;border:1px solid #d1d5db;border-radius:0.375rem;font-size:0.8rem;">
+                        </div>
+                        <div style="display:flex;gap:0.4rem;align-items:stretch;">
+                            <input type="text" name="description" placeholder="Omschrijving (bijv. Extra achtergrond)"
+                                style="flex:1;min-width:0;padding:0.4rem 0.6rem;border:1px solid #d1d5db;border-radius:0.375rem;font-size:0.8rem;">
+                            <button type="submit" class="btn btn-secondary" style="font-size:0.8rem;white-space:nowrap;">+ Koppelen</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
         @endif

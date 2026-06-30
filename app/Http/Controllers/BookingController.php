@@ -110,7 +110,7 @@ class BookingController extends Controller
             $query->where('status', $request->status);
         }
         if ($request->filled('betaling')) {
-            $query->whereIn('payment_status', $this->resolvePaymentFilter($request->betaling));
+            $this->applyPaymentFilter($query, $request->betaling);
         }
         if ($request->filled('zoeken')) {
             $query->where(function ($q) use ($request) {
@@ -140,7 +140,7 @@ class BookingController extends Controller
             $query->where('status', $request->status);
         }
         if ($request->filled('betaling')) {
-            $query->whereIn('payment_status', $this->resolvePaymentFilter($request->betaling));
+            $this->applyPaymentFilter($query, $request->betaling);
         }
         if ($request->filled('zoeken')) {
             $query->where(function ($q) use ($request) {
@@ -168,6 +168,17 @@ class BookingController extends Controller
             'openstaand' => ['unpaid', 'partial'],
             default      => [$betaling],
         };
+    }
+
+    /** Pas de betaling-filter toe op de query, met uitsluiting van geannuleerde boekingen bij "openstaand". */
+    private function applyPaymentFilter($query, string $betaling): void
+    {
+        $query->whereIn('payment_status', $this->resolvePaymentFilter($betaling));
+
+        // Geannuleerde boekingen tellen niet als "openstaand" — die ga je niet meer innen
+        if ($betaling === 'openstaand') {
+            $query->where('status', '!=', 'cancelled');
+        }
     }
 
     public function create(Request $request): View
@@ -756,6 +767,44 @@ class BookingController extends Controller
             : 'Factuurnummer opgeslagen. Gebruik "Controleer betaalstatus" om de status te synchroniseren.';
 
         return redirect()->route('bookings.show', $booking)->with('success', $msg);
+    }
+
+    /** Aanvullende factuur (handmatig in e-Boekhouden gemaakt) koppelen aan de boeking */
+    public function addExtraInvoice(Request $request, Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        $data = $request->validate([
+            'number'      => ['required', 'string', 'max:50'],
+            'description' => ['nullable', 'string', 'max:120'],
+            'amount'      => ['nullable', 'numeric', 'min:0', 'max:99999'],
+        ]);
+
+        $list   = $booking->extra_invoices ?? [];
+        $list[] = [
+            'number'      => trim($data['number']),
+            'description' => $data['description'] ? trim($data['description']) : null,
+            'amount'      => isset($data['amount']) && $data['amount'] !== null ? (float) $data['amount'] : null,
+            'added_at'    => now()->toIso8601String(),
+        ];
+
+        $booking->update(['extra_invoices' => $list]);
+
+        return redirect()->route('bookings.show', $booking)->with('success', 'Aanvullende factuur gekoppeld.');
+    }
+
+    /** Aanvullende factuur ontkoppelen */
+    public function removeExtraInvoice(Booking $booking, int $index): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        $list = $booking->extra_invoices ?? [];
+        if (array_key_exists($index, $list)) {
+            array_splice($list, $index, 1);
+            $booking->update(['extra_invoices' => $list ?: null]);
+        }
+
+        return redirect()->route('bookings.show', $booking)->with('success', 'Aanvullende factuur ontkoppeld.');
     }
 
     /** Betaalstatus ophalen van e-boekhouden */

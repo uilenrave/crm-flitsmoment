@@ -783,7 +783,7 @@
     @unless($booking->hide_prices)
     @if($openstaand > 0)
     <div class="payment-section">
-        @php $toonBtw = $booking->payment_method !== 'bij_levering' && $booking->account->mollie_enabled && $booking->payment_status !== 'paid'; @endphp
+        @php $toonBtw = $booking->payment_method !== 'bij_levering' && $booking->account->mollie_enabled; @endphp
         @if($booking->customer_type === 'zakelijk' && $toonBtw)
         @php $openExBtw = $openstaand / 1.21; $openBtw = $openstaand - $openExBtw; @endphp
         <div style="font-size:.875rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);">Openstaand bedrag</div>
@@ -802,9 +802,7 @@
         @php $openExBtw2 = $openstaand / 1.21; $openBtw2 = $openstaand - $openExBtw2; @endphp
         <p class="payment-note" style="margin-top:.25rem;">excl. BTW € {{ number_format($openExBtw2, 2, ',', '.') }} &nbsp;|&nbsp; BTW € {{ number_format($openBtw2, 2, ',', '.') }}</p>
         @endif
-        @if($booking->payment_status === 'paid')
-        <p style="font-size:1rem;font-weight:600;color:#16a34a;margin:.5rem 0 0;">✓ Deze boeking is betaald.</p>
-        @elseif($booking->payment_method === 'bij_levering' || !$booking->account->mollie_enabled)
+        @if($booking->payment_method === 'bij_levering' || !$booking->account->mollie_enabled)
         <p style="font-size:1rem;font-weight:600;color:var(--text);margin:.5rem 0 0;">Betaling vindt plaats bij levering.</p>
         <p class="payment-note">U hoeft nu niets te betalen.</p>
         @else

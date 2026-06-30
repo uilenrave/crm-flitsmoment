@@ -118,6 +118,8 @@ Route::middleware('auth')->group(function () {
     Route::post('bookings/{booking}/sync-invoice', [BookingController::class, 'syncInvoiceStatus'])->name('bookings.sync-invoice');
     Route::post('bookings/sync-all-payments', [BookingController::class, 'syncAllPayments'])->name('bookings.sync-all-payments');
     Route::post('bookings/{booking}/manual-invoice', [BookingController::class, 'saveManualInvoiceNumber'])->name('bookings.manual-invoice');
+    Route::post('bookings/{booking}/extra-invoice', [BookingController::class, 'addExtraInvoice'])->name('bookings.extra-invoice.add');
+    Route::delete('bookings/{booking}/extra-invoice/{index}', [BookingController::class, 'removeExtraInvoice'])->name('bookings.extra-invoice.remove');
     Route::post('bookings/{booking}/skip-invoice', [BookingController::class, 'toggleSkipInvoice'])->name('bookings.skip-invoice');
     Route::post('bookings/{booking}/payment-status', [BookingController::class, 'updatePaymentStatus'])->name('bookings.payment-status');
     Route::post('bookings/{booking}/resend-confirmation', [BookingController::class, 'resendConfirmation'])->name('bookings.resend-confirmation');

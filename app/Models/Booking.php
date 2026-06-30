@@ -26,7 +26,7 @@ class Booking extends Model
         'base_price', 'total_price', 'amount_total',
         'status', 'payment_status', 'public_token', 'portal_enabled', 'hide_prices', 'gallery_skipped',
         'confirmed_at', 'cancelled_at', 'completed_at',
-        'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_status', 'eboekhouden_synced_at', 'eboekhouden_relation_id', 'eboekhouden_skip_invoice',
+        'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_status', 'eboekhouden_synced_at', 'eboekhouden_relation_id', 'eboekhouden_skip_invoice', 'extra_invoices',
         'intake_data', 'intake_current_step', 'intake_completed', 'intake_completed_at',
         'strip_format', 'pickup_preference', 'pickup_contact_person', 'pickup_contact_time',
         'review_mail_sent_at',
@@ -52,6 +52,7 @@ class Booking extends Model
         'completed_at'        => 'datetime',
         'strip_feedback_at'   => 'datetime',
         'eboekhouden_synced_at' => 'datetime',
+        'extra_invoices'        => 'array',
         'intake_data'           => 'array',
         'strip_comments'        => 'array',
         'strip_designs'         => 'array',
@@ -155,8 +156,8 @@ class Booking extends Model
     /** Bereken openstaand bedrag (total_price - betaald) */
     public function getAmountDueAttribute(): float
     {
-        // Handmatig op betaald gezet → geen openstaand bedrag
-        if (in_array($this->payment_status, ['paid', 'cancelled', 'refunded'])) {
+        // Geannuleerd/terugbetaald → nooit iets te betalen
+        if (in_array($this->payment_status, ['cancelled', 'refunded'])) {
             return 0.0;
         }
 
@@ -164,6 +165,14 @@ class Booking extends Model
             ->where('status', 'paid')
             ->sum('amount');
 
+        // Geen echte betalingen geregistreerd → respecteer een handmatige "betaald"-status
+        if ($betaald <= 0) {
+            return $this->payment_status === 'paid' ? 0.0 : (float) $this->total_price;
+        }
+
+        // Er is daadwerkelijk betaald → toon altijd het échte verschil. Zo wordt het
+        // restant na het ophogen van de prijs vanzelf weer opeisbaar in de portal,
+        // ook als de boeking eerder volledig op "betaald" stond.
         return max(0, (float) $this->total_price - (float) $betaald);
     }
 
