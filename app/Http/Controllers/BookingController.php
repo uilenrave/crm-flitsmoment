@@ -1867,6 +1867,25 @@ class BookingController extends Controller
                 ->utc()->format('Ymd\THis\Z');
         };
 
+        // Bouwt DESCRIPTION (+ LOCATION) voor een logistiek moment: klikbaar adres (Google Maps) + telefoon
+        $logistics = function (string $bn, string $richting, ?string $addr, ?string $phone): array {
+            $desc = "Boeking: {$bn}";
+            $desc .= "\\n{$richting}: " . ($addr ? $this->icalEscape($addr) : '—');
+            if ($addr) {
+                // URL bevat na rawurlencode geen , ; of \ → geen iCal-escape nodig; agenda-apps maken 'm klikbaar
+                $desc .= "\\n📍 Route: https://www.google.com/maps/search/?api=1&query=" . rawurlencode($addr);
+            }
+            if ($phone) {
+                // Kaal nummer → mobiele agenda's detecteren en maken het klikbaar (bellen)
+                $desc .= "\\n📞 " . $this->icalEscape(trim($phone));
+            }
+            $out = ['DESCRIPTION:' . $desc];
+            if ($addr) {
+                $out[] = 'LOCATION:' . $this->icalEscape($addr);
+            }
+            return $out;
+        };
+
         $now = Carbon::now()->utc()->format('Ymd\THis\Z');
 
         $lines = [
@@ -1935,7 +1954,7 @@ class BookingController extends Controller
                     'DTSTART:' . $dStart,
                     'DTEND:' . $dEnd,
                     'SUMMARY:' . $this->icalEscape("🚚 {$dPrefix} | Bezorging: {$name}"),
-                    'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}\\nNaar: " . ($addr ?: '—')),
+                ], $logistics($bn, 'Naar', $addr, $booking->customer_phone), [
                     'END:VEVENT',
                 ]);
             }
@@ -1952,7 +1971,7 @@ class BookingController extends Controller
                     'DTSTART:' . $pStart,
                     'DTEND:' . $pEnd,
                     'SUMMARY:' . $this->icalEscape("↩️ {$pPrefix} | Ophaling: {$name}"),
-                    'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}\\nVan: " . ($addr ?: '—')),
+                ], $logistics($bn, 'Van', $addr, $booking->customer_phone), [
                     'END:VEVENT',
                 ]);
             }
