@@ -6,7 +6,8 @@
 <style>
     .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: start; }
     @media (min-width: 900px) { .dg-grid { grid-template-columns: 400px 1fr; } }
-    .dg-preview-col { position: sticky; top: 1.25rem; align-self: start; max-height: calc(100vh - 2.5rem); overflow: auto; }
+    .dg-preview-col { align-self: start; max-height: calc(100vh - 2.5rem); overflow: auto; }
+    .dg-preview-col.dg-fixed { position: fixed; }
     .dg-label { display: block; font-size: .8rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
     .dg-field { margin-bottom: 1.1rem; }
@@ -744,6 +745,34 @@ function dgDeleteMask(id) {
 dgRenderMaskGallery();
 dgAutoSelectMaskIfNeeded();
 dgEventTypeChanged();
+
+function dgPositionPreviewColumn() {
+    const grid = document.querySelector('.dg-grid');
+    const col = document.querySelector('.dg-preview-col');
+    if (!grid || !col) return;
+
+    if (window.innerWidth < 900) {
+        col.classList.remove('dg-fixed');
+        col.style.top = '';
+        col.style.left = '';
+        col.style.width = '';
+        return;
+    }
+
+    const gridRect = grid.getBoundingClientRect();
+    const colWidths = getComputedStyle(grid).gridTemplateColumns.split(' ').map(parseFloat);
+    const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+    const leftColWidth = colWidths[0] || 400;
+
+    col.classList.add('dg-fixed');
+    col.style.top = '1.25rem';
+    col.style.left = (gridRect.left + leftColWidth + gap) + 'px';
+    col.style.width = (gridRect.width - leftColWidth - gap) + 'px';
+}
+
+window.addEventListener('resize', dgPositionPreviewColumn);
+document.getElementById('sidebar-toggle')?.addEventListener('click', () => setTimeout(dgPositionPreviewColumn, 280));
+dgPositionPreviewColumn();
 </script>
 @endpush
 @endsection
