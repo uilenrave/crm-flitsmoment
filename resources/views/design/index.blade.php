@@ -540,6 +540,14 @@ function dgBorderColorChanged() {
     const color = document.getElementById('dg-border-color').value;
     const svg = document.querySelector('#dg-svg-border-layer svg');
     if (!svg) return;
+
+    // Afspraak: de kleurbare rand gebruikt css-klasse "cls-2" binnen de <style> van de svg
+    const styleEl = svg.querySelector('style');
+    if (styleEl) {
+        styleEl.textContent = styleEl.textContent.replace(/\.cls-2\s*\{[^}]*\}/i, `.cls-2{fill:${color};}`);
+    }
+
+    // Fallback voor svg's met inline fill/stroke-attributen
     svg.querySelectorAll('[fill]').forEach(el => {
         if (el.getAttribute('fill').toLowerCase() !== 'none') el.setAttribute('fill', color);
     });

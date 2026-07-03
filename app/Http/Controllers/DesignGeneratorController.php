@@ -296,9 +296,14 @@ class DesignGeneratorController extends Controller
         return $svg;
     }
 
-    /** Vervang alle fill/stroke-kleuren (behalve "none") in een svg door één gekozen kleur */
+    /**
+     * Vervang de randkleur in een svg door één gekozen kleur. Afspraak: de kleurbare rand
+     * gebruikt css-klasse "cls-2" (bijv. Illustrator-export met <style>.cls-2{fill:...}</style>).
+     * Daarnaast een fallback voor svg's met inline fill/stroke-attributen (behalve "none").
+     */
     private function recolorSvg(string $svg, string $color): string
     {
+        $svg = preg_replace('/\.cls-2\s*\{[^}]*\}/i', '.cls-2{fill:' . $color . ';}', $svg);
         $svg = preg_replace('/fill="(?!none)[^"]*"/i', 'fill="' . $color . '"', $svg);
         $svg = preg_replace('/stroke="(?!none)[^"]*"/i', 'stroke="' . $color . '"', $svg);
 
