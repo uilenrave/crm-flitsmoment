@@ -64,7 +64,7 @@
         </div>
 
         <div class="dg-field">
-            <label class="dg-label" for="references">Referenties <span class="dg-hint">— flyer / uitnodiging / huisstijl (meerdere mag, max 2 MB p/st)</span></label>
+            <label class="dg-label" for="references">Referenties <span class="dg-hint">— flyer / uitnodiging / huisstijl (meerdere mag, max 8 MB p/st)</span></label>
             <input id="references" name="references[]" type="file" class="dg-file" accept="image/*" multiple>
         </div>
 

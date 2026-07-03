@@ -28,7 +28,7 @@ class DesignGeneratorController extends Controller
         $data = $request->validate([
             'input'        => ['required', 'string', 'max:2000'],
             'references'   => ['nullable', 'array', 'max:6'],
-            'references.*' => ['image', 'max:2048'], // 2 MB serverlimiet
+            'references.*' => ['image', 'max:8192'], // 8 MB — alleen voor referentieafbeeldingen hier
         ], [], [
             'references.*' => 'referentieafbeelding',
         ]);
