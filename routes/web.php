@@ -150,6 +150,7 @@ Route::middleware('auth')->group(function () {
     Route::post('ontwerp-generator/logo', [\App\Http\Controllers\DesignGeneratorController::class, 'cutoutLogo'])->name('design.logo.cutout');
     Route::post('ontwerp-generator/masks', [\App\Http\Controllers\DesignGeneratorController::class, 'uploadMask'])->name('design.masks.upload');
     Route::post('ontwerp-generator/masks/apply', [\App\Http\Controllers\DesignGeneratorController::class, 'applyMask'])->name('design.masks.apply');
+    Route::delete('ontwerp-generator/masks/{mask}', [\App\Http\Controllers\DesignGeneratorController::class, 'destroyMask'])->name('design.masks.destroy');
 
     // Briefings (PDF voor medewerker)
     Route::resource('briefings', BriefingController::class)->except(['show']);

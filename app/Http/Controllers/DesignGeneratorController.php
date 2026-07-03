@@ -117,36 +117,70 @@ class DesignGeneratorController extends Controller
         }
     }
 
-    /** Voeg een zwart-wit maskerafbeelding toe aan de herbruikbare bibliotheek */
+    /** Voeg een zwart-wit maskerafbeelding (+ optionele thumbnail/svg-rand) toe aan de herbruikbare bibliotheek */
     public function uploadMask(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'label' => ['required', 'string', 'max:100'],
-            'mask'  => ['required', 'image', 'max:8192'],
-        ], [], ['mask' => 'maskerafbeelding']);
+            'label'     => ['required', 'string', 'max:100'],
+            'mask'      => ['required', 'image', 'max:8192'],
+            'thumbnail' => ['nullable', 'image', 'max:8192'],
+            'svg'       => ['nullable', 'file', 'mimes:svg', 'max:2048'],
+        ], [], [
+            'mask'      => 'maskerafbeelding',
+            'thumbnail' => 'thumbnail-afbeelding',
+            'svg'       => 'svg-bestand',
+        ]);
 
         $filename = 'design-generator/masks/' . Str::random(24) . '.png';
         Storage::disk('public')->put($filename, file_get_contents($request->file('mask')->getRealPath()));
 
+        $thumbFilename = null;
+        if ($request->hasFile('thumbnail')) {
+            $thumbFilename = 'design-generator/masks/' . Str::random(24) . '-thumb.'
+                . $request->file('thumbnail')->extension();
+            Storage::disk('public')->put($thumbFilename, file_get_contents($request->file('thumbnail')->getRealPath()));
+        }
+
+        $svgFilename = null;
+        if ($request->hasFile('svg')) {
+            $svgContent  = $this->sanitizeSvg(file_get_contents($request->file('svg')->getRealPath()));
+            $svgFilename = 'design-generator/masks/' . Str::random(24) . '.svg';
+            Storage::disk('public')->put($svgFilename, $svgContent);
+        }
+
         $mask = DesignMask::create([
-            'label' => $data['label'],
-            'path'  => $filename,
+            'label'          => $data['label'],
+            'path'           => $filename,
+            'thumbnail_path' => $thumbFilename,
+            'svg_path'       => $svgFilename,
         ]);
 
         return response()->json([
-            'ok'    => true,
-            'id'    => $mask->id,
-            'label' => $mask->label,
-            'url'   => $mask->url,
+            'ok'           => true,
+            'id'           => $mask->id,
+            'label'        => $mask->label,
+            'url'          => $mask->url,
+            'thumbnailUrl' => $mask->thumbnail_url,
+            'svgContent'   => $mask->svg_path ? Storage::disk('public')->get($mask->svg_path) : null,
         ]);
     }
 
-    /** Pas een masker uit de bibliotheek toe op een gegenereerde achtergrond (echte alfa-transparantie) */
+    /** Verwijder een masker uit de bibliotheek */
+    public function destroyMask(DesignMask $mask): JsonResponse
+    {
+        Storage::disk('public')->delete(array_filter([$mask->path, $mask->thumbnail_path, $mask->svg_path]));
+        $mask->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Pas een masker (+ optionele gekleurde svg-rand) uit de bibliotheek toe op een gegenereerde achtergrond */
     public function applyMask(Request $request): JsonResponse
     {
         $data = $request->validate([
             'background_path' => ['required', 'string'],
             'mask_id'          => ['required', 'integer', 'exists:design_masks,id'],
+            'border_color'     => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
         if (
@@ -170,6 +204,17 @@ class DesignGeneratorController extends Controller
             $maskImage->setImageAlphaChannel(\Imagick::ALPHACHANNEL_COPY);
 
             $image->compositeImage($maskImage, \Imagick::COMPOSITE_DSTIN, 0, 0);
+
+            if ($mask->svg_path && ! empty($data['border_color'])) {
+                $svg = $this->recolorSvg(Storage::disk('public')->get($mask->svg_path), $data['border_color']);
+
+                $svgImage = new \Imagick();
+                $svgImage->setBackgroundColor(new \ImagickPixel('transparent'));
+                $svgImage->readImageBlob($svg);
+                $svgImage->resizeImage($image->getImageWidth(), $image->getImageHeight(), \Imagick::FILTER_LANCZOS, 1);
+
+                $image->compositeImage($svgImage, \Imagick::COMPOSITE_OVER, 0, 0);
+            }
 
             $filename = 'design-generator/out/' . Str::random(24) . '-masked.png';
             Storage::disk('public')->put($filename, $image->getImageBlob());
@@ -238,12 +283,39 @@ class DesignGeneratorController extends Controller
         return $image->getImageBlob();
     }
 
+    /** Basisbeveiliging voor geüploade SVG's: verwijder scripts en on*-event-handlers vóórdat we ze opslaan/inline tonen */
+    private function sanitizeSvg(string $svg): string
+    {
+        $svg = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $svg);
+        $svg = preg_replace('/\son\w+\s*=\s*"[^"]*"/i', '', $svg);
+        $svg = preg_replace("/\son\\w+\\s*=\\s*'[^']*'/i", '', $svg);
+
+        return $svg;
+    }
+
+    /** Vervang alle fill/stroke-kleuren (behalve "none") in een svg door één gekozen kleur */
+    private function recolorSvg(string $svg, string $color): string
+    {
+        $svg = preg_replace('/fill="(?!none)[^"]*"/i', 'fill="' . $color . '"', $svg);
+        $svg = preg_replace('/stroke="(?!none)[^"]*"/i', 'stroke="' . $color . '"', $svg);
+
+        return $svg;
+    }
+
     private function baseViewData(): array
     {
         $promptsByType = [];
         foreach (DesignPromptSetting::EVENT_TYPES as $type => $typeLabel) {
             $promptsByType[$type] = DesignPromptSetting::currentPrompt('background', $type);
         }
+
+        $masks = DesignMask::orderBy('label')->get()->map(fn (DesignMask $m) => [
+            'id'           => $m->id,
+            'label'        => $m->label,
+            'url'          => $m->url,
+            'thumbnailUrl' => $m->thumbnail_url,
+            'svgContent'   => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
+        ])->values();
 
         return [
             'promptKey'      => 'background',
@@ -253,7 +325,7 @@ class DesignGeneratorController extends Controller
             'eventTypes'     => DesignPromptSetting::EVENT_TYPES,
             'eventType'      => array_key_first(DesignPromptSetting::EVENT_TYPES),
             'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
-            'masks'          => DesignMask::orderBy('label')->get(['id', 'label', 'path']),
+            'masks'          => $masks,
         ];
     }
 }

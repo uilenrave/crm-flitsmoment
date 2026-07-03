@@ -45,7 +45,6 @@
     .dg-logo-handle.rotate { right: 2px; top: 2px; cursor: grab; }
 
     .dg-mask-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
-    .dg-mask-sub { margin-top: .9rem; padding-top: .9rem; border-top: 1px solid #f1f5f9; }
     .dg-mask-preview-bg {
         background-image:
             linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
@@ -55,13 +54,74 @@
         background-size: 20px 20px;
         background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
     }
+    .dg-svg-border-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .dg-svg-border-layer svg { width: 100%; height: 100%; display: block; }
+
+    .dg-mask-gallery { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .8rem; }
+    .dg-mask-thumb { width: 64px; height: 64px; border: 2px solid #e2e8f0; border-radius: .5rem; padding: 2px; cursor: pointer; background: #f8fafc repeating-conic-gradient(#e5e7eb 0% 25%, #f8fafc 0% 50%) 50% / 10px 10px; }
+    .dg-mask-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .dg-mask-thumb.selected { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.2); }
+    .dg-mask-thumb-label { font-size: .68rem; text-align: center; color: #64748b; margin-top: .2rem; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dg-color-row { display: flex; align-items: center; gap: .6rem; margin-bottom: .7rem; }
+    .dg-color-row input[type=color] { width: 2.4rem; height: 2rem; border: 1px solid #e2e8f0; border-radius: .4rem; padding: 2px; cursor: pointer; }
+
+    .dg-masks-btn { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; color: #334155; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; padding: .4rem .75rem; cursor: pointer; }
+    .dg-masks-btn:hover { background: #f8fafc; }
+    .dg-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem; }
+    .dg-modal-overlay.open { display: flex; }
+    .dg-modal { background: #fff; border-radius: .85rem; width: 100%; max-width: 640px; max-height: 85vh; overflow-y: auto; padding: 1.25rem 1.4rem; }
+    .dg-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .dg-modal-close { cursor: pointer; font-size: 1.1rem; color: #94a3b8; background: none; border: none; }
+    .dg-mask-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.2rem; }
+    .dg-mask-list-item { display: flex; align-items: center; gap: .7rem; padding: .5rem; border: 1px solid #f1f5f9; border-radius: .5rem; }
+    .dg-mask-list-item img { width: 40px; height: 40px; object-fit: contain; border-radius: .3rem; background: #f8fafc; }
+    .dg-mask-list-item .label { flex: 1; font-size: .82rem; font-weight: 600; color: #334155; }
+    .dg-mask-list-item .svg-tag { font-size: .65rem; color: #7c3aed; background: #ede9fe; padding: .1rem .4rem; border-radius: 999px; }
+    .dg-mask-delete { color: #b91c1c; background: none; border: none; cursor: pointer; font-size: .8rem; }
+    .dg-modal-form-row { margin-bottom: .7rem; }
 </style>
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
     <h2 style="margin:0;font-size:1.25rem;font-weight:700;color:#1e293b;">✨ Ontwerp-generator — Achtergrond</h2>
-    <span style="font-size:.8rem;color:#64748b;">AI-achtergrond genereren (Gemini)</span>
+    <div style="display:flex;align-items:center;gap:.7rem;">
+        <span style="font-size:.8rem;color:#64748b;">AI-achtergrond genereren (Gemini)</span>
+        <button type="button" class="dg-masks-btn" onclick="dgOpenMasksModal()">🎭 Maskers</button>
+    </div>
 </div>
 <p class="dg-hint" style="margin:-.5rem 0 1rem;">Onderdeel 1 van de fotostrip. Andere onderdelen (strip-kader, logo, …) volgen later.</p>
+
+{{-- ── Maskers-beheervenster ── --}}
+<div id="dg-masks-modal-overlay" class="dg-modal-overlay" onclick="if(event.target === this) dgCloseMasksModal()">
+    <div class="dg-modal">
+        <div class="dg-modal-head">
+            <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;">🎭 Maskerbibliotheek</h3>
+            <button type="button" class="dg-modal-close" onclick="dgCloseMasksModal()">✕</button>
+        </div>
+
+        <div id="dg-mask-list" class="dg-mask-list"></div>
+
+        <div style="border-top:1px solid #f1f5f9;padding-top:1rem;">
+            <p class="dg-label" style="margin-bottom:.6rem;">Nieuw masker toevoegen</p>
+            <div class="dg-modal-form-row">
+                <input id="modal_mask_label" type="text" class="dg-file" placeholder="Naam (bijv. 'Ovaal middenvak')">
+            </div>
+            <div class="dg-modal-form-row">
+                <label class="dg-label" for="modal_mask_file">Masker <span class="dg-hint">— zwart-wit (wit = zichtbaar, zwart = transparant)</span></label>
+                <input id="modal_mask_file" type="file" class="dg-file" accept="image/*">
+            </div>
+            <div class="dg-modal-form-row">
+                <label class="dg-label" for="modal_mask_thumb">Thumbnail <span class="dg-hint">— optioneel, anders wordt het maskerbestand zelf gebruikt</span></label>
+                <input id="modal_mask_thumb" type="file" class="dg-file" accept="image/*">
+            </div>
+            <div class="dg-modal-form-row">
+                <label class="dg-label" for="modal_mask_svg">Rand-svg <span class="dg-hint">— optioneel, gevulde vorm (geen stroke), exact over het masker</span></label>
+                <input id="modal_mask_svg" type="file" class="dg-file" accept=".svg,image/svg+xml">
+            </div>
+            <button type="button" id="dg-mask-upload-btn" class="dg-logo-btn" onclick="dgUploadMaskToLibrary()">⬆ Toevoegen aan bibliotheek</button>
+            <p id="dg-mask-upload-error" class="dg-logo-error" style="display:none;"></p>
+        </div>
+    </div>
+</div>
 
 <div class="dg-grid">
     {{-- ── Formulier ── --}}
@@ -135,7 +195,10 @@
                     @endif
                 </div>
                 @if($results['ok'])
-                    <div id="dg-result-body" class="dg-result-body"><img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond"></div>
+                    <div id="dg-result-body" class="dg-result-body">
+                        <img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
+                        <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
+                    </div>
                     <div id="dg-logo-toolbar" class="dg-logo-toolbar">
                         <button type="button" class="dg-logo-btn" onclick="dgCenterLogoHorizontally()">↔ Centreer horizontaal</button>
                         <button type="button" class="dg-logo-btn" onclick="dgRemoveLogo()">✕ Logo verwijderen</button>
@@ -160,27 +223,18 @@
 
             @if($results['ok'])
             <div class="dg-mask-step">
-                <label class="dg-label" for="mask_select">Stap 3 — Transparantie <span class="dg-hint">— kies een masker (wit = zichtbaar, zwart = transparant), preview is direct</span></label>
-                <select id="mask_select" class="dg-select" onchange="dgMaskSelected()">
-                    <option value="">— geen masker —</option>
-                    @foreach($masks as $m)
-                        <option value="{{ $m->id }}" data-url="{{ $m->url }}">{{ $m->label }}</option>
-                    @endforeach
-                </select>
+                <label class="dg-label" style="margin-bottom:.7rem;">Stap 3 — Transparantie <span class="dg-hint">— kies een masker, preview is direct</span></label>
+                <div id="dg-mask-gallery" class="dg-mask-gallery"></div>
+
+                <div id="dg-color-row" class="dg-color-row" style="display:none;">
+                    <label class="dg-label" for="dg-border-color" style="margin:0;">Randkleur</label>
+                    <input id="dg-border-color" type="color" value="#000000" oninput="dgBorderColorChanged()">
+                </div>
+
                 <div class="dg-logo-actions">
                     <button type="button" id="dg-mask-apply-btn" class="dg-logo-btn" onclick="dgApplyMask()" disabled>✅ Toepassen op afbeelding</button>
                 </div>
                 <p id="dg-mask-error" class="dg-logo-error" style="display:none;"></p>
-
-                <div class="dg-mask-sub">
-                    <label class="dg-label" for="mask_new_file">Nieuw masker toevoegen aan bibliotheek</label>
-                    <input id="mask_new_label" type="text" class="dg-file" placeholder="Naam (bijv. 'Ovaal middenvak')" style="margin-bottom:.5rem;">
-                    <input id="mask_new_file" type="file" class="dg-file" accept="image/*">
-                    <div class="dg-logo-actions">
-                        <button type="button" id="dg-mask-upload-btn" class="dg-logo-btn" onclick="dgUploadMask()">⬆ Toevoegen aan bibliotheek</button>
-                    </div>
-                    <p id="dg-mask-upload-error" class="dg-logo-error" style="display:none;"></p>
-                </div>
             </div>
             @endif
         @endif
@@ -412,43 +466,101 @@ function dgRemoveLogo() {
 }
 
 let dgBackgroundPath = {!! Js::from($results['path'] ?? null) !!};
+let dgMasks = {!! Js::from($masks) !!};
+let dgSelectedMaskId = null;
 
-function dgMaskSelected() {
-    const select = document.getElementById('mask_select');
+function dgRenderMaskGallery() {
+    const gallery = document.getElementById('dg-mask-gallery');
+    if (!gallery) return;
+    gallery.innerHTML = '';
+    dgMasks.forEach(m => {
+        const wrap = document.createElement('div');
+
+        const thumb = document.createElement('div');
+        thumb.className = 'dg-mask-thumb' + (dgSelectedMaskId === m.id ? ' selected' : '');
+        thumb.title = m.label;
+        thumb.onclick = () => dgSelectMask(m.id);
+        const img = document.createElement('img');
+        img.src = m.thumbnailUrl;
+        thumb.appendChild(img);
+        wrap.appendChild(thumb);
+
+        const label = document.createElement('div');
+        label.className = 'dg-mask-thumb-label';
+        label.textContent = m.label;
+        wrap.appendChild(label);
+
+        gallery.appendChild(wrap);
+    });
+}
+
+function dgSelectMask(id) {
     const bgBody = document.getElementById('dg-result-body');
     const img = bgBody?.querySelector('img');
     const applyBtn = document.getElementById('dg-mask-apply-btn');
+    const colorRow = document.getElementById('dg-color-row');
     if (!img) return;
 
-    if (!select.value) {
-        img.style.maskImage = '';
+    dgSelectedMaskId = (dgSelectedMaskId === id) ? null : id;
+    dgRenderMaskGallery();
+
+    const mask = dgMasks.find(m => m.id === dgSelectedMaskId);
+    const borderLayer = document.getElementById('dg-svg-border-layer');
+
+    if (!mask) {
         img.style.webkitMaskImage = '';
+        img.style.maskImage = '';
         bgBody.classList.remove('dg-mask-preview-bg');
+        borderLayer.innerHTML = '';
+        colorRow.style.display = 'none';
         applyBtn.disabled = true;
         return;
     }
 
-    const url = select.selectedOptions[0].dataset.url;
-    img.style.webkitMaskImage = `url(${url})`;
-    img.style.maskImage = `url(${url})`;
+    img.style.webkitMaskImage = `url(${mask.url})`;
+    img.style.maskImage = `url(${mask.url})`;
     img.style.webkitMaskSize = '100% 100%';
     img.style.maskSize = '100% 100%';
     img.style.webkitMaskRepeat = 'no-repeat';
     img.style.maskRepeat = 'no-repeat';
     bgBody.classList.add('dg-mask-preview-bg');
     applyBtn.disabled = false;
+
+    if (mask.svgContent) {
+        borderLayer.innerHTML = mask.svgContent;
+        colorRow.style.display = 'flex';
+        dgBorderColorChanged();
+    } else {
+        borderLayer.innerHTML = '';
+        colorRow.style.display = 'none';
+    }
+}
+
+function dgBorderColorChanged() {
+    const color = document.getElementById('dg-border-color').value;
+    const svg = document.querySelector('#dg-svg-border-layer svg');
+    if (!svg) return;
+    svg.querySelectorAll('[fill]').forEach(el => {
+        if (el.getAttribute('fill').toLowerCase() !== 'none') el.setAttribute('fill', color);
+    });
+    svg.querySelectorAll('[stroke]').forEach(el => {
+        if (el.getAttribute('stroke').toLowerCase() !== 'none') el.setAttribute('stroke', color);
+    });
 }
 
 function dgApplyMask() {
-    const select = document.getElementById('mask_select');
     const errorEl = document.getElementById('dg-mask-error');
     errorEl.style.display = 'none';
-    if (!select.value || !dgBackgroundPath) return;
+    if (!dgSelectedMaskId || !dgBackgroundPath) return;
 
     const btn = document.getElementById('dg-mask-apply-btn');
     const original = btn.textContent;
     btn.disabled = true;
     btn.textContent = '⏳ Bezig…';
+
+    const mask = dgMasks.find(m => m.id === dgSelectedMaskId);
+    const payload = { background_path: dgBackgroundPath, mask_id: dgSelectedMaskId };
+    if (mask && mask.svgContent) payload.border_color = document.getElementById('dg-border-color').value;
 
     fetch("{{ route('design.masks.apply') }}", {
         method: 'POST',
@@ -456,7 +568,7 @@ function dgApplyMask() {
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}',
         },
-        body: JSON.stringify({ background_path: dgBackgroundPath, mask_id: select.value }),
+        body: JSON.stringify(payload),
     })
     .then(r => r.json())
     .then(data => {
@@ -469,7 +581,10 @@ function dgApplyMask() {
             img.style.maskImage = '';
             img.src = data.url;
             bgBody.classList.remove('dg-mask-preview-bg');
-            select.value = '';
+            document.getElementById('dg-svg-border-layer').innerHTML = '';
+            document.getElementById('dg-color-row').style.display = 'none';
+            dgSelectedMaskId = null;
+            dgRenderMaskGallery();
             btn.disabled = true;
             const dl = document.querySelector('.dg-result-head a[download]');
             if (dl) dl.href = data.url;
@@ -486,9 +601,60 @@ function dgApplyMask() {
     });
 }
 
-function dgUploadMask() {
-    const labelInput = document.getElementById('mask_new_label');
-    const fileInput = document.getElementById('mask_new_file');
+// ── Maskers-beheervenster ──
+
+function dgOpenMasksModal() {
+    dgRenderMaskList();
+    document.getElementById('dg-masks-modal-overlay').classList.add('open');
+}
+
+function dgCloseMasksModal() {
+    document.getElementById('dg-masks-modal-overlay').classList.remove('open');
+}
+
+function dgRenderMaskList() {
+    const list = document.getElementById('dg-mask-list');
+    list.innerHTML = '';
+    if (!dgMasks.length) {
+        list.innerHTML = '<p class="dg-hint">Nog geen maskers toegevoegd.</p>';
+        return;
+    }
+    dgMasks.forEach(m => {
+        const item = document.createElement('div');
+        item.className = 'dg-mask-list-item';
+
+        const img = document.createElement('img');
+        img.src = m.thumbnailUrl;
+        item.appendChild(img);
+
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = m.label;
+        item.appendChild(label);
+
+        if (m.svgContent) {
+            const tag = document.createElement('span');
+            tag.className = 'svg-tag';
+            tag.textContent = 'svg-rand';
+            item.appendChild(tag);
+        }
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'dg-mask-delete';
+        del.textContent = '🗑 Verwijderen';
+        del.onclick = () => dgDeleteMask(m.id);
+        item.appendChild(del);
+
+        list.appendChild(item);
+    });
+}
+
+function dgUploadMaskToLibrary() {
+    const labelInput = document.getElementById('modal_mask_label');
+    const fileInput = document.getElementById('modal_mask_file');
+    const thumbInput = document.getElementById('modal_mask_thumb');
+    const svgInput = document.getElementById('modal_mask_svg');
     const errorEl = document.getElementById('dg-mask-upload-error');
     errorEl.style.display = 'none';
 
@@ -506,6 +672,8 @@ function dgUploadMask() {
     const fd = new FormData();
     fd.append('label', labelInput.value.trim());
     fd.append('mask', fileInput.files[0]);
+    if (thumbInput.files.length) fd.append('thumbnail', thumbInput.files[0]);
+    if (svgInput.files.length) fd.append('svg', svgInput.files[0]);
 
     fetch("{{ route('design.masks.upload') }}", {
         method: 'POST',
@@ -517,16 +685,13 @@ function dgUploadMask() {
         btn.disabled = false;
         btn.textContent = original;
         if (data.ok) {
-            const select = document.getElementById('mask_select');
-            const opt = document.createElement('option');
-            opt.value = data.id;
-            opt.textContent = data.label;
-            opt.dataset.url = data.url;
-            select.appendChild(opt);
-            select.value = data.id;
-            dgMaskSelected();
+            dgMasks.push({ id: data.id, label: data.label, url: data.url, thumbnailUrl: data.thumbnailUrl, svgContent: data.svgContent });
+            dgRenderMaskList();
+            dgRenderMaskGallery();
             labelInput.value = '';
             fileInput.value = '';
+            thumbInput.value = '';
+            svgInput.value = '';
         } else {
             errorEl.textContent = 'Uploaden mislukt: ' + (data.error || 'onbekende fout');
             errorEl.style.display = 'block';
@@ -540,6 +705,24 @@ function dgUploadMask() {
     });
 }
 
+function dgDeleteMask(id) {
+    if (!confirm('Dit masker verwijderen?')) return;
+    fetch(`{{ url('ontwerp-generator/masks') }}/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}' },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            dgMasks = dgMasks.filter(m => m.id !== id);
+            if (dgSelectedMaskId === id) dgSelectedMaskId = null;
+            dgRenderMaskList();
+            dgRenderMaskGallery();
+        }
+    });
+}
+
+dgRenderMaskGallery();
 dgEventTypeChanged();
 </script>
 @endpush

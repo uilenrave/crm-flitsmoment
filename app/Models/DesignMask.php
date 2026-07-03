@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 
 class DesignMask extends Model
 {
-    protected $fillable = ['account_id', 'label', 'path'];
+    protected $fillable = ['account_id', 'label', 'path', 'thumbnail_path', 'svg_path'];
 
     protected static function booted(): void
     {
@@ -30,5 +30,15 @@ class DesignMask extends Model
     public function getUrlAttribute(): string
     {
         return Storage::disk('public')->url($this->path);
+    }
+
+    public function getThumbnailUrlAttribute(): string
+    {
+        return Storage::disk('public')->url($this->thumbnail_path ?? $this->path);
+    }
+
+    public function getSvgUrlAttribute(): ?string
+    {
+        return $this->svg_path ? Storage::disk('public')->url($this->svg_path) : null;
     }
 }
