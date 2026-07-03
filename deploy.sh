@@ -15,6 +15,7 @@ SSH_HOST="212.107.16.104"
 SSH_PORT="65002"
 SSH_USER="u493340040"
 REMOTE_BASE="/home/u493340040/domains/crm.flitsmoment.nl/laravel"
+REMOTE_PUBLIC_HTML="/home/u493340040/domains/crm.flitsmoment.nl/public_html"
 PHP="/opt/alt/php84/usr/bin/php"
 
 DB_NAME="u493340040_crm_fm"
@@ -110,6 +111,27 @@ clear_caches() {
 }
 
 # ─────────────────────────────────────────────────────────────
+sync_storage_symlinks() {
+    echo ""
+    echo "🔗 Storage-symlinks controleren..."
+
+    # De echte document root is public_html (niet laravel/public). Daar staat
+    # storage/ als gewone map met per-submap symlinks naar laravel/storage/app/public/*
+    # (geen losse `storage:link`). Nieuwe submappen missen anders een symlink → 404.
+    eval $SSH_CMD "'
+        cd \"$REMOTE_PUBLIC_HTML/storage\" || exit 0
+        for dir in \"$REMOTE_BASE\"/storage/app/public/*/; do
+            name=\$(basename \"\$dir\")
+            if [ ! -e \"\$name\" ]; then
+                ln -s \"$REMOTE_BASE/storage/app/public/\$name\" \"\$name\"
+                echo \"   + symlink aangemaakt: \$name\"
+            fi
+        done
+    '"
+    echo "✅ Storage-symlinks in orde"
+}
+
+# ─────────────────────────────────────────────────────────────
 pull_production_db() {
     echo "⬇️  Productie-database lokaal importeren..."
 
@@ -153,6 +175,7 @@ case "${1:-}" in
 
         backup
         deploy_files
+        sync_storage_symlinks
         run_migrations
         clear_caches
 
