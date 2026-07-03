@@ -14,6 +14,10 @@ use Illuminate\View\View;
 
 class DesignGeneratorController extends Controller
 {
+    /** Vaste canvasmaat voor de achtergrond — onafhankelijk van event-type. */
+    private const CANVAS_WIDTH = 600;
+    private const CANVAS_HEIGHT = 1800;
+
     /** Toon het ontwerp-generator formulier (vooralsnog alleen: achtergrond) */
     public function index(): View
     {
@@ -50,9 +54,10 @@ class DesignGeneratorController extends Controller
         try {
             $manager = app(ImageGenerationManager::class);
             $image   = $manager->driver('gemini')->generate($prompt, $refPaths, null);
+            $binary  = $this->coverCropToCanvas($image->binary, self::CANVAS_WIDTH, self::CANVAS_HEIGHT);
 
-            $filename = 'design-generator/out/' . Str::random(24) . '.' . $image->extension();
-            Storage::disk('public')->put($filename, $image->binary);
+            $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
+            Storage::disk('public')->put($filename, $binary);
 
             $results = [
                 'ok'      => true,
@@ -125,6 +130,39 @@ class DesignGeneratorController extends Controller
         );
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Forceer de gegenereerde achtergrond op het vaste canvas (zoals CSS background-size: cover):
+     * schalen tot beide dimensies gedekt zijn, daarna vanuit het midden bijsnijden op maat.
+     * Gemini's aspect ratio klopt niet altijd exact — dit garandeert altijd 600×1800px.
+     */
+    private function coverCropToCanvas(string $binary, int $targetWidth, int $targetHeight): string
+    {
+        $image = new \Imagick();
+        $image->readImageBlob($binary);
+        $image = $image->mergeImageLayers(\Imagick::LAYERMETHOD_FLATTEN);
+
+        $srcWidth  = $image->getImageWidth();
+        $srcHeight = $image->getImageHeight();
+        $scale     = max($targetWidth / $srcWidth, $targetHeight / $srcHeight);
+
+        $image->resizeImage(
+            (int) ceil($srcWidth * $scale),
+            (int) ceil($srcHeight * $scale),
+            \Imagick::FILTER_LANCZOS,
+            1
+        );
+
+        $cropX = (int) round(($image->getImageWidth() - $targetWidth) / 2);
+        $cropY = (int) round(($image->getImageHeight() - $targetHeight) / 2);
+        $image->cropImage($targetWidth, $targetHeight, max(0, $cropX), max(0, $cropY));
+        $image->setImagePage(0, 0, 0, 0);
+
+        $image->setImageFormat('jpg');
+        $image->setImageCompressionQuality(92);
+
+        return $image->getImageBlob();
     }
 
     private function baseViewData(): array
