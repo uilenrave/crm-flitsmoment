@@ -131,8 +131,11 @@ class DesignGeneratorController extends Controller
             'svg'       => 'svg-bestand',
         ]);
 
+        $maskImage = new \Imagick($request->file('mask')->getRealPath());
+        $maskImage->setImageFormat('png');
+
         $filename = 'design-generator/masks/' . Str::random(24) . '.png';
-        Storage::disk('public')->put($filename, file_get_contents($request->file('mask')->getRealPath()));
+        Storage::disk('public')->put($filename, $maskImage->getImageBlob());
 
         $thumbFilename = null;
         if ($request->hasFile('thumbnail')) {
