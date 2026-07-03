@@ -8,7 +8,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DesignPromptSetting extends Model
 {
-    protected $fillable = ['account_id', 'key', 'label', 'prompt'];
+    protected $fillable = ['account_id', 'key', 'event_type', 'label', 'prompt'];
+
+    /** Type event dat je selecteert in de generator — bepaalt welke prompt-variant wordt gebruikt. */
+    public const EVENT_TYPES = [
+        'bruiloft'      => 'Bruiloft',
+        'verjaardag'    => 'Verjaardag',
+        'bedrijfsfeest' => 'Bedrijfsfeest',
+        'borrel'        => 'Borrel',
+    ];
 
     /** Vaste standaardprompt per onderdeel, gebruikt zolang er niets is opgeslagen. */
     public const DEFAULTS = [
@@ -34,9 +42,22 @@ class DesignPromptSetting extends Model
         return $this->belongsTo(Account::class);
     }
 
-    public static function currentPrompt(string $key): string
+    /**
+     * Prompt voor een onderdeel + event-type. Valt terug op de algemene (event_type=null)
+     * prompt van dit onderdeel, en daarna op de ingebouwde standaardtekst.
+     */
+    public static function currentPrompt(string $key, ?string $eventType = null): string
     {
-        return static::where('key', $key)->value('prompt') ?? (self::DEFAULTS[$key]['prompt'] ?? '');
+        if ($eventType) {
+            $specific = static::where('key', $key)->where('event_type', $eventType)->value('prompt');
+            if ($specific !== null) {
+                return $specific;
+            }
+        }
+
+        $general = static::where('key', $key)->whereNull('event_type')->value('prompt');
+
+        return $general ?? (self::DEFAULTS[$key]['prompt'] ?? '');
     }
 
     public static function label(string $key): string

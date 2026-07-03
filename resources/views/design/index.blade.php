@@ -10,8 +10,8 @@
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
     .dg-field { margin-bottom: 1.1rem; }
     .dg-textarea { width: 100%; min-height: 140px; padding: .7rem .8rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .9rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
-    .dg-textarea:focus, .dg-file:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.12); }
-    .dg-file { width: 100%; padding: .55rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .875rem; background: #fff; box-sizing: border-box; }
+    .dg-textarea:focus, .dg-file:focus, .dg-select:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.12); }
+    .dg-file, .dg-select { width: 100%; padding: .55rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .875rem; background: #fff; box-sizing: border-box; }
     .dg-result { border: 1px solid #e2e8f0; border-radius: .75rem; overflow: hidden; background: #fff; }
     .dg-result-head { display: flex; justify-content: space-between; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; font-size: .8rem; }
     .dg-badge { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .15rem .5rem; border-radius: 999px; background: #ede9fe; color: #6d28d9; }
@@ -42,13 +42,22 @@
         @csrf
 
         <div class="dg-field">
+            <label class="dg-label" for="event_type">Type event</label>
+            <select id="event_type" name="event_type" class="dg-select" onchange="dgEventTypeChanged()">
+                @foreach($eventTypes as $value => $typeLabel)
+                    <option value="{{ $value }}" @selected(old('event_type', $eventType) === $value)>{{ $typeLabel }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        <div class="dg-field">
             <label class="dg-label">
-                {{ $promptLabel }}-prompt
+                {{ $promptLabel }}-prompt <span id="dg-current-type-label"></span>
                 <span class="dg-gear" title="Prompt aanpassen" onclick="document.getElementById('dg-settings').classList.toggle('open')">⚙️</span>
             </label>
             <div id="dg-settings" class="dg-settings">
-                <label class="dg-label" for="dg-prompt-template">Vaste prompt <span class="dg-hint">— wordt onthouden, {{ '{beschrijving}' }} wordt vervangen door je invoer hieronder</span></label>
-                <textarea id="dg-prompt-template">{{ $promptTemplate }}</textarea>
+                <label class="dg-label" for="dg-prompt-template">Vaste prompt <span class="dg-hint">— wordt onthouden per type event, {{ '{beschrijving}' }} wordt vervangen door je invoer hieronder</span></label>
+                <textarea id="dg-prompt-template"></textarea>
                 <div class="dg-settings-actions">
                     <span class="dg-settings-reset" onclick="document.getElementById('dg-prompt-template').value = {{ Js::from($promptDefault) }}">↺ Herstel standaardtekst</span>
                     <span style="display:flex;align-items:center;gap:.6rem;">
@@ -70,6 +79,7 @@
         </div>
 
         @error('input') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
+        @error('event_type') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
         @error('references.*') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
 
         <button type="submit" id="dg-submit" class="btn btn-primary" style="width:100%;justify-content:center;">✨ Genereer achtergrond</button>
@@ -87,7 +97,7 @@
         @else
             @if($input)
             <div style="font-size:.8rem;color:#64748b;margin-bottom:.75rem;padding:.6rem .85rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.5rem;">
-                <strong>Thema:</strong> {{ \Illuminate\Support\Str::limit($input, 220) }}
+                <strong>Categorie:</strong> {{ $eventTypes[$eventType] ?? $eventType }} — <strong>Thema:</strong> {{ \Illuminate\Support\Str::limit($input, 220) }}
             </div>
             @endif
             <div class="dg-result">
@@ -111,6 +121,15 @@
 
 @push('scripts')
 <script>
+const dgPromptsByType = {!! Js::from($promptsByType) !!};
+const dgEventTypeLabels = {!! Js::from($eventTypes) !!};
+
+function dgEventTypeChanged() {
+    const type = document.getElementById('event_type').value;
+    document.getElementById('dg-prompt-template').value = dgPromptsByType[type] || '';
+    document.getElementById('dg-current-type-label').textContent = '(' + (dgEventTypeLabels[type] || type) + ')';
+}
+
 function dgSubmitting(form) {
     const btn = document.getElementById('dg-submit');
     btn.disabled = true;
@@ -120,23 +139,27 @@ function dgSubmitting(form) {
 
 function dgSavePrompt() {
     const prompt = document.getElementById('dg-prompt-template').value;
+    const eventType = document.getElementById('event_type').value;
     fetch("{{ route('design.prompt.update') }}", {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}',
         },
-        body: JSON.stringify({ key: {{ Js::from($promptKey) }}, prompt: prompt }),
+        body: JSON.stringify({ key: {{ Js::from($promptKey) }}, event_type: eventType, prompt: prompt }),
     })
     .then(r => r.json())
     .then(data => {
         if (data.ok) {
+            dgPromptsByType[eventType] = prompt;
             const el = document.getElementById('dg-settings-saved');
             el.classList.add('show');
             setTimeout(() => el.classList.remove('show'), 2000);
         }
     });
 }
+
+dgEventTypeChanged();
 </script>
 @endpush
 @endsection

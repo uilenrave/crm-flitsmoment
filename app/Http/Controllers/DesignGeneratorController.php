@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class DesignGeneratorController extends Controller
@@ -16,10 +17,10 @@ class DesignGeneratorController extends Controller
     /** Toon het ontwerp-generator formulier (vooralsnog alleen: achtergrond) */
     public function index(): View
     {
-        return view('design.index', $this->baseViewData() + [
+        return view('design.index', array_merge($this->baseViewData(), [
             'results' => null,
             'input'   => '',
-        ]);
+        ]));
     }
 
     /** Genereer een achtergrondafbeelding via Gemini */
@@ -27,6 +28,7 @@ class DesignGeneratorController extends Controller
     {
         $data = $request->validate([
             'input'        => ['required', 'string', 'max:2000'],
+            'event_type'   => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
             'references'   => ['nullable', 'array', 'max:6'],
             'references.*' => ['image', 'max:8192'], // 8 MB — alleen voor referentieafbeeldingen hier
         ], [], [
@@ -39,7 +41,7 @@ class DesignGeneratorController extends Controller
             $refPaths[] = Storage::disk('local')->path($stored);
         }
 
-        $template = DesignPromptSetting::currentPrompt('background');
+        $template = DesignPromptSetting::currentPrompt('background', $data['event_type']);
         $prompt = str_contains($template, '{beschrijving}')
             ? str_replace('{beschrijving}', $data['input'], $template)
             : $template . "\n\n" . $data['input'];
@@ -65,22 +67,24 @@ class DesignGeneratorController extends Controller
             ];
         }
 
-        return view('design.index', $this->baseViewData() + [
-            'results' => $results,
-            'input'   => $data['input'],
-        ]);
+        return view('design.index', array_merge($this->baseViewData(), [
+            'results'   => $results,
+            'input'     => $data['input'],
+            'eventType' => $data['event_type'],
+        ]));
     }
 
-    /** Sla de (vaste, herbruikbare) prompt-instelling voor een onderdeel op */
+    /** Sla de (vaste, herbruikbare) prompt-instelling voor een onderdeel + event-type op */
     public function updatePrompt(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'key'    => ['required', 'string', 'in:background'],
-            'prompt' => ['required', 'string', 'max:4000'],
+            'key'        => ['required', 'string', 'in:background'],
+            'event_type' => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
+            'prompt'     => ['required', 'string', 'max:4000'],
         ]);
 
         DesignPromptSetting::updateOrCreate(
-            ['key' => $data['key']],
+            ['key' => $data['key'], 'event_type' => $data['event_type']],
             ['label' => DesignPromptSetting::label($data['key']), 'prompt' => $data['prompt']]
         );
 
@@ -89,11 +93,18 @@ class DesignGeneratorController extends Controller
 
     private function baseViewData(): array
     {
+        $promptsByType = [];
+        foreach (DesignPromptSetting::EVENT_TYPES as $type => $typeLabel) {
+            $promptsByType[$type] = DesignPromptSetting::currentPrompt('background', $type);
+        }
+
         return [
             'promptKey'      => 'background',
             'promptLabel'    => DesignPromptSetting::label('background'),
-            'promptTemplate' => DesignPromptSetting::currentPrompt('background'),
             'promptDefault'  => DesignPromptSetting::DEFAULTS['background']['prompt'],
+            'promptsByType'  => $promptsByType,
+            'eventTypes'     => DesignPromptSetting::EVENT_TYPES,
+            'eventType'      => array_key_first(DesignPromptSetting::EVENT_TYPES),
         ];
     }
 }
