@@ -4,9 +4,9 @@
 
 @section('content')
 <style>
-    .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
-    @media (min-width: 1024px) { .dg-grid { grid-template-columns: 400px 1fr; align-items: start; } }
-    .dg-preview-col { position: sticky; top: 1.25rem; }
+    .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: start; }
+    @media (min-width: 900px) { .dg-grid { grid-template-columns: 400px 1fr; } }
+    .dg-preview-col { position: sticky; top: 1.25rem; align-self: start; max-height: calc(100vh - 2.5rem); overflow: auto; }
     .dg-label { display: block; font-size: .8rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
     .dg-field { margin-bottom: 1.1rem; }
