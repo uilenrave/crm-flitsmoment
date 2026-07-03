@@ -30,7 +30,7 @@
     .dg-settings-saved { font-size: .75rem; color: #16a34a; font-weight: 600; opacity: 0; transition: opacity .2s; }
     .dg-settings-saved.show { opacity: 1; }
 
-    .dg-logo-field { display: none; }
+    .dg-logo-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
     .dg-logo-actions { display: flex; gap: .5rem; margin-top: .5rem; }
     .dg-logo-btn { font-size: .78rem; font-weight: 700; color: #7c3aed; background: #fff; border: 1px solid #ddd6fe; border-radius: .4rem; padding: .4rem .7rem; cursor: pointer; }
     .dg-logo-btn:hover { background: #f5f3ff; }
@@ -88,23 +88,8 @@
             <textarea id="input" name="input" class="dg-textarea" required placeholder="Bijv: Speelse achtergrond voor een 40e verjaardag, ballonnen en confetti in feestkleuren.">{{ old('input', $input) }}</textarea>
         </div>
 
-        <div class="dg-field">
-            <label class="dg-label" for="references">Referenties <span class="dg-hint">— flyer / uitnodiging / huisstijl (meerdere mag, max 8 MB p/st)</span></label>
-            <input id="references" name="references[]" type="file" class="dg-file" accept="image/*" multiple>
-        </div>
-
-        <div class="dg-field dg-logo-field" id="dg-logo-field">
-            <label class="dg-label" for="logo_upload">Logo <span class="dg-hint">— optioneel, wordt vrijgesteld en apart op de achtergrond geplaatst (max 8 MB)</span></label>
-            <input id="logo_upload" type="file" class="dg-file" accept="image/*">
-            <div class="dg-logo-actions">
-                <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstellen</button>
-            </div>
-            <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
-        </div>
-
         @error('input') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
         @error('event_type') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
-        @error('references.*') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
 
         <button type="submit" id="dg-submit" class="btn btn-primary" style="width:100%;justify-content:center;">✨ Genereer achtergrond</button>
         <p class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
@@ -143,6 +128,17 @@
                     </div>
                 @endif
             </div>
+
+            @if($results['ok'] && in_array($eventType, $logoEventTypes))
+            <div class="dg-logo-step">
+                <label class="dg-label" for="logo_upload">Stap 2 — Logo <span class="dg-hint">— optioneel, wordt vrijgesteld en boven de achtergrond geplakt (max 8 MB)</span></label>
+                <input id="logo_upload" type="file" class="dg-file" accept="image/*">
+                <div class="dg-logo-actions">
+                    <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstaand maken</button>
+                </div>
+                <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
+            </div>
+            @endif
         @endif
     </div>
 </div>
@@ -151,13 +147,11 @@
 <script>
 const dgPromptsByType = {!! Js::from($promptsByType) !!};
 const dgEventTypeLabels = {!! Js::from($eventTypes) !!};
-const dgLogoEventTypes = {!! Js::from($logoEventTypes) !!};
 
 function dgEventTypeChanged() {
     const type = document.getElementById('event_type').value;
     document.getElementById('dg-prompt-template').value = dgPromptsByType[type] || '';
     document.getElementById('dg-current-type-label').textContent = '(' + (dgEventTypeLabels[type] || type) + ')';
-    document.getElementById('dg-logo-field').style.display = dgLogoEventTypes.includes(type) ? 'block' : 'none';
 }
 
 function dgToggleSettings() {
