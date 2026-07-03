@@ -19,6 +19,7 @@
     .dg-result-body img { display: block; max-height: 80vh; width: auto; max-width: 100%; }
     .dg-gear { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: .4rem; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; font-size: .85rem; margin-left: .4rem; vertical-align: middle; }
     .dg-gear:hover { background: #f8fafc; }
+    .dg-gear.active { background: #ede9fe; border-color: #c4b5fd; }
     .dg-settings { display: none; margin: -.25rem 0 1.1rem; padding: .85rem .9rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .5rem; }
     .dg-settings.open { display: block; }
     .dg-settings textarea { width: 100%; min-height: 160px; padding: .6rem .7rem; border: 1px solid #e2e8f0; border-radius: .45rem; font-size: .82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
@@ -53,7 +54,7 @@
         <div class="dg-field">
             <label class="dg-label">
                 {{ $promptLabel }}-prompt <span id="dg-current-type-label"></span>
-                <span class="dg-gear" title="Prompt aanpassen" onclick="document.getElementById('dg-settings').classList.toggle('open')">⚙️</span>
+                <span id="dg-gear" class="dg-gear" title="Prompt aanpassen / sluiten" onclick="dgToggleSettings()">⚙️</span>
             </label>
             <div id="dg-settings" class="dg-settings">
                 <label class="dg-label" for="dg-prompt-template">Vaste prompt <span class="dg-hint">— wordt onthouden per type event, {{ '{beschrijving}' }} wordt vervangen door je invoer hieronder</span></label>
@@ -128,6 +129,13 @@ function dgEventTypeChanged() {
     const type = document.getElementById('event_type').value;
     document.getElementById('dg-prompt-template').value = dgPromptsByType[type] || '';
     document.getElementById('dg-current-type-label').textContent = '(' + (dgEventTypeLabels[type] || type) + ')';
+}
+
+function dgToggleSettings() {
+    const open = document.getElementById('dg-settings').classList.toggle('open');
+    const gear = document.getElementById('dg-gear');
+    gear.classList.toggle('active', open);
+    gear.title = open ? 'Klik om te sluiten' : 'Prompt aanpassen';
 }
 
 function dgSubmitting(form) {
