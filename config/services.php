@@ -45,4 +45,18 @@ return [
         'app_code' => env('EBOEKHOUDEN_APP_CODE', 'Flitsmoment'),
     ],
 
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'image_model' => env('GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image'),
+    ],
+
+    'openai_images' => [
+        'api_key' => env('OPENAI_API_KEY'),
+        'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-2'),
+    ],
+
+    'image_generation' => [
+        'default' => env('IMAGE_GENERATION_PROVIDER', 'gemini'),
+    ],
+
 ];
