@@ -15,7 +15,8 @@
     .dg-result { border: 1px solid #e2e8f0; border-radius: .75rem; overflow: hidden; background: #fff; }
     .dg-result-head { display: flex; justify-content: space-between; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; font-size: .8rem; }
     .dg-badge { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .15rem .5rem; border-radius: 999px; background: #ede9fe; color: #6d28d9; }
-    .dg-result img { display: block; width: 100%; height: auto; background: #f8fafc; }
+    .dg-result-body { display: flex; justify-content: center; background: #f8fafc; }
+    .dg-result-body img { display: block; max-height: 80vh; width: auto; max-width: 100%; }
     .dg-gear { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: .4rem; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; font-size: .85rem; margin-left: .4rem; vertical-align: middle; }
     .dg-gear:hover { background: #f8fafc; }
     .dg-settings { display: none; margin: -.25rem 0 1.1rem; padding: .85rem .9rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .5rem; }
@@ -97,7 +98,7 @@
                     @endif
                 </div>
                 @if($results['ok'])
-                    <a href="{{ $results['url'] }}" target="_blank"><img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond"></a>
+                    <a href="{{ $results['url'] }}" target="_blank" class="dg-result-body"><img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond"></a>
                 @else
                     <div style="padding:1rem;color:#b91c1c;font-size:.8rem;background:#fef2f2;">
                         <strong>Mislukt.</strong><br>{{ \Illuminate\Support\Str::limit($results['error'], 300) }}
