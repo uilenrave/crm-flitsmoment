@@ -6,6 +6,7 @@
 <style>
     .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
     @media (min-width: 1024px) { .dg-grid { grid-template-columns: 400px 1fr; align-items: start; } }
+    .dg-preview-col { position: sticky; top: 1.25rem; }
     .dg-label { display: block; font-size: .8rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
     .dg-field { margin-bottom: 1.1rem; }
@@ -124,7 +125,8 @@
 </div>
 
 <div class="dg-grid">
-    {{-- ── Formulier ── --}}
+    {{-- ── Links: alle edit-opties ── --}}
+    <div>
     <form method="POST" action="{{ route('design.generate') }}" enctype="multipart/form-data" class="card neu-card" style="padding:1.25rem;" onsubmit="dgSubmitting(this)">
         @csrf
 
@@ -173,8 +175,37 @@
         <p class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
     </form>
 
-    {{-- ── Resultaat ── --}}
-    <div>
+    @if($results['ok'] ?? false)
+        @if(in_array($eventType, $logoEventTypes))
+        <div class="dg-logo-step">
+            <label class="dg-label" for="logo_upload">Stap 2 — Logo <span class="dg-hint">— optioneel, wordt vrijgesteld en boven de achtergrond geplakt (max 8 MB)</span></label>
+            <input id="logo_upload" type="file" class="dg-file" accept="image/*">
+            <div class="dg-logo-actions">
+                <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstaand maken</button>
+            </div>
+            <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
+        </div>
+        @endif
+
+        <div class="dg-mask-step">
+            <label class="dg-label" style="margin-bottom:.7rem;">Stap 3 — Transparantie <span class="dg-hint">— kies een masker, preview is direct</span></label>
+            <div id="dg-mask-gallery" class="dg-mask-gallery"></div>
+
+            <div id="dg-color-row" class="dg-color-row" style="display:none;">
+                <label class="dg-label" for="dg-border-color" style="margin:0;">Randkleur</label>
+                <input id="dg-border-color" type="color" value="#000000" oninput="dgBorderColorChanged()">
+            </div>
+
+            <div class="dg-logo-actions">
+                <button type="button" id="dg-mask-apply-btn" class="dg-logo-btn" onclick="dgApplyMask()" disabled>✅ Toepassen op afbeelding</button>
+            </div>
+            <p id="dg-mask-error" class="dg-logo-error" style="display:none;"></p>
+        </div>
+    @endif
+    </div>
+
+    {{-- ── Rechts: alleen het voorbeeld, blijft staan tijdens scrollen ── --}}
+    <div class="dg-preview-col">
         @if($results === null)
             <div class="card neu-card" style="padding:2.5rem 1.5rem;text-align:center;color:#94a3b8;">
                 <div style="font-size:2rem;margin-bottom:.5rem;">🖼️</div>
@@ -209,34 +240,6 @@
                     </div>
                 @endif
             </div>
-
-            @if($results['ok'] && in_array($eventType, $logoEventTypes))
-            <div class="dg-logo-step">
-                <label class="dg-label" for="logo_upload">Stap 2 — Logo <span class="dg-hint">— optioneel, wordt vrijgesteld en boven de achtergrond geplakt (max 8 MB)</span></label>
-                <input id="logo_upload" type="file" class="dg-file" accept="image/*">
-                <div class="dg-logo-actions">
-                    <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstaand maken</button>
-                </div>
-                <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
-            </div>
-            @endif
-
-            @if($results['ok'])
-            <div class="dg-mask-step">
-                <label class="dg-label" style="margin-bottom:.7rem;">Stap 3 — Transparantie <span class="dg-hint">— kies een masker, preview is direct</span></label>
-                <div id="dg-mask-gallery" class="dg-mask-gallery"></div>
-
-                <div id="dg-color-row" class="dg-color-row" style="display:none;">
-                    <label class="dg-label" for="dg-border-color" style="margin:0;">Randkleur</label>
-                    <input id="dg-border-color" type="color" value="#000000" oninput="dgBorderColorChanged()">
-                </div>
-
-                <div class="dg-logo-actions">
-                    <button type="button" id="dg-mask-apply-btn" class="dg-logo-btn" onclick="dgApplyMask()" disabled>✅ Toepassen op afbeelding</button>
-                </div>
-                <p id="dg-mask-error" class="dg-logo-error" style="display:none;"></p>
-            </div>
-            @endif
         @endif
     </div>
 </div>
