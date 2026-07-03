@@ -29,6 +29,20 @@
     .dg-settings-reset { font-size: .75rem; color: #64748b; cursor: pointer; text-decoration: underline; }
     .dg-settings-saved { font-size: .75rem; color: #16a34a; font-weight: 600; opacity: 0; transition: opacity .2s; }
     .dg-settings-saved.show { opacity: 1; }
+
+    .dg-logo-field { display: none; }
+    .dg-logo-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+    .dg-logo-btn { font-size: .78rem; font-weight: 700; color: #7c3aed; background: #fff; border: 1px solid #ddd6fe; border-radius: .4rem; padding: .4rem .7rem; cursor: pointer; }
+    .dg-logo-btn:hover { background: #f5f3ff; }
+    .dg-logo-btn:disabled { opacity: .5; cursor: default; }
+    .dg-logo-error { color: #b91c1c; font-size: .75rem; margin-top: .4rem; }
+    .dg-result-body { position: relative; }
+    .dg-logo-toolbar { display: none; gap: .5rem; padding: .6rem .9rem; border-top: 1px solid #f1f5f9; }
+    .dg-logo-layer { position: absolute; top: 50%; left: 50%; touch-action: none; user-select: none; cursor: move; }
+    .dg-logo-layer img { display: block; width: 100%; height: 100%; pointer-events: none; }
+    .dg-logo-handle { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+    .dg-logo-handle.resize { right: 2px; bottom: 2px; cursor: nwse-resize; }
+    .dg-logo-handle.rotate { right: 2px; top: 2px; cursor: grab; }
 </style>
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
@@ -79,6 +93,15 @@
             <input id="references" name="references[]" type="file" class="dg-file" accept="image/*" multiple>
         </div>
 
+        <div class="dg-field dg-logo-field" id="dg-logo-field">
+            <label class="dg-label" for="logo_upload">Logo <span class="dg-hint">— optioneel, wordt vrijgesteld en apart op de achtergrond geplaatst (max 8 MB)</span></label>
+            <input id="logo_upload" type="file" class="dg-file" accept="image/*">
+            <div class="dg-logo-actions">
+                <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstellen</button>
+            </div>
+            <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
+        </div>
+
         @error('input') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
         @error('event_type') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
         @error('references.*') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
@@ -109,7 +132,11 @@
                     @endif
                 </div>
                 @if($results['ok'])
-                    <a href="{{ $results['url'] }}" target="_blank" class="dg-result-body"><img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond"></a>
+                    <div id="dg-result-body" class="dg-result-body"><img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond"></div>
+                    <div id="dg-logo-toolbar" class="dg-logo-toolbar">
+                        <button type="button" class="dg-logo-btn" onclick="dgCenterLogoHorizontally()">↔ Centreer horizontaal</button>
+                        <button type="button" class="dg-logo-btn" onclick="dgRemoveLogo()">✕ Logo verwijderen</button>
+                    </div>
                 @else
                     <div style="padding:1rem;color:#b91c1c;font-size:.8rem;background:#fef2f2;">
                         <strong>Mislukt.</strong><br>{{ \Illuminate\Support\Str::limit($results['error'], 300) }}
@@ -124,11 +151,13 @@
 <script>
 const dgPromptsByType = {!! Js::from($promptsByType) !!};
 const dgEventTypeLabels = {!! Js::from($eventTypes) !!};
+const dgLogoEventTypes = {!! Js::from($logoEventTypes) !!};
 
 function dgEventTypeChanged() {
     const type = document.getElementById('event_type').value;
     document.getElementById('dg-prompt-template').value = dgPromptsByType[type] || '';
     document.getElementById('dg-current-type-label').textContent = '(' + (dgEventTypeLabels[type] || type) + ')';
+    document.getElementById('dg-logo-field').style.display = dgLogoEventTypes.includes(type) ? '' : 'none';
 }
 
 function dgToggleSettings() {
@@ -165,6 +194,183 @@ function dgSavePrompt() {
             setTimeout(() => el.classList.remove('show'), 2000);
         }
     });
+}
+
+let dgLogo = null; // { xPct, yPct, widthPx, aspect, rotateDeg }
+
+function dgCutoutLogo() {
+    const fileInput = document.getElementById('logo_upload');
+    const errorEl = document.getElementById('dg-logo-error');
+    errorEl.style.display = 'none';
+
+    if (!fileInput.files.length) {
+        errorEl.textContent = 'Kies eerst een logo-afbeelding.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const btn = document.getElementById('dg-logo-cutout-btn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Vrijstellen…';
+
+    const fd = new FormData();
+    fd.append('logo', fileInput.files[0]);
+
+    fetch("{{ route('design.logo.cutout') }}", {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}' },
+        body: fd,
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = original;
+        if (data.ok) {
+            dgInitLogoEditor(data.url);
+        } else {
+            errorEl.textContent = 'Vrijstellen mislukt: ' + (data.error || 'onbekende fout');
+            errorEl.style.display = 'block';
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = original;
+        errorEl.textContent = 'Vrijstellen mislukt (netwerkfout).';
+        errorEl.style.display = 'block';
+    });
+}
+
+function dgInitLogoEditor(url) {
+    const bgBody = document.getElementById('dg-result-body');
+    if (!bgBody) return;
+
+    const existing = document.getElementById('dg-logo-layer');
+    if (existing) existing.remove();
+
+    const img = new Image();
+    img.onload = () => {
+        const layer = document.createElement('div');
+        layer.id = 'dg-logo-layer';
+        layer.className = 'dg-logo-layer';
+
+        const logoImg = document.createElement('img');
+        logoImg.src = url;
+        layer.appendChild(logoImg);
+
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'dg-logo-handle resize';
+        layer.appendChild(resizeHandle);
+
+        const rotateHandle = document.createElement('div');
+        rotateHandle.className = 'dg-logo-handle rotate';
+        layer.appendChild(rotateHandle);
+
+        bgBody.appendChild(layer);
+
+        dgLogo = {
+            xPct: 50,
+            yPct: 50,
+            widthPx: Math.min(img.naturalWidth, bgBody.clientWidth * 0.35),
+            aspect: img.naturalHeight / img.naturalWidth,
+            rotateDeg: 0,
+        };
+        dgRenderLogoLayer();
+        dgBindLogoDrag(layer);
+        dgBindResizeHandle(resizeHandle);
+        dgBindRotateHandle(rotateHandle);
+
+        document.getElementById('dg-logo-toolbar').style.display = 'flex';
+    };
+    img.src = url;
+}
+
+function dgRenderLogoLayer() {
+    const layer = document.getElementById('dg-logo-layer');
+    if (!layer || !dgLogo) return;
+    const h = dgLogo.widthPx * dgLogo.aspect;
+    layer.style.width = dgLogo.widthPx + 'px';
+    layer.style.height = h + 'px';
+    layer.style.left = dgLogo.xPct + '%';
+    layer.style.top = dgLogo.yPct + '%';
+    layer.style.transform = `translate(-50%, -50%) rotate(${dgLogo.rotateDeg}deg)`;
+}
+
+function dgBindLogoDrag(layer) {
+    let dragging = false, startX, startY, startXPct, startYPct, rect;
+    layer.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('dg-logo-handle')) return;
+        dragging = true;
+        rect = layer.parentElement.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        startXPct = dgLogo.xPct;
+        startYPct = dgLogo.yPct;
+        layer.setPointerCapture(e.pointerId);
+    });
+    layer.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dxPct = (e.clientX - startX) / rect.width * 100;
+        const dyPct = (e.clientY - startY) / rect.height * 100;
+        dgLogo.xPct = Math.min(100, Math.max(0, startXPct + dxPct));
+        dgLogo.yPct = Math.min(100, Math.max(0, startYPct + dyPct));
+        dgRenderLogoLayer();
+    });
+    layer.addEventListener('pointerup', () => dragging = false);
+    layer.addEventListener('pointercancel', () => dragging = false);
+}
+
+function dgBindResizeHandle(handle) {
+    let dragging = false, startX, startWidth;
+    handle.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        dragging = true;
+        startX = e.clientX;
+        startWidth = dgLogo.widthPx;
+        handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = (e.clientX - startX) * 2;
+        dgLogo.widthPx = Math.max(24, startWidth + dx);
+        dgRenderLogoLayer();
+    });
+    handle.addEventListener('pointerup', () => dragging = false);
+    handle.addEventListener('pointercancel', () => dragging = false);
+}
+
+function dgBindRotateHandle(handle) {
+    let dragging = false;
+    handle.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        dragging = true;
+        handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const layer = document.getElementById('dg-logo-layer');
+        const rect = layer.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+        dgLogo.rotateDeg = Math.round(angle + 45);
+        dgRenderLogoLayer();
+    });
+    handle.addEventListener('pointerup', () => dragging = false);
+    handle.addEventListener('pointercancel', () => dragging = false);
+}
+
+function dgCenterLogoHorizontally() {
+    if (!dgLogo) return;
+    dgLogo.xPct = 50;
+    dgRenderLogoLayer();
+}
+
+function dgRemoveLogo() {
+    const layer = document.getElementById('dg-logo-layer');
+    if (layer) layer.remove();
+    dgLogo = null;
+    document.getElementById('dg-logo-toolbar').style.display = 'none';
 }
 
 dgEventTypeChanged();

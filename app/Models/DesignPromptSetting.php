@@ -18,6 +18,9 @@ class DesignPromptSetting extends Model
         'borrel'        => 'Borrel',
     ];
 
+    /** Event-types waarbij het optionele logo-uploadveld getoond wordt. */
+    public const LOGO_EVENT_TYPES = ['bruiloft', 'bedrijfsfeest'];
+
     /** Vaste standaardprompt per onderdeel, gebruikt zolang er niets is opgeslagen. */
     public const DEFAULTS = [
         'background' => [

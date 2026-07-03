@@ -74,6 +74,42 @@ class DesignGeneratorController extends Controller
         ]));
     }
 
+    /** Stel een geüpload logo vrij als transparante PNG (via GPT/OpenAI — Gemini kan geen echte transparantie) */
+    public function cutoutLogo(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'logo' => ['required', 'image', 'max:8192'],
+        ], [], ['logo' => 'logo-afbeelding']);
+
+        $stored = $request->file('logo')->store('design-generator/refs', 'local');
+        $path   = Storage::disk('local')->path($stored);
+
+        $prompt = 'Cut out only the logo from this image. Remove the background completely so it becomes '
+            . 'fully transparent (alpha channel = 0), keep the logo itself unchanged — do not redraw, '
+            . 'recolor, restyle, or add effects. No shadow, no border, no added background color. '
+            . 'The output must have a genuinely transparent background.';
+
+        try {
+            $manager = app(ImageGenerationManager::class);
+            $image   = $manager->driver('openai')->generate($prompt, [$path], null);
+
+            $filename = 'design-generator/logos/' . Str::random(24) . '.' . $image->extension();
+            Storage::disk('public')->put($filename, $image->binary);
+
+            return response()->json([
+                'ok'  => true,
+                'url' => Storage::disk('public')->url($filename),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Logo vrijstellen mislukt: ' . $e->getMessage());
+
+            return response()->json([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /** Sla de (vaste, herbruikbare) prompt-instelling voor een onderdeel + event-type op */
     public function updatePrompt(Request $request): JsonResponse
     {
@@ -105,6 +141,7 @@ class DesignGeneratorController extends Controller
             'promptsByType'  => $promptsByType,
             'eventTypes'     => DesignPromptSetting::EVENT_TYPES,
             'eventType'      => array_key_first(DesignPromptSetting::EVENT_TYPES),
+            'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
         ];
     }
 }

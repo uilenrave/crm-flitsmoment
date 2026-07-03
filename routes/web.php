@@ -147,6 +147,7 @@ Route::middleware('auth')->group(function () {
     Route::get('ontwerp-generator', [\App\Http\Controllers\DesignGeneratorController::class, 'index'])->name('design.index');
     Route::post('ontwerp-generator', [\App\Http\Controllers\DesignGeneratorController::class, 'generate'])->name('design.generate');
     Route::post('ontwerp-generator/prompt', [\App\Http\Controllers\DesignGeneratorController::class, 'updatePrompt'])->name('design.prompt.update');
+    Route::post('ontwerp-generator/logo', [\App\Http\Controllers\DesignGeneratorController::class, 'cutoutLogo'])->name('design.logo.cutout');
 
     // Briefings (PDF voor medewerker)
     Route::resource('briefings', BriefingController::class)->except(['show']);

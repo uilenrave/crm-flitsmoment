@@ -42,6 +42,7 @@ class OpenAiImageProvider implements ImageGenerationProvider
         $response = $request->post('https://api.openai.com/v1/images/edits', [
             'model' => $model,
             'prompt' => $prompt,
+            'background' => 'transparent',
         ]);
 
         if (! $response->successful()) {
