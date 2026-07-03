@@ -31,9 +31,19 @@ class DesignGeneratorController extends Controller
     public function generate(Request $request): View
     {
         $data = $request->validate([
-            'input'      => ['required', 'string', 'max:2000'],
-            'event_type' => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
+            'input'        => ['required', 'string', 'max:2000'],
+            'event_type'   => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
+            'references'   => ['nullable', 'array', 'max:6'],
+            'references.*' => ['image', 'max:8192'], // 8 MB
+        ], [], [
+            'references.*' => 'referentieafbeelding',
         ]);
+
+        $refPaths = [];
+        foreach ($request->file('references', []) as $file) {
+            $stored = $file->store('design-generator/refs', 'local');
+            $refPaths[] = Storage::disk('local')->path($stored);
+        }
 
         $template = DesignPromptSetting::currentPrompt('background', $data['event_type']);
         $prompt = str_contains($template, '{beschrijving}')
@@ -43,7 +53,7 @@ class DesignGeneratorController extends Controller
         $started = microtime(true);
         try {
             $manager = app(ImageGenerationManager::class);
-            $image   = $manager->driver('gemini')->generate($prompt, [], null);
+            $image   = $manager->driver('gemini')->generate($prompt, $refPaths, null);
             $binary  = $this->coverCropToCanvas($image->binary, self::CANVAS_WIDTH, self::CANVAS_HEIGHT);
 
             $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
