@@ -157,7 +157,7 @@ function dgEventTypeChanged() {
     const type = document.getElementById('event_type').value;
     document.getElementById('dg-prompt-template').value = dgPromptsByType[type] || '';
     document.getElementById('dg-current-type-label').textContent = '(' + (dgEventTypeLabels[type] || type) + ')';
-    document.getElementById('dg-logo-field').style.display = dgLogoEventTypes.includes(type) ? '' : 'none';
+    document.getElementById('dg-logo-field').style.display = dgLogoEventTypes.includes(type) ? 'block' : 'none';
 }
 
 function dgToggleSettings() {
