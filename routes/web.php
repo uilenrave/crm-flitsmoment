@@ -18,7 +18,6 @@ use App\Http\Controllers\TaskListController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StaffPortalController;
 use App\Http\Controllers\StaffHoursController;
-use App\Http\Controllers\StripTemplateController;
 use App\Http\Controllers\CanvaTemplateController;
 use App\Http\Controllers\BriefingController;
 use Illuminate\Support\Facades\Route;
@@ -139,15 +138,14 @@ Route::middleware('auth')->group(function () {
     Route::resource('assets', AssetController::class);
     Route::resource('staff', StaffController::class)->except(['show']);
 
-    // Fotostrip templates galerij (admin beheert)
-    Route::resource('strip-templates', StripTemplateController::class)
-         ->parameters(['strip-templates' => 'stripTemplate'])
-         ->except(['show']);
-
     // Canva templates galerij (admin beheert)
     Route::resource('canva-templates', CanvaTemplateController::class)
          ->parameters(['canva-templates' => 'canvaTemplate'])
          ->except(['show']);
+
+    // AI Ontwerp-generator (fotostrips genereren)
+    Route::get('ontwerp-generator', [\App\Http\Controllers\DesignGeneratorController::class, 'index'])->name('design.index');
+    Route::post('ontwerp-generator', [\App\Http\Controllers\DesignGeneratorController::class, 'generate'])->name('design.generate');
 
     // Briefings (PDF voor medewerker)
     Route::resource('briefings', BriefingController::class)->except(['show']);

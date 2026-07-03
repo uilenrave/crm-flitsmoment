@@ -283,8 +283,8 @@
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
             <span class="nav-label">Taken</span>
         </a>
-        <span class="nav-section">Beheer</span>
-        <a href="{{ route('bookings.staff-planning') }}" class="nav-item mobile-hidden {{ request()->routeIs('bookings.staff-planning') || request()->routeIs('staff.*') ? 'active' : '' }}" data-tooltip="Inplannen">
+        <span class="nav-section">Personeel</span>
+        <a href="{{ route('bookings.staff-planning') }}" class="nav-item mobile-hidden {{ request()->routeIs('bookings.staff-planning') || request()->routeIs('staff.*') ? 'active' : '' }}" data-tooltip="Team">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
             <span class="nav-label">Team</span>
         </a>
@@ -296,17 +296,18 @@
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             <span class="nav-label">Uren</span>
         </a>
+        <span class="nav-section">Beheer</span>
         <a href="{{ route('assets.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('assets.*') ? 'active' : '' }}" data-tooltip="Producten">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/></svg>
             <span class="nav-label">Producten</span>
         </a>
-        <a href="{{ route('strip-templates.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('strip-templates.*') ? 'active' : '' }}" data-tooltip="Strip templates">
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-            <span class="nav-label">Strip templates</span>
-        </a>
         <a href="{{ route('canva-templates.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('canva-templates.*') ? 'active' : '' }}" data-tooltip="Canva templates">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
             <span class="nav-label">Canva templates</span>
+        </a>
+        <a href="{{ route('design.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('design.*') ? 'active' : '' }}" data-tooltip="Ontwerp-generator" style="{{ request()->routeIs('design.*') ? '' : 'color:#7c3aed;' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+            <span class="nav-label">Ontwerp-generator</span>
         </a>
         <a href="{{ route('mail-templates.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('mail-templates.*') ? 'active' : '' }}" data-tooltip="Mailtemplates">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
