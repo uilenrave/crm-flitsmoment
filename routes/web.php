@@ -148,6 +148,8 @@ Route::middleware('auth')->group(function () {
     Route::post('ontwerp-generator', [\App\Http\Controllers\DesignGeneratorController::class, 'generate'])->name('design.generate');
     Route::post('ontwerp-generator/prompt', [\App\Http\Controllers\DesignGeneratorController::class, 'updatePrompt'])->name('design.prompt.update');
     Route::post('ontwerp-generator/logo', [\App\Http\Controllers\DesignGeneratorController::class, 'cutoutLogo'])->name('design.logo.cutout');
+    Route::post('ontwerp-generator/masks', [\App\Http\Controllers\DesignGeneratorController::class, 'uploadMask'])->name('design.masks.upload');
+    Route::post('ontwerp-generator/masks/apply', [\App\Http\Controllers\DesignGeneratorController::class, 'applyMask'])->name('design.masks.apply');
 
     // Briefings (PDF voor medewerker)
     Route::resource('briefings', BriefingController::class)->except(['show']);

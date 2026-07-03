@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DesignMask;
 use App\Models\DesignPromptSetting;
 use App\Services\ImageGeneration\ImageGenerationManager;
 use Illuminate\Http\JsonResponse;
@@ -62,6 +63,7 @@ class DesignGeneratorController extends Controller
             $results = [
                 'ok'      => true,
                 'url'     => Storage::disk('public')->url($filename),
+                'path'    => $filename,
                 'seconds' => round(microtime(true) - $started, 1),
             ];
         } catch (\Throwable $e) {
@@ -107,6 +109,77 @@ class DesignGeneratorController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Logo vrijstellen mislukt: ' . $e->getMessage());
+
+            return response()->json([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /** Voeg een zwart-wit maskerafbeelding toe aan de herbruikbare bibliotheek */
+    public function uploadMask(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'label' => ['required', 'string', 'max:100'],
+            'mask'  => ['required', 'image', 'max:8192'],
+        ], [], ['mask' => 'maskerafbeelding']);
+
+        $filename = 'design-generator/masks/' . Str::random(24) . '.png';
+        Storage::disk('public')->put($filename, file_get_contents($request->file('mask')->getRealPath()));
+
+        $mask = DesignMask::create([
+            'label' => $data['label'],
+            'path'  => $filename,
+        ]);
+
+        return response()->json([
+            'ok'    => true,
+            'id'    => $mask->id,
+            'label' => $mask->label,
+            'url'   => $mask->url,
+        ]);
+    }
+
+    /** Pas een masker uit de bibliotheek toe op een gegenereerde achtergrond (echte alfa-transparantie) */
+    public function applyMask(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'background_path' => ['required', 'string'],
+            'mask_id'          => ['required', 'integer', 'exists:design_masks,id'],
+        ]);
+
+        if (
+            ! str_starts_with($data['background_path'], 'design-generator/out/')
+            || ! Storage::disk('public')->exists($data['background_path'])
+        ) {
+            return response()->json(['ok' => false, 'error' => 'Achtergrond niet gevonden.']);
+        }
+
+        $mask = DesignMask::findOrFail($data['mask_id']);
+
+        try {
+            $image = new \Imagick();
+            $image->readImageBlob(Storage::disk('public')->get($data['background_path']));
+            $image->setImageFormat('png');
+            $image->setImageAlphaChannel(\Imagick::ALPHACHANNEL_OPAQUE);
+
+            $maskImage = new \Imagick();
+            $maskImage->readImageBlob(Storage::disk('public')->get($mask->path));
+            $maskImage->resizeImage($image->getImageWidth(), $image->getImageHeight(), \Imagick::FILTER_LANCZOS, 1);
+            $maskImage->setImageAlphaChannel(\Imagick::ALPHACHANNEL_COPY);
+
+            $image->compositeImage($maskImage, \Imagick::COMPOSITE_DSTIN, 0, 0);
+
+            $filename = 'design-generator/out/' . Str::random(24) . '-masked.png';
+            Storage::disk('public')->put($filename, $image->getImageBlob());
+
+            return response()->json([
+                'ok'  => true,
+                'url' => Storage::disk('public')->url($filename),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Masker toepassen mislukt: ' . $e->getMessage());
 
             return response()->json([
                 'ok'    => false,
@@ -180,6 +253,7 @@ class DesignGeneratorController extends Controller
             'eventTypes'     => DesignPromptSetting::EVENT_TYPES,
             'eventType'      => array_key_first(DesignPromptSetting::EVENT_TYPES),
             'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
+            'masks'          => DesignMask::orderBy('label')->get(['id', 'label', 'path']),
         ];
     }
 }

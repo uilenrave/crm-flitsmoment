@@ -43,6 +43,18 @@
     .dg-logo-handle { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
     .dg-logo-handle.resize { right: 2px; bottom: 2px; cursor: nwse-resize; }
     .dg-logo-handle.rotate { right: 2px; top: 2px; cursor: grab; }
+
+    .dg-mask-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
+    .dg-mask-sub { margin-top: .9rem; padding-top: .9rem; border-top: 1px solid #f1f5f9; }
+    .dg-mask-preview-bg {
+        background-image:
+            linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+            linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+            linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+        background-size: 20px 20px;
+        background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
 </style>
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
@@ -143,6 +155,32 @@
                     <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstaand maken</button>
                 </div>
                 <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
+            </div>
+            @endif
+
+            @if($results['ok'])
+            <div class="dg-mask-step">
+                <label class="dg-label" for="mask_select">Stap 3 — Transparantie <span class="dg-hint">— kies een masker (wit = zichtbaar, zwart = transparant), preview is direct</span></label>
+                <select id="mask_select" class="dg-select" onchange="dgMaskSelected()">
+                    <option value="">— geen masker —</option>
+                    @foreach($masks as $m)
+                        <option value="{{ $m->id }}" data-url="{{ $m->url }}">{{ $m->label }}</option>
+                    @endforeach
+                </select>
+                <div class="dg-logo-actions">
+                    <button type="button" id="dg-mask-apply-btn" class="dg-logo-btn" onclick="dgApplyMask()" disabled>✅ Toepassen op afbeelding</button>
+                </div>
+                <p id="dg-mask-error" class="dg-logo-error" style="display:none;"></p>
+
+                <div class="dg-mask-sub">
+                    <label class="dg-label" for="mask_new_file">Nieuw masker toevoegen aan bibliotheek</label>
+                    <input id="mask_new_label" type="text" class="dg-file" placeholder="Naam (bijv. 'Ovaal middenvak')" style="margin-bottom:.5rem;">
+                    <input id="mask_new_file" type="file" class="dg-file" accept="image/*">
+                    <div class="dg-logo-actions">
+                        <button type="button" id="dg-mask-upload-btn" class="dg-logo-btn" onclick="dgUploadMask()">⬆ Toevoegen aan bibliotheek</button>
+                    </div>
+                    <p id="dg-mask-upload-error" class="dg-logo-error" style="display:none;"></p>
+                </div>
             </div>
             @endif
         @endif
@@ -371,6 +409,135 @@ function dgRemoveLogo() {
     if (layer) layer.remove();
     dgLogo = null;
     document.getElementById('dg-logo-toolbar').style.display = 'none';
+}
+
+let dgBackgroundPath = {!! Js::from($results['path'] ?? null) !!};
+
+function dgMaskSelected() {
+    const select = document.getElementById('mask_select');
+    const bgBody = document.getElementById('dg-result-body');
+    const img = bgBody?.querySelector('img');
+    const applyBtn = document.getElementById('dg-mask-apply-btn');
+    if (!img) return;
+
+    if (!select.value) {
+        img.style.maskImage = '';
+        img.style.webkitMaskImage = '';
+        bgBody.classList.remove('dg-mask-preview-bg');
+        applyBtn.disabled = true;
+        return;
+    }
+
+    const url = select.selectedOptions[0].dataset.url;
+    img.style.webkitMaskImage = `url(${url})`;
+    img.style.maskImage = `url(${url})`;
+    img.style.webkitMaskSize = '100% 100%';
+    img.style.maskSize = '100% 100%';
+    img.style.webkitMaskRepeat = 'no-repeat';
+    img.style.maskRepeat = 'no-repeat';
+    bgBody.classList.add('dg-mask-preview-bg');
+    applyBtn.disabled = false;
+}
+
+function dgApplyMask() {
+    const select = document.getElementById('mask_select');
+    const errorEl = document.getElementById('dg-mask-error');
+    errorEl.style.display = 'none';
+    if (!select.value || !dgBackgroundPath) return;
+
+    const btn = document.getElementById('dg-mask-apply-btn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Bezig…';
+
+    fetch("{{ route('design.masks.apply') }}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}',
+        },
+        body: JSON.stringify({ background_path: dgBackgroundPath, mask_id: select.value }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = original;
+        if (data.ok) {
+            const bgBody = document.getElementById('dg-result-body');
+            const img = bgBody.querySelector('img');
+            img.style.webkitMaskImage = '';
+            img.style.maskImage = '';
+            img.src = data.url;
+            bgBody.classList.remove('dg-mask-preview-bg');
+            select.value = '';
+            btn.disabled = true;
+            const dl = document.querySelector('.dg-result-head a[download]');
+            if (dl) dl.href = data.url;
+        } else {
+            errorEl.textContent = 'Toepassen mislukt: ' + (data.error || 'onbekende fout');
+            errorEl.style.display = 'block';
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = original;
+        errorEl.textContent = 'Toepassen mislukt (netwerkfout).';
+        errorEl.style.display = 'block';
+    });
+}
+
+function dgUploadMask() {
+    const labelInput = document.getElementById('mask_new_label');
+    const fileInput = document.getElementById('mask_new_file');
+    const errorEl = document.getElementById('dg-mask-upload-error');
+    errorEl.style.display = 'none';
+
+    if (!labelInput.value.trim() || !fileInput.files.length) {
+        errorEl.textContent = 'Vul een naam in en kies een maskerafbeelding.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const btn = document.getElementById('dg-mask-upload-btn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Uploaden…';
+
+    const fd = new FormData();
+    fd.append('label', labelInput.value.trim());
+    fd.append('mask', fileInput.files[0]);
+
+    fetch("{{ route('design.masks.upload') }}", {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}' },
+        body: fd,
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = original;
+        if (data.ok) {
+            const select = document.getElementById('mask_select');
+            const opt = document.createElement('option');
+            opt.value = data.id;
+            opt.textContent = data.label;
+            opt.dataset.url = data.url;
+            select.appendChild(opt);
+            select.value = data.id;
+            dgMaskSelected();
+            labelInput.value = '';
+            fileInput.value = '';
+        } else {
+            errorEl.textContent = 'Uploaden mislukt: ' + (data.error || 'onbekende fout');
+            errorEl.style.display = 'block';
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = original;
+        errorEl.textContent = 'Uploaden mislukt (netwerkfout).';
+        errorEl.style.display = 'block';
+    });
 }
 
 dgEventTypeChanged();
