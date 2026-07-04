@@ -56,9 +56,10 @@
     .dg-logo-list-btn.danger { color: #b91c1c; }
     .dg-logo-layer { position: absolute; top: 50%; left: 50%; touch-action: none; user-select: none; cursor: move; }
     .dg-logo-layer img { display: block; width: 100%; height: 100%; pointer-events: none; }
-    .dg-logo-handle { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+    .dg-logo-handle { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); touch-action: none; }
     .dg-logo-handle.resize { right: 2px; bottom: 2px; cursor: nwse-resize; }
-    .dg-logo-handle.rotate { right: 2px; top: 2px; cursor: grab; }
+    .dg-logo-handle.rotate { top: -26px; left: 50%; right: auto; transform: translateX(-50%); cursor: grab; }
+    .dg-logo-rotate-stem { position: absolute; left: 50%; top: -10px; width: 2px; height: 10px; background: #7c3aed; transform: translateX(-50%); pointer-events: none; }
 
     .dg-text-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
     .dg-text-settings { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; }

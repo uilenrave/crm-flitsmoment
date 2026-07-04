@@ -189,6 +189,10 @@ function dgAddLogoLayer(url, path, savedState) {
         resizeHandle.className = 'dg-logo-handle resize';
         layer.appendChild(resizeHandle);
 
+        const rotateStem = document.createElement('div');
+        rotateStem.className = 'dg-logo-rotate-stem';
+        layer.appendChild(rotateStem);
+
         const rotateHandle = document.createElement('div');
         rotateHandle.className = 'dg-logo-handle rotate';
         layer.appendChild(rotateHandle);
@@ -288,7 +292,10 @@ function dgBindRotateHandle(handle, layer, logo) {
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
         const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
-        logo.rotateDeg = Math.round(angle + 45);
+        // De handle rust (bij rotateDeg=0) recht boven het midden, oftewel op -90°.
+        const rawDeg = angle + 90;
+        // Snap op 12 standen (elke 30°) zodat een logo niet vrij rond te draaien is.
+        logo.rotateDeg = Math.round(rawDeg / 30) * 30;
         dgRenderLogoLayer(logo);
     });
     handle.addEventListener('pointerup', () => { dragging = false; dgMarkDirty(); });
@@ -568,6 +575,11 @@ function dgSelectMask(id) {
     img.style.maskSize = '100% 100%';
     img.style.webkitMaskRepeat = 'no-repeat';
     img.style.maskRepeat = 'no-repeat';
+    // Zonder dit interpreteert de browser soms de LUMINANTIE van het maskerbestand i.p.v. het alfakanaal,
+    // waardoor ondoorzichtige-maar-gekleurde delen van het masker als deels doorzichtig (~grijswaarde) ogen —
+    // dat zag eruit als "de hele strip wordt 50% transparant".
+    img.style.maskMode = 'alpha';
+    img.style.webkitMaskMode = 'alpha';
     bgBody.classList.add('dg-mask-preview-bg');
     applyBtn.disabled = false;
 
