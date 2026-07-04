@@ -31,10 +31,12 @@
     @stack('styles')
 </head>
 <body>
+    @unless($hideHeader ?? false)
     <header class="header">
         <div class="header-logo">{{ $booking->account->name ?? '' }}</div>
         <div class="header-badge">Boeking {{ $booking->booking_number ?? '' }}</div>
     </header>
+    @endunless
 
     @if(session('success'))
         <div style="max-width:720px;margin:1rem auto;padding:0 1.25rem;">

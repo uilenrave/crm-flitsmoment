@@ -751,10 +751,7 @@ function dgApplyMask() {
     .then(r => r.json())
     .then(data => {
         if (statusEl) statusEl.style.display = 'none';
-        if (data.ok) {
-            const dl = document.querySelector('.dg-result-head a[download]');
-            if (dl) dl.href = data.url;
-        } else {
+        if (!data.ok) {
             errorEl.textContent = 'Toepassen mislukt: ' + (data.error || 'onbekende fout');
             errorEl.style.display = 'block';
         }

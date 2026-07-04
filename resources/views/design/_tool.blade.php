@@ -25,10 +25,6 @@
        .dg-left-col krijgt een min-height zodat er bij een korte stap (bijv. "Tekst") toch genoeg
        rijhoogte overblijft om in mee te scrollen i.p.v. meteen mee weg te scrollen. */
     .dg-preview-col { align-self: start; position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow: auto; }
-    /* Portaal-layout heeft zelf ook een sticky header (top:0, hoge z-index) — zonder aanpassing
-       stickyt onze preview op dezelfde viewport-hoogte en verdwijnt 'ie er zodra je scrolt achter
-       dat header. Admin-layout heeft geen concurrerende sticky header, dus die hoeft dit niet. */
-    .dg-preview-col.dg-preview-col-portal { top: 5.5rem; max-height: calc(100vh - 6.75rem); }
     @media (min-width: 900px) { .dg-left-col { min-height: calc(100vh - 2.5rem); } }
     .dg-label { display: block; font-size: .8rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
@@ -442,7 +438,7 @@
     </div>
 
     {{-- ── Rechts: alleen het voorbeeld, blijft staan tijdens scrollen ── --}}
-    <div class="dg-preview-col {{ $dgMode === 'portal' ? 'dg-preview-col-portal' : '' }}">
+    <div class="dg-preview-col">
         @if($results === null)
             <div class="dg-card" style="padding:2.5rem 1.5rem;text-align:center;color:#94a3b8;">
                 <div style="font-size:2rem;margin-bottom:.5rem;">🖼️</div>
@@ -461,7 +457,6 @@
                         <label class="dg-preview-mode-toggle">
                             <input type="checkbox" id="dg-preview-mode-toggle" onchange="dgTogglePreviewMode()"> Preview modus
                         </label>
-                        <a href="{{ $results['url'] }}" download style="font-size:.78rem;color:#7c3aed;font-weight:600;">⬇ Download ({{ $results['seconds'] }}s)</a>
                     @endif
                 </div>
                 @if($results['ok'])

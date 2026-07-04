@@ -1,3 +1,4 @@
+@php($hideHeader = true)
 @extends('layouts.portal')
 
 @section('title', 'Ontwerp je fotostrip')
@@ -8,6 +9,9 @@
     <div style="margin-bottom:1.25rem;">
         <a href="{{ route('portal.show', $booking->public_token) }}" style="font-size:.85rem;color:#7c3aed;text-decoration:none;">← Terug naar je boeking</a>
         <h1 style="font-size:1.4rem;font-weight:700;margin:.5rem 0 0;color:#1e293b;">✨ Ontwerp je fotostrip</h1>
+        <p style="margin:.35rem 0 0;color:#6b7280;font-size:.85rem;">
+            {{ $booking->booking_number }} · {{ $booking->customer_name }} · {{ $booking->event_date?->translatedFormat('j F Y') }}
+        </p>
         <p style="margin:.35rem 0 0;color:#6b7280;font-size:.9rem;">Werk stap voor stap door de onderdelen heen — je voortgang wordt automatisch opgeslagen.</p>
     </div>
 
