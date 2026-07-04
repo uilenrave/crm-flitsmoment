@@ -37,7 +37,7 @@ return [
     'tape' => [
         'center_x' => 0.50, // horizontaal midden
         'center_y' => 0.06, // verticaal midden van het bandje (fractie van hoogte) — gelijk aan strip.top
-        'width'    => 0.25, // breedte (fractie van breedte)
+        'width'    => 0.40, // breedte (fractie van breedte)
     ],
 
     // Uitvoer
