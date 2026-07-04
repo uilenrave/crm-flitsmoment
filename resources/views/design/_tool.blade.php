@@ -20,10 +20,11 @@
 
     .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: start; }
     @media (min-width: 900px) { .dg-grid { grid-template-columns: 400px 1fr; } }
+    /* position: sticky binnen een grid-item blijft altijd binnen de grid-rij (== hier gelijk aan
+       .dg-grid, want er is maar 1 rij) — de rijhoogte is automatisch de langste van de twee kolommen.
+       .dg-left-col krijgt een min-height zodat er bij een korte stap (bijv. "Tekst") toch genoeg
+       rijhoogte overblijft om in mee te scrollen i.p.v. meteen mee weg te scrollen. */
     .dg-preview-col { align-self: start; position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow: auto; }
-    /* Zorgt dat de grid-rij (en dus de "ruimte" waarbinnen de preview kan stickyen) altijd minstens
-       even hoog is als het scherm — anders scrolt de preview gewoon mee weg zodra een korte stap
-       (bijv. "Tekst") actief is en de linkerkolom korter is dan de preview zelf. */
     @media (min-width: 900px) { .dg-left-col { min-height: calc(100vh - 2.5rem); } }
     .dg-label { display: block; font-size: .8rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
@@ -39,6 +40,15 @@
     .dg-result-head { display: flex; justify-content: flex-end; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; font-size: .8rem; }
     .dg-result-frame { background: #f8fafc; padding: 1.75rem 1rem; }
     .dg-result-body { display: flex; justify-content: center; position: relative; }
+
+    /* Mockup-weergave: dezelfde achtergrond+plakband als StripMockupService::render() (het manuele
+       upload-pad), zodat de live preview er hetzelfde uitziet als het uiteindelijke mockup-bestand. */
+    .dg-mockup-frame { position: relative; width: 100%; border-radius: .75rem; overflow: hidden; background: #f8fafc; }
+    .dg-mockup-bg { display: block; width: 100%; height: auto; }
+    .dg-mockup-strip-slot { position: absolute; transform: translateX(-50%); }
+    .dg-mockup-strip-slot .dg-result-frame { background: transparent; padding: 0; filter: drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
+    .dg-mockup-strip-slot .dg-result-body img { max-height: none; }
+    .dg-mockup-tape { position: absolute; transform: translate(-50%, -50%); pointer-events: none; }
     .dg-result-body img { display: block; max-height: 76vh; width: auto; max-width: 100%; }
     .dg-gear { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: .4rem; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; font-size: .85rem; margin-left: .4rem; vertical-align: middle; }
     .dg-gear:hover { background: #f8fafc; }
@@ -332,7 +342,7 @@
                         <label class="dg-label" for="dg-text-font">Lettertype</label>
                         <select id="dg-text-font" class="dg-select" onchange="dgUpdateActiveText()">
                             @foreach($googleFonts as $slug => $label)
-                                <option value="{{ $slug }}">{{ $label }}</option>
+                                <option value="{{ $slug }}" style="font-family:'{{ $label }}', sans-serif;">{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -415,11 +425,18 @@
                     @endif
                 </div>
                 @if($results['ok'])
-                    <div class="dg-result-frame">
-                        <div id="dg-result-body" class="dg-result-body">
-                            <img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
-                            <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
+                    @php($mockupCfg = config('mockup'))
+                    <div class="dg-mockup-frame">
+                        <img src="{{ asset('mockups/' . $mockupCfg['background_file']) }}" class="dg-mockup-bg" alt="">
+                        <div class="dg-mockup-strip-slot" style="left:{{ $mockupCfg['strip']['center_x'] * 100 }}%;top:{{ $mockupCfg['strip']['top'] * 100 }}%;width:{{ $mockupCfg['strip']['width'] * 100 }}%;">
+                            <div class="dg-result-frame">
+                                <div id="dg-result-body" class="dg-result-body">
+                                    <img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
+                                    <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
+                                </div>
+                            </div>
                         </div>
+                        <img src="{{ asset('mockups/' . $mockupCfg['tape_file']) }}" class="dg-mockup-tape" alt="" style="left:{{ $mockupCfg['tape']['center_x'] * 100 }}%;top:{{ $mockupCfg['tape']['center_y'] * 100 }}%;width:{{ $mockupCfg['tape']['width'] * 100 }}%;">
                     </div>
                 @else
                     <div style="padding:1rem;color:#b91c1c;font-size:.8rem;background:#fef2f2;">
