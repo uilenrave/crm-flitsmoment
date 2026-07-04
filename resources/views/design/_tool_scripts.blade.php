@@ -115,12 +115,15 @@ function dgSavePrompt() {
     });
 }
 
-let dgLogo = null; // { xPct, yPct, widthPct, aspect, rotateDeg } — widthPct t.o.v. containerbreedte (== canvasbreedte)
+const DG_MAX_LOGOS = 3;
+let dgLogos = []; // [{ id, path, url, xPct, yPct, widthPct, aspect, rotateDeg }] — widthPct t.o.v. containerbreedte (== canvasbreedte)
 
 function dgCutoutLogo() {
     const fileInput = document.getElementById('logo_upload');
     const errorEl = document.getElementById('dg-logo-error');
     errorEl.style.display = 'none';
+
+    if (dgLogos.length >= DG_MAX_LOGOS) return;
 
     if (!fileInput.files.length) {
         errorEl.textContent = 'Kies eerst een logo-afbeelding.';
@@ -146,7 +149,8 @@ function dgCutoutLogo() {
         btn.disabled = false;
         btn.textContent = original;
         if (data.ok) {
-            dgInitLogoEditor(data.url, data.path);
+            fileInput.value = '';
+            dgAddLogoLayer(data.url, data.path);
             dgMarkDirty();
         } else if (data.limit) {
             dgShowLimitNotice('dg-logo-limit-notice');
@@ -163,17 +167,16 @@ function dgCutoutLogo() {
     });
 }
 
-function dgInitLogoEditor(url, path) {
+function dgAddLogoLayer(url, path, savedState) {
     const bgBody = document.getElementById('dg-result-body');
     if (!bgBody) return;
-
-    const existing = document.getElementById('dg-logo-layer');
-    if (existing) existing.remove();
+    if (dgLogos.length >= DG_MAX_LOGOS) return;
 
     const img = new Image();
     img.onload = () => {
+        const id = 'l' + Date.now() + Math.floor(Math.random() * 1000);
         const layer = document.createElement('div');
-        layer.id = 'dg-logo-layer';
+        layer.id = 'dg-logo-layer-' + id;
         layer.className = 'dg-logo-layer';
 
         const logoImg = document.createElement('img');
@@ -190,38 +193,43 @@ function dgInitLogoEditor(url, path) {
 
         bgBody.appendChild(layer);
 
-        dgLogo = {
+        const logo = {
+            id: id,
             path: path,
-            xPct: 50,
-            yPct: 50,
-            widthPct: 35,
+            url: url,
+            xPct: savedState?.xPct ?? (50 + dgLogos.length * 8),
+            yPct: savedState?.yPct ?? (50 + dgLogos.length * 8),
+            widthPct: savedState?.widthPct ?? 35,
             aspect: img.naturalHeight / img.naturalWidth,
-            rotateDeg: 0,
+            rotateDeg: savedState?.rotateDeg ?? 0,
         };
-        dgRenderLogoLayer();
-        dgBindLogoDrag(layer);
-        dgBindResizeHandle(resizeHandle);
-        dgBindRotateHandle(rotateHandle);
+        dgLogos.push(logo);
 
-        document.getElementById('dg-logo-toolbar').style.display = 'flex';
+        dgRenderLogoLayer(logo);
+        dgBindLogoDrag(layer, logo);
+        dgBindResizeHandle(resizeHandle, logo);
+        dgBindRotateHandle(rotateHandle, layer, logo);
+
+        dgRenderLogoList();
+        dgUpdateLogoAddState();
     };
     img.src = url;
 }
 
-function dgRenderLogoLayer() {
-    const layer = document.getElementById('dg-logo-layer');
-    if (!layer || !dgLogo) return;
+function dgRenderLogoLayer(logo) {
+    const layer = document.getElementById('dg-logo-layer-' + logo.id);
+    if (!layer) return;
     const containerWidth = layer.parentElement.clientWidth;
-    const widthPx = containerWidth * dgLogo.widthPct / 100;
-    const h = widthPx * dgLogo.aspect;
+    const widthPx = containerWidth * logo.widthPct / 100;
+    const h = widthPx * logo.aspect;
     layer.style.width = widthPx + 'px';
     layer.style.height = h + 'px';
-    layer.style.left = dgLogo.xPct + '%';
-    layer.style.top = dgLogo.yPct + '%';
-    layer.style.transform = `translate(-50%, -50%) rotate(${dgLogo.rotateDeg}deg)`;
+    layer.style.left = logo.xPct + '%';
+    layer.style.top = logo.yPct + '%';
+    layer.style.transform = `translate(-50%, -50%) rotate(${logo.rotateDeg}deg)`;
 }
 
-function dgBindLogoDrag(layer) {
+function dgBindLogoDrag(layer, logo) {
     let dragging = false, startX, startY, startXPct, startYPct, rect;
     layer.addEventListener('pointerdown', (e) => {
         if (e.target.classList.contains('dg-logo-handle')) return;
@@ -229,43 +237,43 @@ function dgBindLogoDrag(layer) {
         rect = layer.parentElement.getBoundingClientRect();
         startX = e.clientX;
         startY = e.clientY;
-        startXPct = dgLogo.xPct;
-        startYPct = dgLogo.yPct;
+        startXPct = logo.xPct;
+        startYPct = logo.yPct;
         layer.setPointerCapture(e.pointerId);
     });
     layer.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         const dxPct = (e.clientX - startX) / rect.width * 100;
         const dyPct = (e.clientY - startY) / rect.height * 100;
-        dgLogo.xPct = Math.min(100, Math.max(0, startXPct + dxPct));
-        dgLogo.yPct = Math.min(100, Math.max(0, startYPct + dyPct));
-        dgRenderLogoLayer();
+        logo.xPct = Math.min(100, Math.max(0, startXPct + dxPct));
+        logo.yPct = Math.min(100, Math.max(0, startYPct + dyPct));
+        dgRenderLogoLayer(logo);
     });
     layer.addEventListener('pointerup', () => { dragging = false; dgMarkDirty(); });
     layer.addEventListener('pointercancel', () => dragging = false);
 }
 
-function dgBindResizeHandle(handle) {
+function dgBindResizeHandle(handle, logo) {
     let dragging = false, startX, startWidthPct, containerWidth;
     handle.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         dragging = true;
         startX = e.clientX;
-        startWidthPct = dgLogo.widthPct;
+        startWidthPct = logo.widthPct;
         containerWidth = handle.parentElement.parentElement.clientWidth;
         handle.setPointerCapture(e.pointerId);
     });
     handle.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         const dxPct = ((e.clientX - startX) * 2 / containerWidth) * 100;
-        dgLogo.widthPct = Math.max(4, startWidthPct + dxPct);
-        dgRenderLogoLayer();
+        logo.widthPct = Math.max(4, startWidthPct + dxPct);
+        dgRenderLogoLayer(logo);
     });
     handle.addEventListener('pointerup', () => { dragging = false; dgMarkDirty(); });
     handle.addEventListener('pointercancel', () => dragging = false);
 }
 
-function dgBindRotateHandle(handle) {
+function dgBindRotateHandle(handle, layer, logo) {
     let dragging = false;
     handle.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
@@ -274,31 +282,77 @@ function dgBindRotateHandle(handle) {
     });
     handle.addEventListener('pointermove', (e) => {
         if (!dragging) return;
-        const layer = document.getElementById('dg-logo-layer');
         const rect = layer.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
         const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
-        dgLogo.rotateDeg = Math.round(angle + 45);
-        dgRenderLogoLayer();
+        logo.rotateDeg = Math.round(angle + 45);
+        dgRenderLogoLayer(logo);
     });
     handle.addEventListener('pointerup', () => { dragging = false; dgMarkDirty(); });
     handle.addEventListener('pointercancel', () => dragging = false);
 }
 
-function dgCenterLogoHorizontally() {
-    if (!dgLogo) return;
-    dgLogo.xPct = 50;
-    dgRenderLogoLayer();
+function dgCenterLogo(id) {
+    const logo = dgLogos.find(l => l.id === id);
+    if (!logo) return;
+    logo.xPct = 50;
+    dgRenderLogoLayer(logo);
     dgMarkDirty();
 }
 
-function dgRemoveLogo() {
-    const layer = document.getElementById('dg-logo-layer');
+function dgRemoveLogo(id) {
+    const layer = document.getElementById('dg-logo-layer-' + id);
     if (layer) layer.remove();
-    dgLogo = null;
-    document.getElementById('dg-logo-toolbar').style.display = 'none';
+    dgLogos = dgLogos.filter(l => l.id !== id);
+    dgRenderLogoList();
+    dgUpdateLogoAddState();
     dgMarkDirty();
+}
+
+function dgRenderLogoList() {
+    const list = document.getElementById('dg-logo-list');
+    if (!list) return;
+    list.innerHTML = '';
+    dgLogos.forEach((logo, idx) => {
+        const item = document.createElement('div');
+        item.className = 'dg-logo-list-item';
+
+        const img = document.createElement('img');
+        img.src = logo.url;
+        item.appendChild(img);
+
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = 'Logo ' + (idx + 1);
+        item.appendChild(label);
+
+        const centerBtn = document.createElement('button');
+        centerBtn.type = 'button';
+        centerBtn.className = 'dg-logo-list-btn';
+        centerBtn.textContent = '↔ Centreren';
+        centerBtn.onclick = () => dgCenterLogo(logo.id);
+        item.appendChild(centerBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'dg-logo-list-btn danger';
+        delBtn.textContent = '✕ Verwijderen';
+        delBtn.onclick = () => dgRemoveLogo(logo.id);
+        item.appendChild(delBtn);
+
+        list.appendChild(item);
+    });
+}
+
+function dgUpdateLogoAddState() {
+    const atMax = dgLogos.length >= DG_MAX_LOGOS;
+    const btn = document.getElementById('dg-logo-cutout-btn');
+    const fileInput = document.getElementById('logo_upload');
+    const notice = document.getElementById('dg-logo-max-notice');
+    if (btn) btn.disabled = atMax;
+    if (fileInput) fileInput.disabled = atMax;
+    if (notice) notice.style.display = atMax ? 'block' : 'none';
 }
 
 function dgShowLimitNotice(elId) {
@@ -611,10 +665,10 @@ function dgCollectState() {
             borderColor: (document.getElementById('dg-border-enabled')?.checked ?? false)
                 ? document.getElementById('dg-border-color')?.value
                 : null,
-            logo: dgLogo ? {
-                path: dgLogo.path, xPct: dgLogo.xPct, yPct: dgLogo.yPct,
-                widthPct: dgLogo.widthPct, rotateDeg: dgLogo.rotateDeg,
-            } : null,
+            logos: dgLogos.map(l => ({
+                path: l.path, xPct: l.xPct, yPct: l.yPct,
+                widthPct: l.widthPct, rotateDeg: l.rotateDeg,
+            })),
             step: dgConfig.mode === 'portal' ? dgWizardStep : undefined,
         },
     };
@@ -659,58 +713,19 @@ function dgRestoreInitialState() {
         if (enabledEl) enabledEl.checked = true;
     }
 
-    if (s.logo && s.logo.path && document.getElementById('dg-result-body')) {
-        dgInitLogoEditorFromState(s.logo);
+    const savedLogos = s.logos ?? (s.logo ? [s.logo] : []); // s.logo = oude enkelvoudige vorm, voor lopende sessies van vóór de meerdere-logo's-update
+    if (savedLogos.length && document.getElementById('dg-result-body')) {
+        savedLogos.slice(0, DG_MAX_LOGOS).forEach(logoState => {
+            if (!logoState?.path) return;
+            const url = logoState.path.startsWith('http') ? logoState.path : ('/storage/' + logoState.path);
+            dgAddLogoLayer(url, logoState.path, logoState);
+        });
     }
 
     if (dgSelectedMaskId) {
         dgRenderMaskGallery();
         dgSelectMask(dgSelectedMaskId);
     }
-}
-
-function dgInitLogoEditorFromState(logoState) {
-    const bgBody = document.getElementById('dg-result-body');
-    if (!bgBody) return;
-
-    const url = logoState.path.startsWith('http') ? logoState.path : ('/storage/' + logoState.path);
-
-    const img = new Image();
-    img.onload = () => {
-        const layer = document.createElement('div');
-        layer.id = 'dg-logo-layer';
-        layer.className = 'dg-logo-layer';
-
-        const logoImg = document.createElement('img');
-        logoImg.src = url;
-        layer.appendChild(logoImg);
-
-        const resizeHandle = document.createElement('div');
-        resizeHandle.className = 'dg-logo-handle resize';
-        layer.appendChild(resizeHandle);
-
-        const rotateHandle = document.createElement('div');
-        rotateHandle.className = 'dg-logo-handle rotate';
-        layer.appendChild(rotateHandle);
-
-        bgBody.appendChild(layer);
-
-        dgLogo = {
-            path: logoState.path,
-            xPct: logoState.xPct ?? 50,
-            yPct: logoState.yPct ?? 50,
-            widthPct: logoState.widthPct ?? 35,
-            aspect: img.naturalHeight / img.naturalWidth,
-            rotateDeg: logoState.rotateDeg ?? 0,
-        };
-        dgRenderLogoLayer();
-        dgBindLogoDrag(layer);
-        dgBindResizeHandle(resizeHandle);
-        dgBindRotateHandle(rotateHandle);
-
-        document.getElementById('dg-logo-toolbar').style.display = 'flex';
-    };
-    img.src = url;
 }
 
 // ── Wizard-navigatie (alleen mode=portal) ──

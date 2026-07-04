@@ -45,7 +45,13 @@
     .dg-logo-btn:hover { background: #f5f3ff; }
     .dg-logo-btn:disabled { opacity: .5; cursor: default; }
     .dg-logo-error { color: #b91c1c; font-size: .75rem; margin-top: .4rem; }
-    .dg-logo-toolbar { display: none; gap: .5rem; padding: .6rem .9rem; border-top: 1px solid #f1f5f9; }
+    .dg-logo-list { display: flex; flex-direction: column; gap: .5rem; margin-top: .8rem; }
+    .dg-logo-list-item { display: flex; align-items: center; gap: .6rem; padding: .5rem; border: 1px solid #f1f5f9; border-radius: .5rem; }
+    .dg-logo-list-item img { width: 36px; height: 36px; object-fit: contain; border-radius: .3rem; background: #f8fafc repeating-conic-gradient(#e5e7eb 0% 25%, #f8fafc 0% 50%) 50% / 8px 8px; }
+    .dg-logo-list-item .label { flex: 1; font-size: .8rem; font-weight: 600; color: #334155; }
+    .dg-logo-list-btn { font-size: .72rem; font-weight: 600; color: #334155; background: #fff; border: 1px solid #e2e8f0; border-radius: .35rem; padding: .3rem .55rem; cursor: pointer; }
+    .dg-logo-list-btn:hover { background: #f8fafc; }
+    .dg-logo-list-btn.danger { color: #b91c1c; }
     .dg-logo-layer { position: absolute; top: 50%; left: 50%; touch-action: none; user-select: none; cursor: move; }
     .dg-logo-layer img { display: block; width: 100%; height: 100%; pointer-events: none; }
     .dg-logo-handle { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
@@ -250,13 +256,15 @@
         @if($dgMode === 'portal' || in_array($eventType, $logoEventTypes))
         <div class="dg-step" data-step="2">
         <div class="dg-logo-step">
-            <label class="dg-label" for="logo_upload">Stap 2 — Logo <span class="dg-hint">— optioneel, wordt vrijgesteld en boven de achtergrond geplakt (max 8 MB)</span></label>
+            <label class="dg-label" for="logo_upload">Stap 2 — Logo's <span class="dg-hint">— optioneel, max 3 stuks, elk wordt vrijgesteld en op de achtergrond geplakt (max 8 MB p/st)</span></label>
             <input id="logo_upload" type="file" class="dg-file" accept="image/*">
             <div class="dg-logo-actions">
                 <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstaand maken</button>
             </div>
             <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
+            <p id="dg-logo-max-notice" class="dg-hint" style="display:none;margin-top:.4rem;">Maximaal 3 logo's — verwijder er eerst één om een nieuwe toe te voegen.</p>
             <div id="dg-logo-limit-notice" class="dg-limit-notice" style="display:none;"></div>
+            <div id="dg-logo-list" class="dg-logo-list"></div>
         </div>
         @if($dgMode === 'portal')
         <div class="dg-step-nav">
@@ -334,10 +342,6 @@
                     <div id="dg-result-body" class="dg-result-body">
                         <img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
                         <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
-                    </div>
-                    <div id="dg-logo-toolbar" class="dg-logo-toolbar">
-                        <button type="button" class="dg-logo-btn" onclick="dgCenterLogoHorizontally()">↔ Centreer horizontaal</button>
-                        <button type="button" class="dg-logo-btn" onclick="dgRemoveLogo()">✕ Logo verwijderen</button>
                     </div>
                 @else
                     <div style="padding:1rem;color:#b91c1c;font-size:.8rem;background:#fef2f2;">

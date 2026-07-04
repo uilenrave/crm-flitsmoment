@@ -25,10 +25,7 @@ class DesignRenderService
             throw new RuntimeException('Nog geen achtergrond gegenereerd voor deze sessie.');
         }
 
-        $image = new Imagick();
-        $image->readImageBlob(Storage::disk('public')->get($state['backgroundPath']));
-        $image->setImageFormat('png');
-        $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE);
+        $image = $this->loadAsTrueColorCanvas($state['backgroundPath']);
 
         if (! empty($state['maskId'])) {
             $mask = DesignMask::withoutGlobalScope(AccountScope::class)
@@ -40,8 +37,12 @@ class DesignRenderService
             }
         }
 
-        if (! empty($state['logo']['path']) && Storage::disk('public')->exists($state['logo']['path'])) {
-            $this->compositeLogo($image, $state['logo']);
+        // state['logo'] (enkelvoud) = oude vorm, voor lopende sessies van vóór de meerdere-logo's-update
+        $logos = $state['logos'] ?? (isset($state['logo']) ? [$state['logo']] : []);
+        foreach ($logos as $logo) {
+            if (! empty($logo['path']) && Storage::disk('public')->exists($logo['path'])) {
+                $this->compositeLogo($image, $logo);
+            }
         }
 
         return $image->getImageBlob();
@@ -50,14 +51,29 @@ class DesignRenderService
     /** Genereer een preview van een masker (+ optionele gekleurde rand) op een losse achtergrond, zonder logo. */
     public function renderMaskPreview(string $backgroundPath, DesignMask $mask, ?string $borderColor): string
     {
-        $image = new Imagick();
-        $image->readImageBlob(Storage::disk('public')->get($backgroundPath));
-        $image->setImageFormat('png');
-        $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE);
+        $image = $this->loadAsTrueColorCanvas($backgroundPath);
 
         $this->applyMask($image, $mask, $borderColor);
 
         return $image->getImageBlob();
+    }
+
+    /**
+     * Effen (bijv. door de klant gekozen grijstinten) achtergronden worden door Imagick bij het
+     * inlezen soms als grayscale/palette gedetecteerd — composites van gekleurde logo's/randen
+     * landen dan stilletjes niet. Fix: eerst overzetten op een gegarandeerd truecolor canvas.
+     */
+    private function loadAsTrueColorCanvas(string $path): Imagick
+    {
+        $loaded = new Imagick();
+        $loaded->readImageBlob(Storage::disk('public')->get($path));
+
+        $image = new Imagick();
+        $image->newImage($loaded->getImageWidth(), $loaded->getImageHeight(), new ImagickPixel('white'));
+        $image->setImageFormat('png');
+        $image->compositeImage($loaded, Imagick::COMPOSITE_OVER, 0, 0);
+
+        return $image;
     }
 
     public function applyMask(Imagick $image, DesignMask $mask, ?string $borderColor): void
