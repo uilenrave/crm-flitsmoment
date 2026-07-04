@@ -47,7 +47,20 @@ class DesignRenderService
         return $image->getImageBlob();
     }
 
-    private function applyMask(Imagick $image, DesignMask $mask, ?string $borderColor): void
+    /** Genereer een preview van een masker (+ optionele gekleurde rand) op een losse achtergrond, zonder logo. */
+    public function renderMaskPreview(string $backgroundPath, DesignMask $mask, ?string $borderColor): string
+    {
+        $image = new Imagick();
+        $image->readImageBlob(Storage::disk('public')->get($backgroundPath));
+        $image->setImageFormat('png');
+        $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE);
+
+        $this->applyMask($image, $mask, $borderColor);
+
+        return $image->getImageBlob();
+    }
+
+    public function applyMask(Imagick $image, DesignMask $mask, ?string $borderColor): void
     {
         $maskImage = new Imagick();
         $maskImage->readImageBlob(Storage::disk('public')->get($mask->path));

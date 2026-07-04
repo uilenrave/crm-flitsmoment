@@ -2,10 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Booking;
 use App\Models\DesignMask;
 use App\Models\DesignPromptSetting;
+use App\Models\DesignSession;
+use App\Services\DesignRenderService;
 use App\Services\ImageGeneration\ImageGenerationManager;
+use App\Services\StripDesignService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -19,60 +24,27 @@ class DesignGeneratorController extends Controller
     private const CANVAS_WIDTH = 600;
     private const CANVAS_HEIGHT = 1800;
 
-    /** Toon het ontwerp-generator formulier (vooralsnog alleen: achtergrond) */
+    /** Toon het ontwerp-generator formulier (los, niet aan een boeking gekoppeld) */
     public function index(): View
     {
+        $upcomingBookings = Booking::where('status', 'confirmed')
+            ->whereDate('event_date', '>=', now()->toDateString())
+            ->orderBy('event_date')
+            ->get(['id', 'booking_number', 'customer_name', 'event_date']);
+
         return view('design.index', array_merge($this->baseViewData(), [
-            'results' => null,
-            'input'   => '',
+            'results'          => null,
+            'input'            => '',
+            'upcomingBookings' => $upcomingBookings,
         ]));
     }
 
-    /** Genereer een achtergrondafbeelding via Gemini */
+    /** Genereer een achtergrondafbeelding via Gemini (standalone) */
     public function generate(Request $request): View
     {
-        $data = $request->validate([
-            'input'        => ['required', 'string', 'max:2000'],
-            'event_type'   => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
-            'references'   => ['nullable', 'array', 'max:6'],
-            'references.*' => ['image', 'max:8192'], // 8 MB
-        ], [], [
-            'references.*' => 'referentieafbeelding',
-        ]);
-
-        $refPaths = [];
-        foreach ($request->file('references', []) as $file) {
-            $stored = $file->store('design-generator/refs', 'local');
-            $refPaths[] = Storage::disk('local')->path($stored);
-        }
-
-        $template = DesignPromptSetting::currentPrompt('background', $data['event_type']);
-        $prompt = str_contains($template, '{beschrijving}')
-            ? str_replace('{beschrijving}', $data['input'], $template)
-            : $template . "\n\n" . $data['input'];
-
-        $started = microtime(true);
-        try {
-            $manager = app(ImageGenerationManager::class);
-            $image   = $manager->driver('gemini')->generate($prompt, $refPaths, null);
-            $binary  = $this->coverCropToCanvas($image->binary, self::CANVAS_WIDTH, self::CANVAS_HEIGHT);
-
-            $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
-            Storage::disk('public')->put($filename, $binary);
-
-            $results = [
-                'ok'      => true,
-                'url'     => Storage::disk('public')->url($filename),
-                'path'    => $filename,
-                'seconds' => round(microtime(true) - $started, 1),
-            ];
-        } catch (\Throwable $e) {
-            Log::error('Achtergrond-generatie mislukt: ' . $e->getMessage());
-            $results = [
-                'ok'    => false,
-                'error' => $e->getMessage(),
-            ];
-        }
+        $data = $this->validateGenerateRequest($request);
+        $refPaths = $this->storeReferenceFiles($request);
+        $results = $this->generateBackgroundImage($data['event_type'], $data['input'], $refPaths);
 
         return view('design.index', array_merge($this->baseViewData(), [
             'results'   => $results,
@@ -81,35 +53,46 @@ class DesignGeneratorController extends Controller
         ]));
     }
 
-    /** Stel een geüpload logo vrij als transparante PNG (via GPT/OpenAI — Gemini kan geen echte transparantie) */
+    /** Stel een geüpload logo vrij als transparante PNG (standalone) */
     public function cutoutLogo(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'logo' => ['required', 'image', 'max:8192'],
-        ], [], ['logo' => 'logo-afbeelding']);
-
+        $data = $this->validateLogoRequest($request);
         $stored = $request->file('logo')->store('design-generator/refs', 'local');
-        $path   = Storage::disk('local')->path($stored);
 
-        $prompt = 'Cut out only the logo from this image. Remove the background completely so it becomes '
-            . 'fully transparent (alpha channel = 0), keep the logo itself unchanged — do not redraw, '
-            . 'recolor, restyle, or add effects. No shadow, no border, no added background color. '
-            . 'The output must have a genuinely transparent background.';
+        return response()->json($this->cutoutLogoImage(Storage::disk('local')->path($stored)));
+    }
+
+    /** Pas een masker (+ optionele gekleurde svg-rand) toe op een gegenereerde achtergrond (standalone preview) */
+    public function applyMask(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'background_path' => ['required', 'string'],
+            'mask_id'          => ['required', 'integer', 'exists:design_masks,id'],
+            'border_color'     => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ]);
+
+        if (
+            ! str_starts_with($data['background_path'], 'design-generator/out/')
+            || ! Storage::disk('public')->exists($data['background_path'])
+        ) {
+            return response()->json(['ok' => false, 'error' => 'Achtergrond niet gevonden.']);
+        }
+
+        $mask = DesignMask::findOrFail($data['mask_id']);
 
         try {
-            $manager = app(ImageGenerationManager::class);
-            $image   = $manager->driver('openai')->generate($prompt, [$path], null);
+            $binary = app(DesignRenderService::class)
+                ->renderMaskPreview($data['background_path'], $mask, $data['border_color'] ?? null);
 
-            $filename = 'design-generator/logos/' . Str::random(24) . '.' . $image->extension();
-            Storage::disk('public')->put($filename, $image->binary);
+            $filename = 'design-generator/out/' . Str::random(24) . '-masked.png';
+            Storage::disk('public')->put($filename, $binary);
 
             return response()->json([
-                'ok'   => true,
-                'url'  => Storage::disk('public')->url($filename),
-                'path' => $filename,
+                'ok'  => true,
+                'url' => Storage::disk('public')->url($filename),
             ]);
         } catch (\Throwable $e) {
-            Log::error('Logo vrijstellen mislukt: ' . $e->getMessage());
+            Log::error('Masker toepassen mislukt: ' . $e->getMessage());
 
             return response()->json([
                 'ok'    => false,
@@ -178,65 +161,6 @@ class DesignGeneratorController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Pas een masker (+ optionele gekleurde svg-rand) uit de bibliotheek toe op een gegenereerde achtergrond */
-    public function applyMask(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'background_path' => ['required', 'string'],
-            'mask_id'          => ['required', 'integer', 'exists:design_masks,id'],
-            'border_color'     => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
-        ]);
-
-        if (
-            ! str_starts_with($data['background_path'], 'design-generator/out/')
-            || ! Storage::disk('public')->exists($data['background_path'])
-        ) {
-            return response()->json(['ok' => false, 'error' => 'Achtergrond niet gevonden.']);
-        }
-
-        $mask = DesignMask::findOrFail($data['mask_id']);
-
-        try {
-            $image = new \Imagick();
-            $image->readImageBlob(Storage::disk('public')->get($data['background_path']));
-            $image->setImageFormat('png');
-            $image->setImageAlphaChannel(\Imagick::ALPHACHANNEL_OPAQUE);
-
-            $maskImage = new \Imagick();
-            $maskImage->readImageBlob(Storage::disk('public')->get($mask->path));
-            $maskImage->resizeImage($image->getImageWidth(), $image->getImageHeight(), \Imagick::FILTER_LANCZOS, 1);
-            $maskImage->setImageAlphaChannel(\Imagick::ALPHACHANNEL_COPY);
-
-            $image->compositeImage($maskImage, \Imagick::COMPOSITE_DSTIN, 0, 0);
-
-            if ($mask->svg_path && ! empty($data['border_color'])) {
-                $svg = $this->recolorSvg(Storage::disk('public')->get($mask->svg_path), $data['border_color']);
-
-                $svgImage = new \Imagick();
-                $svgImage->setBackgroundColor(new \ImagickPixel('transparent'));
-                $svgImage->readImageBlob($svg);
-                $svgImage->resizeImage($image->getImageWidth(), $image->getImageHeight(), \Imagick::FILTER_LANCZOS, 1);
-
-                $image->compositeImage($svgImage, \Imagick::COMPOSITE_OVER, 0, 0);
-            }
-
-            $filename = 'design-generator/out/' . Str::random(24) . '-masked.png';
-            Storage::disk('public')->put($filename, $image->getImageBlob());
-
-            return response()->json([
-                'ok'  => true,
-                'url' => Storage::disk('public')->url($filename),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Masker toepassen mislukt: ' . $e->getMessage());
-
-            return response()->json([
-                'ok'    => false,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
     /** Sla de (vaste, herbruikbare) prompt-instelling voor een onderdeel + event-type op */
     public function updatePrompt(Request $request): JsonResponse
     {
@@ -252,6 +176,243 @@ class DesignGeneratorController extends Controller
         );
 
         return response()->json(['ok' => true]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Boeking-gekoppelde editor (admin)
+    // ──────────────────────────────────────────────────────────────
+
+    /** Toon/hervat de ontwerp-sessie van een specifieke boeking */
+    public function bookingIndex(Booking $booking): View
+    {
+        $session = $this->session($booking);
+        $state   = $session->state ?? [];
+        $results = null;
+
+        if (! empty($state['backgroundPath']) && Storage::disk('public')->exists($state['backgroundPath'])) {
+            $results = [
+                'ok'      => true,
+                'url'     => Storage::disk('public')->url($state['backgroundPath']),
+                'path'    => $state['backgroundPath'],
+                'seconds' => 0,
+            ];
+        }
+
+        return view('design.booking', array_merge($this->baseViewData(), [
+            'booking'      => $booking,
+            'session'      => $session,
+            'results'      => $results,
+            'input'        => $session->input ?? '',
+            'eventType'    => $session->event_type ?? array_key_first(DesignPromptSetting::EVENT_TYPES),
+            'initialState' => $state,
+        ]));
+    }
+
+    /** Autosave: sla de huidige stand van de ontwerp-sessie op */
+    public function bookingSaveState(Request $request, Booking $booking): JsonResponse
+    {
+        $data = $request->validate([
+            'event_type' => ['nullable', 'string'],
+            'input'      => ['nullable', 'string', 'max:2000'],
+            'state'      => ['nullable', 'array'],
+        ]);
+
+        $session = $this->session($booking);
+        $session->update([
+            'event_type' => $data['event_type'] ?? $session->event_type,
+            'input'      => $data['input'] ?? $session->input,
+            'state'      => array_merge($session->state ?? [], $data['state'] ?? []),
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Genereer een achtergrond voor de boeking-gekoppelde sessie */
+    public function bookingGenerate(Request $request, Booking $booking): View
+    {
+        $data = $this->validateGenerateRequest($request);
+        $refPaths = $this->storeReferenceFiles($request);
+        $results = $this->generateBackgroundImage($data['event_type'], $data['input'], $refPaths);
+
+        $session = $this->session($booking);
+        $state   = $session->state ?? [];
+        if ($results['ok']) {
+            $state['backgroundPath'] = $results['path'];
+        }
+
+        $session->update([
+            'event_type' => $data['event_type'],
+            'input'      => $data['input'],
+            'state'      => $state,
+        ]);
+
+        return view('design.booking', array_merge($this->baseViewData(), [
+            'booking'      => $booking,
+            'session'      => $session,
+            'results'      => $results,
+            'input'        => $data['input'],
+            'eventType'    => $data['event_type'],
+            'initialState' => $state,
+        ]));
+    }
+
+    /** Stel een logo vrij voor de boeking-gekoppelde sessie (geen limiet — admin) */
+    public function bookingCutoutLogo(Request $request, Booking $booking): JsonResponse
+    {
+        $data = $this->validateLogoRequest($request);
+        $stored = $request->file('logo')->store('design-generator/refs', 'local');
+
+        return response()->json($this->cutoutLogoImage(Storage::disk('local')->path($stored)));
+    }
+
+    /** Verstuur het huidige ontwerp naar de klant (mockup + mail, zoals de bestaande handmatige upload) */
+    public function bookingSendToCustomer(Booking $booking): RedirectResponse
+    {
+        $session = $this->session($booking);
+
+        try {
+            $binary = app(DesignRenderService::class)->render($session);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Kan nog niet versturen: ' . $e->getMessage());
+        }
+
+        $filename = 'strip-designs/ai_' . Str::random(20) . '.png';
+        Storage::disk('public')->put($filename, $binary);
+
+        $stripDesignService = app(StripDesignService::class);
+        $mockPath = $stripDesignService->applyMockupIfImage($filename, 'image/png');
+        $url      = Storage::disk('public')->url($mockPath);
+
+        $stripDesignService->attachDesign($booking, $url, 'ai-ontwerp.jpg');
+
+        return redirect()->route('design.booking', $booking)
+            ->with('success', "Ontwerp verstuurd naar {$booking->customer_name}.");
+    }
+
+    /** Zet de huidige ontwerp-render klaar als productiebestand (voor de photobooth-download) */
+    public function bookingSetProduction(Booking $booking): RedirectResponse
+    {
+        $session = $this->session($booking);
+
+        try {
+            $binary = app(DesignRenderService::class)->render($session);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Kan nog niet klaarzetten: ' . $e->getMessage());
+        }
+
+        $filename = 'production/' . $booking->booking_number . '_' . Str::random(8) . '.png';
+        Storage::disk('public')->put($filename, $binary);
+
+        $booking->update([
+            'production_file_path' => $filename,
+            'production_file_at'   => now(),
+            'strip_status'         => 'ready',
+        ]);
+
+        return redirect()->route('design.booking', $booking)
+            ->with('success', 'PNG klaargezet voor productie.');
+    }
+
+    private function session(Booking $booking): DesignSession
+    {
+        return DesignSession::firstOrCreate(['booking_id' => $booking->id]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Gedeelde kernlogica
+    // ──────────────────────────────────────────────────────────────
+
+    private function validateGenerateRequest(Request $request): array
+    {
+        return $request->validate([
+            'input'        => ['required', 'string', 'max:2000'],
+            'event_type'   => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
+            'references'   => ['nullable', 'array', 'max:6'],
+            'references.*' => ['image', 'max:8192'], // 8 MB
+        ], [], [
+            'references.*' => 'referentieafbeelding',
+        ]);
+    }
+
+    private function validateLogoRequest(Request $request): array
+    {
+        return $request->validate([
+            'logo' => ['required', 'image', 'max:8192'],
+        ], [], ['logo' => 'logo-afbeelding']);
+    }
+
+    private function storeReferenceFiles(Request $request): array
+    {
+        $refPaths = [];
+        foreach ($request->file('references', []) as $file) {
+            $stored = $file->store('design-generator/refs', 'local');
+            $refPaths[] = Storage::disk('local')->path($stored);
+        }
+
+        return $refPaths;
+    }
+
+    /** Genereer + cover-crop een achtergrondafbeelding via Gemini. Retourneert het standaard results-array. */
+    private function generateBackgroundImage(string $eventType, string $input, array $refPaths): array
+    {
+        $template = DesignPromptSetting::currentPrompt('background', $eventType);
+        $prompt = str_contains($template, '{beschrijving}')
+            ? str_replace('{beschrijving}', $input, $template)
+            : $template . "\n\n" . $input;
+
+        $started = microtime(true);
+        try {
+            $manager = app(ImageGenerationManager::class);
+            $image   = $manager->driver('gemini')->generate($prompt, $refPaths, null);
+            $binary  = $this->coverCropToCanvas($image->binary, self::CANVAS_WIDTH, self::CANVAS_HEIGHT);
+
+            $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
+            Storage::disk('public')->put($filename, $binary);
+
+            return [
+                'ok'      => true,
+                'url'     => Storage::disk('public')->url($filename),
+                'path'    => $filename,
+                'seconds' => round(microtime(true) - $started, 1),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Achtergrond-generatie mislukt: ' . $e->getMessage());
+
+            return [
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /** Stel een logo vrij als transparante PNG (via GPT/OpenAI — Gemini kan geen echte transparantie). */
+    private function cutoutLogoImage(string $localPath): array
+    {
+        $prompt = 'Cut out only the logo from this image. Remove the background completely so it becomes '
+            . 'fully transparent (alpha channel = 0), keep the logo itself unchanged — do not redraw, '
+            . 'recolor, restyle, or add effects. No shadow, no border, no added background color. '
+            . 'The output must have a genuinely transparent background.';
+
+        try {
+            $manager = app(ImageGenerationManager::class);
+            $image   = $manager->driver('openai')->generate($prompt, [$localPath], null);
+
+            $filename = 'design-generator/logos/' . Str::random(24) . '.' . $image->extension();
+            Storage::disk('public')->put($filename, $image->binary);
+
+            return [
+                'ok'   => true,
+                'url'  => Storage::disk('public')->url($filename),
+                'path' => $filename,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Logo vrijstellen mislukt: ' . $e->getMessage());
+
+            return [
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 
     /**
@@ -293,20 +454,6 @@ class DesignGeneratorController extends Controller
         $svg = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $svg);
         $svg = preg_replace('/\son\w+\s*=\s*"[^"]*"/i', '', $svg);
         $svg = preg_replace("/\son\\w+\\s*=\\s*'[^']*'/i", '', $svg);
-
-        return $svg;
-    }
-
-    /**
-     * Vervang de randkleur in een svg door één gekozen kleur. Afspraak: de kleurbare rand
-     * gebruikt css-klasse "cls-2" (bijv. Illustrator-export met <style>.cls-2{fill:...}</style>).
-     * Daarnaast een fallback voor svg's met inline fill/stroke-attributen (behalve "none").
-     */
-    private function recolorSvg(string $svg, string $color): string
-    {
-        $svg = preg_replace('/\.cls-2\s*\{[^}]*\}/i', '.cls-2{fill:' . $color . ';}', $svg);
-        $svg = preg_replace('/fill="(?!none)[^"]*"/i', 'fill="' . $color . '"', $svg);
-        $svg = preg_replace('/stroke="(?!none)[^"]*"/i', 'stroke="' . $color . '"', $svg);
 
         return $svg;
     }

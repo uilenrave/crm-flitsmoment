@@ -152,6 +152,14 @@ Route::middleware('auth')->group(function () {
     Route::post('ontwerp-generator/masks/apply', [\App\Http\Controllers\DesignGeneratorController::class, 'applyMask'])->name('design.masks.apply');
     Route::delete('ontwerp-generator/masks/{mask}', [\App\Http\Controllers\DesignGeneratorController::class, 'destroyMask'])->name('design.masks.destroy');
 
+    // Ontwerp-generator gekoppeld aan een boeking
+    Route::get('ontwerp-generator/boeking/{booking}', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingIndex'])->name('design.booking');
+    Route::post('ontwerp-generator/boeking/{booking}/state', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSaveState'])->name('design.booking.state');
+    Route::post('ontwerp-generator/boeking/{booking}/genereer', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingGenerate'])->name('design.booking.generate');
+    Route::post('ontwerp-generator/boeking/{booking}/logo', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingCutoutLogo'])->name('design.booking.logo');
+    Route::post('ontwerp-generator/boeking/{booking}/stuur', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSendToCustomer'])->name('design.booking.send');
+    Route::post('ontwerp-generator/boeking/{booking}/productie', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSetProduction'])->name('design.booking.production');
+
     // Briefings (PDF voor medewerker)
     Route::resource('briefings', BriefingController::class)->except(['show']);
     Route::get('briefings/{briefing}/pdf', [BriefingController::class, 'pdf'])->name('briefings.pdf');
