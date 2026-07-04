@@ -27,7 +27,8 @@ const dgLogoEventTypes = {!! Js::from($logoEventTypes) !!};
 
 function dgEventTypeChanged() {
     const type = document.getElementById('event_type').value;
-    document.getElementById('dg-prompt-template').value = dgPromptsByType[type] || '';
+    const promptField = document.getElementById('dg-prompt-template');
+    if (promptField) promptField.value = dgPromptsByType[type] || '';
     document.getElementById('dg-current-type-label').textContent = '(' + (dgEventTypeLabels[type] || type) + ')';
     dgMarkDirty();
 }
@@ -37,6 +38,52 @@ function dgToggleSettings() {
     const gear = document.getElementById('dg-gear');
     gear.classList.toggle('active', open);
     gear.title = open ? 'Klik om te sluiten' : 'Prompt aanpassen';
+}
+
+const dgBgSubmitLabels = {
+    ai:     '✨ Genereer achtergrond',
+    upload: '📤 Upload afbeelding',
+    color:  '🎨 Gebruik deze kleur',
+};
+const dgBgSubmitHints = {
+    ai:     'Genereren kan 10–30 seconden duren.',
+    upload: '',
+    color:  '',
+};
+
+function dgSetBackgroundMethod(method) {
+    const methodField = document.getElementById('dg-background-method');
+    if (methodField) methodField.value = method;
+
+    document.querySelectorAll('.dg-bg-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.method === method);
+    });
+    document.querySelectorAll('.dg-bg-panel').forEach(panel => {
+        panel.style.display = panel.id === ('dg-bg-panel-' + method) ? '' : 'none';
+    });
+
+    const inputField = document.getElementById('input');
+    if (inputField) inputField.required = (method === 'ai');
+    const uploadField = document.getElementById('background_upload');
+    if (uploadField) uploadField.required = (method === 'upload');
+
+    const submitBtn = document.getElementById('dg-submit');
+    if (submitBtn) submitBtn.textContent = dgBgSubmitLabels[method] || dgBgSubmitLabels.ai;
+    const hint = document.getElementById('dg-submit-hint');
+    if (hint) hint.textContent = dgBgSubmitHints[method] ?? '';
+
+    dgMarkDirty();
+}
+
+function dgSyncColorHex(value) {
+    const hexField = document.getElementById('background_color_hex');
+    if (hexField) hexField.value = value;
+}
+
+function dgSyncColorPicker(value) {
+    if (!/^#[0-9a-fA-F]{6}$/.test(value)) return;
+    const colorField = document.getElementById('background_color');
+    if (colorField) colorField.value = value;
 }
 
 function dgSubmitting(form) {
@@ -342,9 +389,15 @@ function dgSelectMask(id) {
 }
 
 function dgBorderColorChanged() {
-    const color = document.getElementById('dg-border-color').value;
-    const svg = document.querySelector('#dg-svg-border-layer svg');
-    if (svg) {
+    const enabled = document.getElementById('dg-border-enabled')?.checked ?? false;
+    const colorInput = document.getElementById('dg-border-color');
+    const borderLayer = document.getElementById('dg-svg-border-layer');
+    if (colorInput) colorInput.style.display = enabled ? '' : 'none';
+    if (borderLayer) borderLayer.style.display = enabled ? '' : 'none';
+
+    const color = colorInput?.value;
+    const svg = borderLayer?.querySelector('svg');
+    if (enabled && svg && color) {
         // Afspraak: de kleurbare rand gebruikt css-klasse "cls-2" binnen de <style> van de svg
         const styleEl = svg.querySelector('style');
         if (styleEl) {
@@ -373,8 +426,9 @@ function dgApplyMask() {
     btn.textContent = '⏳ Bezig…';
 
     const mask = dgMasks.find(m => m.id === dgSelectedMaskId);
+    const borderEnabled = document.getElementById('dg-border-enabled')?.checked ?? false;
     const payload = { background_path: dgBackgroundPath, mask_id: dgSelectedMaskId };
-    if (mask && mask.svgContent) payload.border_color = document.getElementById('dg-border-color').value;
+    if (mask && mask.svgContent && borderEnabled) payload.border_color = document.getElementById('dg-border-color').value;
 
     fetch(dgConfig.urls.masksApply, {
         method: 'POST',
@@ -554,7 +608,9 @@ function dgCollectState() {
         state: {
             backgroundPath: dgBackgroundPath,
             maskId: dgSelectedMaskId,
-            borderColor: document.getElementById('dg-border-color')?.value,
+            borderColor: (document.getElementById('dg-border-enabled')?.checked ?? false)
+                ? document.getElementById('dg-border-color')?.value
+                : null,
             logo: dgLogo ? {
                 path: dgLogo.path, xPct: dgLogo.xPct, yPct: dgLogo.yPct,
                 widthPct: dgLogo.widthPct, rotateDeg: dgLogo.rotateDeg,
@@ -599,6 +655,8 @@ function dgRestoreInitialState() {
     if (s.borderColor) {
         const colorInput = document.getElementById('dg-border-color');
         if (colorInput) colorInput.value = s.borderColor;
+        const enabledEl = document.getElementById('dg-border-enabled');
+        if (enabledEl) enabledEl.checked = true;
     }
 
     if (s.logo && s.logo.path && document.getElementById('dg-result-body')) {
@@ -754,32 +812,4 @@ dgRestoreInitialState();
 dgAutoSelectMaskIfNeeded();
 dgEventTypeChanged();
 dgWizardInit();
-
-function dgPositionPreviewColumn() {
-    const grid = document.querySelector('.dg-grid');
-    const col = document.querySelector('.dg-preview-col');
-    if (!grid || !col) return;
-
-    if (window.innerWidth < 900) {
-        col.classList.remove('dg-fixed');
-        col.style.top = '';
-        col.style.left = '';
-        col.style.width = '';
-        return;
-    }
-
-    const gridRect = grid.getBoundingClientRect();
-    const colWidths = getComputedStyle(grid).gridTemplateColumns.split(' ').map(parseFloat);
-    const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
-    const leftColWidth = colWidths[0] || 400;
-
-    col.classList.add('dg-fixed');
-    col.style.top = '1.25rem';
-    col.style.left = (gridRect.left + leftColWidth + gap) + 'px';
-    col.style.width = (gridRect.width - leftColWidth - gap) + 'px';
-}
-
-window.addEventListener('resize', dgPositionPreviewColumn);
-document.getElementById('sidebar-toggle')?.addEventListener('click', () => setTimeout(dgPositionPreviewColumn, 280));
-dgPositionPreviewColumn();
 </script>

@@ -23,29 +23,44 @@ class DesignGeneratorController extends Controller
     /** Toon het ontwerp-generator formulier (los, niet aan een boeking gekoppeld) */
     public function index(): View
     {
-        $upcomingBookings = Booking::where('status', 'confirmed')
-            ->whereDate('event_date', '>=', now()->toDateString())
-            ->orderBy('event_date')
-            ->get(['id', 'booking_number', 'customer_name', 'event_date']);
-
         return view('design.index', array_merge($this->baseViewData(), [
             'results'          => null,
             'input'            => '',
-            'upcomingBookings' => $upcomingBookings,
+            'upcomingBookings' => $this->upcomingBookings(),
         ]));
     }
 
-    /** Genereer een achtergrondafbeelding via Gemini (standalone) */
+    private function upcomingBookings()
+    {
+        return Booking::where('status', 'confirmed')
+            ->whereDate('event_date', '>=', now()->toDateString())
+            ->orderBy('event_date')
+            ->get(['id', 'booking_number', 'customer_name', 'event_date']);
+    }
+
+    /** Bepaal de achtergrond (AI-generatie, eigen upload of een effen kleur) (standalone) */
     public function generate(Request $request): View
     {
-        $data = app(DesignGenerationService::class)->validateGenerateRequest($request);
-        $refPaths = app(DesignGenerationService::class)->storeReferenceFiles($request);
-        $results = app(DesignGenerationService::class)->generateBackground($data['event_type'], $data['input'], $refPaths);
+        $service = app(DesignGenerationService::class);
+        $data = $service->validateGenerateRequest($request);
+        $method = $data['background_method'] ?? 'ai';
+        $input = '';
+
+        if ($method === 'upload') {
+            $results = $service->uploadBackground($request->file('background_upload'));
+        } elseif ($method === 'color') {
+            $results = $service->colorBackground($data['background_color']);
+        } else {
+            $refPaths = $service->storeReferenceFiles($request);
+            $results = $service->generateBackground($data['event_type'], $data['input'], $refPaths);
+            $input = $data['input'];
+        }
 
         return view('design.index', array_merge($this->baseViewData(), [
-            'results'   => $results,
-            'input'     => $data['input'],
-            'eventType' => $data['event_type'],
+            'results'          => $results,
+            'input'            => $input,
+            'eventType'        => $data['event_type'],
+            'upcomingBookings' => $this->upcomingBookings(),
         ]));
     }
 
@@ -223,12 +238,23 @@ class DesignGeneratorController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Genereer een achtergrond voor de boeking-gekoppelde sessie */
+    /** Bepaal de achtergrond (AI-generatie, eigen upload of een effen kleur) voor de boeking-gekoppelde sessie */
     public function bookingGenerate(Request $request, Booking $booking): View
     {
-        $data = app(DesignGenerationService::class)->validateGenerateRequest($request);
-        $refPaths = app(DesignGenerationService::class)->storeReferenceFiles($request);
-        $results = app(DesignGenerationService::class)->generateBackground($data['event_type'], $data['input'], $refPaths);
+        $service = app(DesignGenerationService::class);
+        $data = $service->validateGenerateRequest($request);
+        $method = $data['background_method'] ?? 'ai';
+        $input = '';
+
+        if ($method === 'upload') {
+            $results = $service->uploadBackground($request->file('background_upload'));
+        } elseif ($method === 'color') {
+            $results = $service->colorBackground($data['background_color']);
+        } else {
+            $refPaths = $service->storeReferenceFiles($request);
+            $results = $service->generateBackground($data['event_type'], $data['input'], $refPaths);
+            $input = $data['input'];
+        }
 
         $session = $this->session($booking);
         $state   = $session->state ?? [];
@@ -238,7 +264,7 @@ class DesignGeneratorController extends Controller
 
         $session->update([
             'event_type' => $data['event_type'],
-            'input'      => $data['input'],
+            'input'      => $input,
             'state'      => $state,
         ]);
 
@@ -246,7 +272,7 @@ class DesignGeneratorController extends Controller
             'booking'      => $booking,
             'session'      => $session,
             'results'      => $results,
-            'input'        => $data['input'],
+            'input'        => $input,
             'eventType'    => $data['event_type'],
             'initialState' => $state,
         ]));

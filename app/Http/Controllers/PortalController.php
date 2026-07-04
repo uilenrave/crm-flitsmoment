@@ -156,7 +156,7 @@ class PortalController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Genereer een achtergrond — geblokkeerd na DesignSession::MAX_BACKGROUND_GENERATIONS pogingen */
+    /** Bepaal de achtergrond — AI-generatie is geblokkeerd na DesignSession::MAX_BACKGROUND_GENERATIONS pogingen; upload/kleur tellen niet mee */
     public function designToolGenerate(Request $request, string $token): View
     {
         $booking = $this->designToolBooking($token);
@@ -164,8 +164,9 @@ class PortalController extends Controller
 
         $session = $this->designSession($booking);
         $service = app(DesignGenerationService::class);
+        $method  = $request->input('background_method', 'ai');
 
-        if ($session->backgroundLimitReached()) {
+        if ($method === 'ai' && $session->backgroundLimitReached()) {
             return view('portal.design-tool', array_merge($this->designToolViewData($booking, $session), [
                 'booking'       => $booking,
                 'results'       => ['ok' => false, 'limit' => true],
@@ -176,9 +177,18 @@ class PortalController extends Controller
             ]));
         }
 
-        $data     = $service->validateGenerateRequest($request);
-        $refPaths = $service->storeReferenceFiles($request);
-        $results  = $service->generateBackground($data['event_type'], $data['input'], $refPaths, $booking->account_id);
+        $data  = $service->validateGenerateRequest($request);
+        $input = $session->input ?? '';
+
+        if ($method === 'upload') {
+            $results = $service->uploadBackground($request->file('background_upload'));
+        } elseif ($method === 'color') {
+            $results = $service->colorBackground($data['background_color']);
+        } else {
+            $refPaths = $service->storeReferenceFiles($request);
+            $results  = $service->generateBackground($data['event_type'], $data['input'], $refPaths, $booking->account_id);
+            $input    = $data['input'];
+        }
 
         $state = $session->state ?? [];
         if ($results['ok']) {
@@ -187,15 +197,15 @@ class PortalController extends Controller
 
         $session->update([
             'event_type'             => $data['event_type'],
-            'input'                  => $data['input'],
+            'input'                  => $input,
             'state'                  => $state,
-            'background_generations' => $session->background_generations + 1,
+            'background_generations' => $method === 'ai' ? ($session->background_generations ?? 0) + 1 : ($session->background_generations ?? 0),
         ]);
 
         return view('portal.design-tool', array_merge($this->designToolViewData($booking, $session->fresh()), [
             'booking'       => $booking,
             'results'       => $results,
-            'input'         => $data['input'],
+            'input'         => $input,
             'eventType'     => $data['event_type'],
             'initialState'  => $state,
             'justGenerated' => true,

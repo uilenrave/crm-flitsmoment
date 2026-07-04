@@ -11,11 +11,14 @@
 <style>
     .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: start; }
     @media (min-width: 900px) { .dg-grid { grid-template-columns: 400px 1fr; } }
-    .dg-preview-col { align-self: start; max-height: calc(100vh - 2.5rem); overflow: auto; }
-    .dg-preview-col.dg-fixed { position: fixed; }
+    .dg-preview-col { align-self: start; position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow: auto; }
     .dg-label { display: block; font-size: .8rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
     .dg-field { margin-bottom: 1.1rem; }
+    .dg-bg-tabs { display: flex; gap: .5rem; margin-bottom: 1.1rem; }
+    .dg-bg-tab { flex: 1; font-size: .78rem; font-weight: 700; color: #64748b; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; padding: .55rem .4rem; cursor: pointer; text-align: center; }
+    .dg-bg-tab:hover { background: #f8fafc; }
+    .dg-bg-tab.active { background: #ede9fe; border-color: #c4b5fd; color: #6d28d9; }
     .dg-textarea { width: 100%; min-height: 140px; padding: .7rem .8rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .9rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
     .dg-textarea:focus, .dg-file:focus, .dg-select:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.12); }
     .dg-file, .dg-select { width: 100%; padding: .55rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .875rem; background: #fff; box-sizing: border-box; }
@@ -167,44 +170,73 @@
             </select>
         </div>
 
-        <div class="dg-field">
-            <label class="dg-label">
-                {{ $promptLabel }}-prompt <span id="dg-current-type-label"></span>
+        <div class="dg-bg-tabs">
+            <button type="button" class="dg-bg-tab active" data-method="ai" onclick="dgSetBackgroundMethod('ai')">✨ AI genereren</button>
+            <button type="button" class="dg-bg-tab" data-method="upload" onclick="dgSetBackgroundMethod('upload')">📤 Eigen afbeelding</button>
+            <button type="button" class="dg-bg-tab" data-method="color" onclick="dgSetBackgroundMethod('color')">🎨 Kleur kiezen</button>
+        </div>
+        <input type="hidden" name="background_method" id="dg-background-method" value="ai">
+
+        <div id="dg-bg-panel-ai" class="dg-bg-panel">
+            <div class="dg-field">
+                <label class="dg-label">
+                    {{ $promptLabel }}-prompt <span id="dg-current-type-label"></span>
+                    @if($dgMode === 'admin')
+                    <span id="dg-gear" class="dg-gear" title="Prompt aanpassen / sluiten" onclick="dgToggleSettings()">⚙️</span>
+                    @endif
+                </label>
                 @if($dgMode === 'admin')
-                <span id="dg-gear" class="dg-gear" title="Prompt aanpassen / sluiten" onclick="dgToggleSettings()">⚙️</span>
+                <div id="dg-settings" class="dg-settings">
+                    <label class="dg-label" for="dg-prompt-template">Vaste prompt <span class="dg-hint">— wordt onthouden per type event, {{ '{beschrijving}' }} wordt vervangen door je invoer hieronder</span></label>
+                    <textarea id="dg-prompt-template"></textarea>
+                    <div class="dg-settings-actions">
+                        <span class="dg-settings-reset" onclick="document.getElementById('dg-prompt-template').value = {{ Js::from($promptDefault) }}">↺ Herstel standaardtekst</span>
+                        <span style="display:flex;align-items:center;gap:.6rem;">
+                            <span id="dg-settings-saved" class="dg-settings-saved">Opgeslagen ✓</span>
+                            <button type="button" class="dg-settings-save" onclick="dgSavePrompt()">Opslaan</button>
+                        </span>
+                    </div>
+                </div>
                 @endif
-            </label>
-            @if($dgMode === 'admin')
-            <div id="dg-settings" class="dg-settings">
-                <label class="dg-label" for="dg-prompt-template">Vaste prompt <span class="dg-hint">— wordt onthouden per type event, {{ '{beschrijving}' }} wordt vervangen door je invoer hieronder</span></label>
-                <textarea id="dg-prompt-template"></textarea>
-                <div class="dg-settings-actions">
-                    <span class="dg-settings-reset" onclick="document.getElementById('dg-prompt-template').value = {{ Js::from($promptDefault) }}">↺ Herstel standaardtekst</span>
-                    <span style="display:flex;align-items:center;gap:.6rem;">
-                        <span id="dg-settings-saved" class="dg-settings-saved">Opgeslagen ✓</span>
-                        <button type="button" class="dg-settings-save" onclick="dgSavePrompt()">Opslaan</button>
-                    </span>
+            </div>
+
+            <div class="dg-field">
+                <label class="dg-label" for="input">Thema / sfeer voor dit ontwerp</label>
+                <textarea id="input" name="input" class="dg-textarea" required placeholder="Bijv: Speelse achtergrond voor een 40e verjaardag, ballonnen en confetti in feestkleuren.">{{ old('input', $input) }}</textarea>
+            </div>
+
+            <div class="dg-field">
+                <label class="dg-label" for="references">Referentieafbeelding <span class="dg-hint">— optioneel, bijv. flyer/huisstijl/sfeerbeeld (meerdere mag, max 8 MB p/st)</span></label>
+                <input id="references" name="references[]" type="file" class="dg-file" accept="image/*" multiple>
+            </div>
+
+            @error('input') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
+            @error('references.*') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
+        </div>
+
+        <div id="dg-bg-panel-upload" class="dg-bg-panel" style="display:none;">
+            <div class="dg-field">
+                <label class="dg-label" for="background_upload">Eigen afbeelding <span class="dg-hint">— wordt automatisch bijgesneden op het canvasformaat (max 15 MB)</span></label>
+                <input id="background_upload" name="background_upload" type="file" class="dg-file" accept="image/*">
+            </div>
+            @error('background_upload') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
+        </div>
+
+        <div id="dg-bg-panel-color" class="dg-bg-panel" style="display:none;">
+            <div class="dg-field">
+                <label class="dg-label" for="background_color">Kleur</label>
+                <div style="display:flex;align-items:center;gap:.6rem;">
+                    <input id="background_color" name="background_color" type="color" value="#ffffff" oninput="dgSyncColorHex(this.value)">
+                    <input id="background_color_hex" type="text" class="dg-file" style="max-width:140px;" value="#ffffff" oninput="dgSyncColorPicker(this.value)" placeholder="#ffffff">
                 </div>
             </div>
-            @endif
+            @error('background_color') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
         </div>
 
-        <div class="dg-field">
-            <label class="dg-label" for="input">Thema / sfeer voor dit ontwerp</label>
-            <textarea id="input" name="input" class="dg-textarea" required placeholder="Bijv: Speelse achtergrond voor een 40e verjaardag, ballonnen en confetti in feestkleuren.">{{ old('input', $input) }}</textarea>
-        </div>
-
-        <div class="dg-field">
-            <label class="dg-label" for="references">Referentieafbeelding <span class="dg-hint">— optioneel, bijv. flyer/huisstijl/sfeerbeeld (meerdere mag, max 8 MB p/st)</span></label>
-            <input id="references" name="references[]" type="file" class="dg-file" accept="image/*" multiple>
-        </div>
-
-        @error('input') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
         @error('event_type') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
-        @error('references.*') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
 
         <button type="submit" id="dg-submit" class="btn btn-primary" style="width:100%;justify-content:center;">✨ Genereer achtergrond</button>
-        <p class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
+        <p id="dg-submit-hint" class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
         <div id="dg-background-limit-notice" class="dg-limit-notice" style="display:none;"></div>
     </form>
     @if($dgMode === 'portal')
@@ -242,8 +274,10 @@
             <div id="dg-mask-gallery" class="dg-mask-gallery"></div>
 
             <div id="dg-color-row" class="dg-color-row" style="display:none;">
-                <label class="dg-label" for="dg-border-color" style="margin:0;">Randkleur</label>
-                <input id="dg-border-color" type="color" value="#000000" oninput="dgBorderColorChanged()">
+                <label class="dg-label" style="margin:0;display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+                    <input type="checkbox" id="dg-border-enabled" onchange="dgBorderColorChanged()"> Gekleurde rand tonen
+                </label>
+                <input id="dg-border-color" type="color" value="#000000" oninput="dgBorderColorChanged()" style="display:none;">
             </div>
 
             <div class="dg-logo-actions">

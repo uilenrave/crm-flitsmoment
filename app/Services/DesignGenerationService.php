@@ -23,13 +23,20 @@ class DesignGenerationService
 
     public function validateGenerateRequest(Request $request): array
     {
+        $method = $request->input('background_method', 'ai');
+
         return $request->validate([
-            'input'        => ['required', 'string', 'max:2000'],
-            'event_type'   => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
-            'references'   => ['nullable', 'array', 'max:6'],
-            'references.*' => ['image', 'max:8192'], // 8 MB
+            'background_method' => ['nullable', Rule::in(['ai', 'upload', 'color'])],
+            'event_type'        => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
+            'input'             => [Rule::requiredIf($method === 'ai'), 'nullable', 'string', 'max:2000'],
+            'references'        => ['nullable', 'array', 'max:6'],
+            'references.*'      => ['image', 'max:8192'], // 8 MB
+            'background_upload' => [Rule::requiredIf($method === 'upload'), 'nullable', 'image', 'max:15360'], // 15 MB
+            'background_color'  => [Rule::requiredIf($method === 'color'), 'nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ], [], [
-            'references.*' => 'referentieafbeelding',
+            'references.*'      => 'referentieafbeelding',
+            'background_upload' => 'afbeelding',
+            'background_color'  => 'kleur',
         ]);
     }
 
@@ -79,6 +86,59 @@ class DesignGenerationService
             ];
         } catch (\Throwable $e) {
             Log::error('Achtergrond-generatie mislukt: ' . $e->getMessage());
+
+            return [
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /** Gebruik een geüploade afbeelding rechtstreeks als achtergrond (cover-crop naar canvasformaat). */
+    public function uploadBackground(\Illuminate\Http\UploadedFile $file): array
+    {
+        $started = microtime(true);
+        try {
+            $binary = $this->coverCropToCanvas(file_get_contents($file->getRealPath()), self::CANVAS_WIDTH, self::CANVAS_HEIGHT);
+
+            $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
+            Storage::disk('public')->put($filename, $binary);
+
+            return [
+                'ok'      => true,
+                'url'     => Storage::disk('public')->url($filename),
+                'path'    => $filename,
+                'seconds' => round(microtime(true) - $started, 1),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Achtergrond-upload mislukt: ' . $e->getMessage());
+
+            return [
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /** Genereer een effen kleurvlak op canvasformaat als achtergrond. */
+    public function colorBackground(string $hexColor): array
+    {
+        try {
+            $image = new Imagick();
+            $image->newImage(self::CANVAS_WIDTH, self::CANVAS_HEIGHT, new \ImagickPixel($hexColor));
+            $image->setImageFormat('jpg');
+
+            $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
+            Storage::disk('public')->put($filename, $image->getImageBlob());
+
+            return [
+                'ok'      => true,
+                'url'     => Storage::disk('public')->url($filename),
+                'path'    => $filename,
+                'seconds' => 0,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Kleur-achtergrond mislukt: ' . $e->getMessage());
 
             return [
                 'ok'    => false,
