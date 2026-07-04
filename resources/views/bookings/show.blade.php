@@ -255,6 +255,21 @@
                             <div style="font-size:.8rem;color:#5b21b6;">Aangeleverde wensen en bestanden staan in de "Fotostrip input van klant"-kaart hierboven.</div>
                         </div>
                     </div>
+                @elseif($stripMethod === 'ai')
+                    <div style="display:flex;align-items:flex-start;gap:.75rem;background:#ede9fe;border:1px solid #c4b5fd;border-radius:.5rem;padding:.875rem 1rem;">
+                        <span style="font-size:1.3rem;">✨</span>
+                        <div style="flex:1;">
+                            <div style="font-weight:700;font-size:.9rem;color:#5b21b6;margin-bottom:.25rem;">Klant ontwerpt met de AI-tool</div>
+                            <div style="font-size:.8rem;color:#5b21b6;">
+                                @if(in_array($booking->strip_status, ['accepted', 'ready']))
+                                    Klant heeft aangegeven dat het ontwerp af is.
+                                @else
+                                    Klant is nog bezig in de wizard.
+                                @endif
+                                <a href="{{ route('design.booking', $booking) }}" style="color:#5b21b6;font-weight:700;">Bekijk/bewerk het ontwerp →</a>
+                            </div>
+                        </div>
+                    </div>
                 @endif
             </div>
         </div>

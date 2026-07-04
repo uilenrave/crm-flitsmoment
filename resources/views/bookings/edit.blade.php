@@ -485,6 +485,7 @@
                     <select name="strip_design_method" class="form-control" id="strip-method-select" onchange="stripToggleAdminFields()">
                         <option value="" @selected(old('strip_design_method', $booking->strip_design_method) === null)>— Klant heeft niet gekozen —</option>
                         <option value="self"     @selected(old('strip_design_method', $booking->strip_design_method)==='self')>🎨 Klant ontwerpt zelf</option>
+                        <option value="ai"       @selected(old('strip_design_method', $booking->strip_design_method)==='ai')>✨ Klant ontwerpt met AI-tool</option>
                         <option value="template" @selected(old('strip_design_method', $booking->strip_design_method)==='template')>📋 Template uit galerij</option>
                         <option value="custom"   @selected(old('strip_design_method', $booking->strip_design_method)==='custom')>✏️ Wij ontwerpen</option>
                     </select>
