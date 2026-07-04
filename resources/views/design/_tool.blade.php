@@ -36,15 +36,17 @@
     .dg-textarea { width: 100%; min-height: 140px; padding: .7rem .8rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .9rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
     .dg-textarea:focus, .dg-file:focus, .dg-select:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.12); }
     .dg-file, .dg-select { width: 100%; padding: .55rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .875rem; background: #fff; box-sizing: border-box; }
-    .dg-result { border: 1px solid #e2e8f0; border-radius: .75rem; overflow: hidden; background: #fff; }
+    .dg-result { border: 1px solid #e2e8f0; border-radius: .75rem; overflow: hidden; background: #fff; text-align: center; }
     .dg-result-head { display: flex; justify-content: flex-end; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; font-size: .8rem; }
     .dg-result-frame { background: #f8fafc; padding: 1.75rem 1rem; }
     .dg-result-body { display: flex; justify-content: center; position: relative; }
 
     /* Mockup-weergave: dezelfde achtergrond+plakband als StripMockupService::render() (het manuele
        upload-pad), zodat de live preview er hetzelfde uitziet als het uiteindelijke mockup-bestand. */
-    .dg-mockup-frame { position: relative; width: 100%; border-radius: .75rem; overflow: hidden; background: #f8fafc; }
-    .dg-mockup-bg { display: block; width: 100%; height: auto; }
+    /* inline-block + max-width/max-height (i.p.v. width:100%) zodat de mockup op korte
+       vensters kleiner wordt i.p.v. van het scherm af te lopen — "past precies op het scherm". */
+    .dg-mockup-frame { position: relative; display: inline-block; max-width: 100%; border-radius: .75rem; overflow: hidden; background: #f8fafc; line-height: 0; }
+    .dg-mockup-bg { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 6rem); }
     .dg-mockup-strip-slot { position: absolute; transform: translateX(-50%); }
     .dg-mockup-strip-slot .dg-result-frame { background: transparent; padding: 0; filter: drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
     .dg-mockup-strip-slot .dg-result-body img { max-height: none; }

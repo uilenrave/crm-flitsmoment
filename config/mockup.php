@@ -16,11 +16,13 @@ return [
     'tape_file'       => 'tape.png',
 
     // Plaatsing van de strip op de achtergrond
+    // Achtergrond is nu 606x706 (compacter dan de oude 606x1026) — herijkt zodat de strip
+    // weinig rand boven/onder overhoudt i.p.v. het ruime formaat van de oude achtergrond.
     'strip' => [
         'center_x'   => 0.50, // horizontaal midden (fractie van breedte)
-        'top'        => 0.17, // bovenkant strip (fractie van hoogte)
-        'width'      => 0.355, // breedte strip (fractie van breedte)
-        'max_height' => 0.70, // max hoogte strip (fractie van hoogte)
+        'top'        => 0.06, // bovenkant strip (fractie van hoogte)
+        'width'      => 0.34, // breedte strip (fractie van breedte)
+        'max_height' => 0.90, // max hoogte strip (fractie van hoogte)
     ],
 
     // Slagschaduw onder de strip
@@ -34,7 +36,7 @@ return [
     // Plakbandje (bovenin, over de strip)
     'tape' => [
         'center_x' => 0.50, // horizontaal midden
-        'center_y' => 0.17, // verticaal midden van het bandje (fractie van hoogte)
+        'center_y' => 0.06, // verticaal midden van het bandje (fractie van hoogte) — gelijk aan strip.top
         'width'    => 0.25, // breedte (fractie van breedte)
     ],
 
