@@ -171,6 +171,10 @@ function dgCutoutLogo() {
             fileInput.value = '';
             dgAddLogoLayer(data.url, data.path, { originalName: originalName });
             dgMarkDirty();
+            if (dgConfig.limits) {
+                dgConfig.limits.logoCount++;
+                dgRenderLimitHints();
+            }
         } else if (data.limit) {
             dgShowLimitNotice('dg-logo-limit-notice');
         } else {
@@ -960,8 +964,28 @@ function dgRenderStepIndicator() {
     });
 }
 
+function dgRenderLimitHints() {
+    if (!dgConfig.limits) return;
+
+    const bgHint = document.getElementById('dg-background-count-hint');
+    if (bgHint) {
+        const remaining = Math.max(0, dgConfig.limits.backgroundMax - dgConfig.limits.backgroundCount);
+        bgHint.textContent = `Nog ${remaining} van de ${dgConfig.limits.backgroundMax} keer genereren over.`;
+        bgHint.style.display = 'block';
+    }
+
+    const logoHint = document.getElementById('dg-logo-count-hint');
+    if (logoHint) {
+        const remaining = Math.max(0, dgConfig.limits.logoMax - dgConfig.limits.logoCount);
+        logoHint.textContent = `Nog ${remaining} van de ${dgConfig.limits.logoMax} keer vrijstellen over.`;
+        logoHint.style.display = 'block';
+    }
+}
+
 function dgWizardInit() {
     if (dgConfig.mode !== 'portal') return;
+
+    dgRenderLimitHints();
 
     if (dgConfig.resultsLimit) {
         dgShowLimitNotice('dg-background-limit-notice');

@@ -278,6 +278,7 @@
 
         <button type="submit" id="dg-submit" class="dg-btn-primary" style="width:100%;">✨ Genereer achtergrond</button>
         <p id="dg-submit-hint" class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
+        <p id="dg-background-count-hint" class="dg-hint" style="margin:.3rem 0 0;text-align:center;display:none;"></p>
         <div id="dg-background-limit-notice" class="dg-limit-notice" style="display:none;"></div>
     </form>
     @if($dgMode === 'portal')
@@ -298,6 +299,7 @@
                 <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstaand maken</button>
             </div>
             <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
+            <p id="dg-logo-count-hint" class="dg-hint" style="display:none;margin-top:.4rem;"></p>
             <p id="dg-logo-max-notice" class="dg-hint" style="display:none;margin-top:.4rem;">Maximaal 3 logo's — verwijder er eerst één om een nieuwe toe te voegen.</p>
             <div id="dg-logo-limit-notice" class="dg-limit-notice" style="display:none;"></div>
             <div id="dg-logo-list" class="dg-logo-list"></div>
