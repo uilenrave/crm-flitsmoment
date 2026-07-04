@@ -19,16 +19,19 @@
     $availableThemes  = $stripTemplates->pluck('theme')->unique()->values();
     $availableFormats = $stripTemplates->pluck('format')->unique()->values();
 
-    // Bepaal de huidige UI-stap op basis van de DB-state
+    // Bepaal de huidige UI-stap op basis van de DB-state.
+    // "designing" staat bewust vooraan: zodra de klant via het hulp-formulier onder een
+    // pad om hulp heeft gevraagd, nemen wij het over — ongeacht welk pad (ai/self/etc.) was gekozen.
     $stripState =
-        ! $method                                              ? 'choose_method'
-        : ($method === 'self' && ! $tool                       ? 'choose_self_tool'
-        : ($method === 'self'                                  ? 'self_waiting'
-        : ($method === 'template' && ! $booking->strip_template_id ? 'choose_template'
-        : ($method === 'template' && $status === 'waiting_input'   ? 'template_text'
-        : ($method === 'custom'   && $status !== 'designing'       ? 'custom_brief'
-        : ($status === 'designing'                                 ? 'designing'
-        : 'final'))))));
+        ! $method                                                    ? 'choose_method'
+        : ($status === 'designing'                                   ? 'designing'
+        : ($method === 'ai' && ! in_array($status, ['review', 'accepted', 'ready']) ? 'ai_wizard'
+        : ($method === 'self' && ! $tool                             ? 'choose_self_tool'
+        : ($method === 'self'                                        ? 'self_waiting'
+        : ($method === 'template' && ! $booking->strip_template_id   ? 'choose_template'
+        : ($method === 'template' && $status === 'waiting_input'     ? 'template_text'
+        : ($method === 'custom'   && $status !== 'designing'         ? 'custom_brief'
+        : 'final')))))));
 @endphp
 
 <style>
@@ -343,7 +346,10 @@
         <span class="section-title">Fotostrip ontwerp</span>
         @if($method)
             <span class="strip-method-badge">
-                @if($method === 'self') 🎨 Zelf ontwerpen
+                @if($method === 'self' && $tool === 'photoshop') 🖌 Photoshop
+                @elseif($method === 'self' && $tool === 'canva') 🎨 Canva
+                @elseif($method === 'self') 🎨 Zelf ontwerpen
+                @elseif($method === 'ai') ✨ AI-tool
                 @elseif($method === 'template') 📋 Template #{{ $tpl?->number ?? '?' }}
                 @else ✏️ Wij ontwerpen
                 @endif
@@ -352,40 +358,39 @@
     </div>
     <div class="section-body">
 
-    {{-- ═══════════ STAP 1: METHODE KIEZEN ═══════════ --}}
+    {{-- ═══════════ STAP 1: FOTOSTRIP ZELF ONTWERPEN ═══════════ --}}
     @if($stripState === 'choose_method')
-        <div class="strip-step-label">Stap 1 — Maak een keuze</div>
+        <div class="strip-step-label">Fotostrip zelf ontwerpen</div>
         <div class="strip-step-question">Hoe wil je je fotostrip-ontwerp maken?</div>
 
-        <form method="POST" action="{{ route('portal.strip-method', $booking->public_token) }}" id="strip-method-form">
+        <form method="POST" action="{{ route('portal.strip-choose-path', $booking->public_token) }}" id="strip-method-form">
             @csrf
             <div class="strip-options">
-                <label class="strip-option" data-method="self">
-                    <input type="radio" name="method" value="self" style="display:none;" onchange="stripSelectMethod(this)">
+                <label class="strip-option" data-method="photoshop">
+                    <input type="radio" name="path" value="photoshop" style="display:none;" onchange="stripSelectMethod(this)">
+                    <span class="strip-option-radio"></span>
+                    <span class="strip-option-icon">🖌</span>
+                    <span class="strip-option-body">
+                        <span class="strip-option-title">Photoshop templates</span>
+                        <span class="strip-option-desc">Download onze .psd-templates en werk offline in Adobe Photoshop.</span>
+                    </span>
+                </label>
+                <label class="strip-option" data-method="canva">
+                    <input type="radio" name="path" value="canva" style="display:none;" onchange="stripSelectMethod(this)">
                     <span class="strip-option-radio"></span>
                     <span class="strip-option-icon">🎨</span>
                     <span class="strip-option-body">
-                        <span class="strip-option-title">Zelf ontwerpen</span>
-                        <span class="strip-option-desc">Maak je eigen ontwerp in Canva of Photoshop met onze templates.</span>
+                        <span class="strip-option-title">Canva templates</span>
+                        <span class="strip-option-desc">Werk online in je browser met onze kant-en-klare templates. Gratis account volstaat.</span>
                     </span>
                 </label>
-                {{-- TODO: weer aanzetten zodra strip-templates galerij gevuld is — verwijder dan style="display:none;" --}}
-                <label class="strip-option" data-method="template" style="display:none;">
-                    <input type="radio" name="method" value="template" style="display:none;" onchange="stripSelectMethod(this)">
+                <label class="strip-option" data-method="ai">
+                    <input type="radio" name="path" value="ai" style="display:none;" onchange="stripSelectMethod(this)">
                     <span class="strip-option-radio"></span>
-                    <span class="strip-option-icon">📋</span>
+                    <span class="strip-option-icon">✨</span>
                     <span class="strip-option-body">
-                        <span class="strip-option-title">Kies uit een template</span>
-                        <span class="strip-option-desc">Bekijk onze galerij met kant-en-klare ontwerpen — wij vullen je tekst in.</span>
-                    </span>
-                </label>
-                <label class="strip-option" data-method="custom">
-                    <input type="radio" name="method" value="custom" style="display:none;" onchange="stripSelectMethod(this)">
-                    <span class="strip-option-radio"></span>
-                    <span class="strip-option-icon">✏️</span>
-                    <span class="strip-option-body">
-                        <span class="strip-option-title">Door ons laten ontwerpen</span>
-                        <span class="strip-option-desc">Stuur ons je wensen, logo en huisstijl — wij ontwerpen een uniek ontwerp op maat.</span>
+                        <span class="strip-option-title">Ontwerpen met onze AI-tool</span>
+                        <span class="strip-option-desc">Genereer zelf een unieke achtergrond en ontwerp stap voor stap je fotostrip.</span>
                     </span>
                 </label>
             </div>
@@ -514,6 +519,17 @@
         </div>
 
         <div class="strip-warn-bar">⏳ <span><strong>Status: we wachten op je ontwerp.</strong> Zodra het binnen is, krijg je een voorbeeld ter goedkeuring.</span></div>
+
+        @include('portal._strip_help_form')
+
+    {{-- ═══════════ AI-TOOL: DOORVERWIJZING NAAR DE WIZARD-PAGINA ═══════════ --}}
+    @elseif($stripState === 'ai_wizard')
+        <div class="strip-step-label">Aan de slag ✨</div>
+        <div class="strip-step-question">Ontwerp je fotostrip met onze AI-tool</div>
+        <p class="strip-form-help">Je werkt stap voor stap door de onderdelen heen (achtergrond, logo, transparantie). Je voortgang wordt automatisch opgeslagen — je kunt altijd terugkomen.</p>
+        <a href="{{ route('portal.design-tool', $booking->public_token) }}" class="strip-btn strip-btn-primary strip-btn-full">✨ Open de ontwerp-tool →</a>
+
+        @include('portal._strip_help_form')
 
     {{-- ═══════════ STAP 2B: TEMPLATE KIEZEN ═══════════ --}}
     @elseif($stripState === 'choose_template')
@@ -678,7 +694,7 @@
     @endif
 
     {{-- Reset / wissel-knop — alleen als methode al gezet is én niet meer in flow-stappen die hun eigen "Vorige" hebben --}}
-    @if($method && $canSwitch && in_array($stripState, ['self_waiting', 'designing']))
+    @if($method && $canSwitch && in_array($stripState, ['self_waiting', 'ai_wizard', 'designing']))
         <div style="margin-top:1rem;padding-top:1rem;border-top:1px dashed var(--border);text-align:right;">
             <form method="POST" action="{{ route('portal.strip-reset', $booking->public_token) }}" style="display:inline;">
                 @csrf

@@ -112,6 +112,52 @@ class PortalController extends Controller
         return redirect()->route('portal.show', $token);
     }
 
+    /**
+     * Stap 1 (nieuw): klant kiest direct één van de 3 paden — photoshop/canva (self met tool
+     * in één stap) of ai (eigen wizard-pagina). "Door ons laten ontwerpen" is geen hoofdoptie
+     * meer, maar blijft bereikbaar via het hulp-formulier onder elk pad (submitStripInput).
+     */
+    public function chooseDesignPath(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->with('account')
+            ->firstOrFail();
+
+        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
+            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
+        }
+
+        $validated = $request->validate([
+            'path' => ['required', 'in:photoshop,canva,ai'],
+        ]);
+
+        if ($validated['path'] === 'ai') {
+            $booking->update([
+                'strip_design_method' => 'ai',
+                'strip_self_tool'     => null,
+                'strip_template_id'   => null,
+                'strip_status'        => null,
+            ]);
+
+            return redirect()->route('portal.design-tool', $token);
+        }
+
+        $booking->update([
+            'strip_design_method' => 'self',
+            'strip_self_tool'     => $validated['path'],
+            'strip_template_id'   => null,
+            'strip_status'        => 'awaiting_customer_design',
+        ]);
+
+        if ($booking->account->email) {
+            app(MailService::class)->send('admin_strip_method_self', $booking, $booking->account->email);
+        }
+
+        return redirect()->route('portal.show', $token)
+            ->with('success', '✅ Genoteerd! Stuur je afgewerkte ontwerp naar ontwerp@flitsmoment.nl.');
+    }
+
     /** Stap 2a (Self): klant kiest tool — pas hier wordt admin op de hoogte gebracht. */
     public function setStripSelfTool(Request $request, string $token): RedirectResponse
     {

@@ -46,10 +46,12 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::post('/boeking/{token}/betalen', [PortalController::class, 'startPayment'])->name('portal.payment-start');
     Route::get('/boeking/{token}/betaling-return', [PortalController::class, 'paymentReturn'])->name('portal.payment-return');
     Route::get('/boeking/{token}/ontwerp', [PortalController::class, 'stripDesignView'])->name('portal.strip-design');
+    Route::get('/boeking/{token}/ontwerp-tool', [PortalController::class, 'designTool'])->name('portal.design-tool');
     Route::post('/boeking/{token}/ontwerp-feedback', [PortalController::class, 'submitStripFeedback'])->name('portal.strip-feedback');
     Route::post('/boeking/{token}/strip-review', [PortalController::class, 'stripReview'])->name('portal.strip-review');
     Route::post('/boeking/{token}/strip-input', [PortalController::class, 'submitStripInput'])->name('portal.strip-input');
     Route::post('/boeking/{token}/strip-method', [PortalController::class, 'setStripMethod'])->name('portal.strip-method');
+    Route::post('/boeking/{token}/strip-choose-path', [PortalController::class, 'chooseDesignPath'])->name('portal.strip-choose-path');
     Route::post('/boeking/{token}/strip-self-tool', [PortalController::class, 'setStripSelfTool'])->name('portal.strip-self-tool');
     Route::post('/boeking/{token}/strip-template', [PortalController::class, 'selectStripTemplate'])->name('portal.strip-template-select');
     Route::post('/boeking/{token}/strip-reset', [PortalController::class, 'resetStripChoice'])->name('portal.strip-reset');
