@@ -4,25 +4,60 @@ namespace App\Services;
 
 use App\Models\DesignPromptSetting;
 use App\Services\ImageGeneration\ImageGenerationManager;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Imagick;
 
 /**
  * Kernlogica voor het genereren van achtergronden en het vrijstellen van logo's —
  * gedeeld tussen de admin-generator (DesignGeneratorController) en de klant-wizard
- * in het portaal (PortalController), zodat beide dezelfde AI-aanroepen/opslag gebruiken.
+ * in het portaal (PortalController), zodat beide dezelfde AI-aanroepen/opslag/validatie gebruiken.
  */
 class DesignGenerationService
 {
     private const CANVAS_WIDTH = 600;
     private const CANVAS_HEIGHT = 1800;
 
-    /** Genereer + cover-crop een achtergrondafbeelding via Gemini. Retourneert het standaard results-array. */
-    public function generateBackground(string $eventType, string $input, array $refPaths): array
+    public function validateGenerateRequest(Request $request): array
     {
-        $template = DesignPromptSetting::currentPrompt('background', $eventType);
+        return $request->validate([
+            'input'        => ['required', 'string', 'max:2000'],
+            'event_type'   => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
+            'references'   => ['nullable', 'array', 'max:6'],
+            'references.*' => ['image', 'max:8192'], // 8 MB
+        ], [], [
+            'references.*' => 'referentieafbeelding',
+        ]);
+    }
+
+    public function validateLogoRequest(Request $request): array
+    {
+        return $request->validate([
+            'logo' => ['required', 'image', 'max:8192'],
+        ], [], ['logo' => 'logo-afbeelding']);
+    }
+
+    public function storeReferenceFiles(Request $request): array
+    {
+        $refPaths = [];
+        foreach ($request->file('references', []) as $file) {
+            $stored = $file->store('design-generator/refs', 'local');
+            $refPaths[] = Storage::disk('local')->path($stored);
+        }
+
+        return $refPaths;
+    }
+
+    /**
+     * Genereer + cover-crop een achtergrondafbeelding via Gemini. Retourneert het standaard results-array.
+     * $accountId: verplicht vanuit een niet-auth-context (portaal/token) — zie DesignPromptSetting::currentPrompt().
+     */
+    public function generateBackground(string $eventType, string $input, array $refPaths, ?int $accountId = null): array
+    {
+        $template = DesignPromptSetting::currentPrompt('background', $eventType, $accountId);
         $prompt = str_contains($template, '{beschrijving}')
             ? str_replace('{beschrijving}', $input, $template)
             : $template . "\n\n" . $input;

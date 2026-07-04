@@ -41,4 +41,25 @@ class DesignMask extends Model
     {
         return $this->svg_path ? Storage::disk('public')->url($this->svg_path) : null;
     }
+
+    /**
+     * Maskers voor de tool-frontend, als array klaar voor Js::from(). Expliciet op account_id
+     * gescoped (i.p.v. de ambient auth-gebaseerde AccountScope) — nodig vanuit het portaal,
+     * waar geen ingelogde gebruiker is.
+     */
+    public static function listForAccount(int $accountId): \Illuminate\Support\Collection
+    {
+        return static::withoutGlobalScope(AccountScope::class)
+            ->where('account_id', $accountId)
+            ->orderBy('label')
+            ->get()
+            ->map(fn (self $m) => [
+                'id'           => $m->id,
+                'label'        => $m->label,
+                'url'          => $m->url,
+                'thumbnailUrl' => $m->thumbnail_url,
+                'svgContent'   => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
+            ])
+            ->values();
+    }
 }

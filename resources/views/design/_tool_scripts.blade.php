@@ -6,6 +6,7 @@
 @php
     $limits = $limits ?? null;
     $initialState = $initialState ?? null;
+    $justGenerated = $justGenerated ?? false;
 @endphp
 <script>
 window.dgConfig = {
@@ -16,6 +17,8 @@ window.dgConfig = {
     canManageMasks: {{ $dgMode === 'admin' ? 'true' : 'false' }},
     limits: {!! Js::from($limits) !!},
     initialState: {!! Js::from($initialState) !!},
+    justGenerated: {{ $justGenerated ? 'true' : 'false' }},
+    resultsLimit: {{ ($results['limit'] ?? false) ? 'true' : 'false' }},
 };
 
 const dgPromptsByType = {!! Js::from($promptsByType) !!};
@@ -556,6 +559,7 @@ function dgCollectState() {
                 path: dgLogo.path, xPct: dgLogo.xPct, yPct: dgLogo.yPct,
                 widthPct: dgLogo.widthPct, rotateDeg: dgLogo.rotateDeg,
             } : null,
+            step: dgConfig.mode === 'portal' ? dgWizardStep : undefined,
         },
     };
 }
@@ -651,10 +655,105 @@ function dgInitLogoEditorFromState(logoState) {
     img.src = url;
 }
 
+// ── Wizard-navigatie (alleen mode=portal) ──
+
+let dgWizardStep = 1;
+const dgWizardStepLabels = ['Achtergrond', 'Logo', 'Transparantie', 'Klaar'];
+
+function dgWizardGoTo(step) {
+    if (dgConfig.mode !== 'portal') return;
+    dgWizardStep = step;
+    document.querySelectorAll('.dg-step').forEach(el => {
+        el.classList.toggle('active', parseInt(el.dataset.step, 10) === step);
+    });
+    dgRenderStepIndicator();
+    dgMarkDirty();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function dgRenderStepIndicator() {
+    const el = document.getElementById('dg-step-indicator');
+    if (!el) return;
+    el.innerHTML = '';
+    dgWizardStepLabels.forEach((label, i) => {
+        const step = i + 1;
+        const dot = document.createElement('div');
+        dot.className = 'dg-step-dot' + (step === dgWizardStep ? ' active' : (step < dgWizardStep ? ' done' : ''));
+        dot.textContent = step < dgWizardStep ? '✓' : step;
+        dot.title = label;
+        el.appendChild(dot);
+        if (step < dgWizardStepLabels.length) {
+            const connector = document.createElement('div');
+            connector.className = 'dg-step-connector';
+            el.appendChild(connector);
+        }
+    });
+}
+
+function dgWizardInit() {
+    if (dgConfig.mode !== 'portal') return;
+
+    if (dgConfig.resultsLimit) {
+        dgShowLimitNotice('dg-background-limit-notice');
+        const submitBtn = document.getElementById('dg-submit');
+        if (submitBtn) submitBtn.disabled = true;
+    }
+
+    const nextBtn = document.getElementById('dg-step1-next');
+    if (nextBtn && dgBackgroundPath) nextBtn.style.display = 'inline-flex';
+
+    let startStep = 1;
+    const savedStep = dgConfig.initialState?.step;
+    if (! dgConfig.justGenerated && dgBackgroundPath && savedStep >= 1 && savedStep <= 4) {
+        startStep = savedStep;
+    }
+
+    dgWizardGoTo(startStep);
+}
+
+function dgFinishDesign() {
+    if (! confirm('Ontwerp indienen als definitief? Je kunt hierna niet meer wijzigen.')) return;
+
+    const btn = document.getElementById('dg-finish-btn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Bezig…';
+
+    fetch(dgConfig.urls.finish, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+        },
+        body: JSON.stringify({}),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            document.getElementById('dg-steps-wrapper').innerHTML =
+                '<div class="dg-finish-card"><div style="font-size:2.5rem;margin-bottom:.5rem;">🎉</div>'
+                + '<h3 style="margin:0 0 .5rem;">Bedankt!</h3>'
+                + '<p class="dg-hint">Je ontwerp is verstuurd. Wij nemen het van hier over.</p></div>';
+            const indicator = document.getElementById('dg-step-indicator');
+            if (indicator) indicator.style.display = 'none';
+        } else {
+            btn.disabled = false;
+            btn.textContent = original;
+            alert(data.error || 'Er ging iets mis, probeer het nog eens.');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = original;
+        alert('Netwerkfout, probeer het nog eens.');
+    });
+}
+
 dgRenderMaskGallery();
 dgRestoreInitialState();
 dgAutoSelectMaskIfNeeded();
 dgEventTypeChanged();
+dgWizardInit();
 
 function dgPositionPreviewColumn() {
     const grid = document.querySelector('.dg-grid');

@@ -38,8 +38,8 @@ class DesignGeneratorController extends Controller
     /** Genereer een achtergrondafbeelding via Gemini (standalone) */
     public function generate(Request $request): View
     {
-        $data = $this->validateGenerateRequest($request);
-        $refPaths = $this->storeReferenceFiles($request);
+        $data = app(DesignGenerationService::class)->validateGenerateRequest($request);
+        $refPaths = app(DesignGenerationService::class)->storeReferenceFiles($request);
         $results = app(DesignGenerationService::class)->generateBackground($data['event_type'], $data['input'], $refPaths);
 
         return view('design.index', array_merge($this->baseViewData(), [
@@ -52,7 +52,7 @@ class DesignGeneratorController extends Controller
     /** Stel een geüpload logo vrij als transparante PNG (standalone) */
     public function cutoutLogo(Request $request): JsonResponse
     {
-        $data = $this->validateLogoRequest($request);
+        $data = app(DesignGenerationService::class)->validateLogoRequest($request);
         $stored = $request->file('logo')->store('design-generator/refs', 'local');
 
         return response()->json(app(DesignGenerationService::class)->cutoutLogo(Storage::disk('local')->path($stored)));
@@ -226,8 +226,8 @@ class DesignGeneratorController extends Controller
     /** Genereer een achtergrond voor de boeking-gekoppelde sessie */
     public function bookingGenerate(Request $request, Booking $booking): View
     {
-        $data = $this->validateGenerateRequest($request);
-        $refPaths = $this->storeReferenceFiles($request);
+        $data = app(DesignGenerationService::class)->validateGenerateRequest($request);
+        $refPaths = app(DesignGenerationService::class)->storeReferenceFiles($request);
         $results = app(DesignGenerationService::class)->generateBackground($data['event_type'], $data['input'], $refPaths);
 
         $session = $this->session($booking);
@@ -255,7 +255,7 @@ class DesignGeneratorController extends Controller
     /** Stel een logo vrij voor de boeking-gekoppelde sessie (geen limiet — admin) */
     public function bookingCutoutLogo(Request $request, Booking $booking): JsonResponse
     {
-        $data = $this->validateLogoRequest($request);
+        $data = app(DesignGenerationService::class)->validateLogoRequest($request);
         $stored = $request->file('logo')->store('design-generator/refs', 'local');
 
         return response()->json(app(DesignGenerationService::class)->cutoutLogo(Storage::disk('local')->path($stored)));
@@ -317,36 +317,6 @@ class DesignGeneratorController extends Controller
     // ──────────────────────────────────────────────────────────────
     // Gedeelde kernlogica
     // ──────────────────────────────────────────────────────────────
-
-    private function validateGenerateRequest(Request $request): array
-    {
-        return $request->validate([
-            'input'        => ['required', 'string', 'max:2000'],
-            'event_type'   => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
-            'references'   => ['nullable', 'array', 'max:6'],
-            'references.*' => ['image', 'max:8192'], // 8 MB
-        ], [], [
-            'references.*' => 'referentieafbeelding',
-        ]);
-    }
-
-    private function validateLogoRequest(Request $request): array
-    {
-        return $request->validate([
-            'logo' => ['required', 'image', 'max:8192'],
-        ], [], ['logo' => 'logo-afbeelding']);
-    }
-
-    private function storeReferenceFiles(Request $request): array
-    {
-        $refPaths = [];
-        foreach ($request->file('references', []) as $file) {
-            $stored = $file->store('design-generator/refs', 'local');
-            $refPaths[] = Storage::disk('local')->path($stored);
-        }
-
-        return $refPaths;
-    }
 
     /** Basisbeveiliging voor geüploade SVG's: verwijder scripts en on*-event-handlers vóórdat we ze opslaan/inline tonen */
     private function sanitizeSvg(string $svg): string

@@ -4,17 +4,25 @@ namespace App\Http\Controllers;
 
 use App\Mail\ReturnTimeRequestedNotification;
 use App\Models\Booking;
+use App\Models\DesignMask;
+use App\Models\DesignPromptSetting;
+use App\Models\DesignSession;
 use App\Models\Payment;
 use App\Models\StripTemplate;
 use App\Models\CanvaTemplate;
 use App\Scopes\AccountScope;
+use App\Services\DesignGenerationService;
+use App\Services\DesignRenderService;
 use App\Services\EBoekhoudenService;
 use App\Services\MailService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Mollie\Api\MollieApiClient;
 
 class PortalController extends Controller
@@ -79,6 +87,279 @@ class PortalController extends Controller
             ->firstOrFail();
 
         return view('portal.strip-design', compact('booking'));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // AI-ontwerp-wizard (klant, stap voor stap door de onderdelen heen)
+    // ──────────────────────────────────────────────────────────────
+
+    /** Toon de AI-ontwerp-wizard voor deze boeking */
+    public function designTool(string $token): View|RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->with('account')
+            ->firstOrFail();
+
+        if ($booking->strip_design_method !== 'ai') {
+            return redirect()->route('portal.show', $token);
+        }
+        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
+            return redirect()->route('portal.show', $token)
+                ->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
+        }
+
+        $session = $this->designSession($booking);
+        $state   = $session->state ?? [];
+        $results = null;
+
+        if (! empty($state['backgroundPath']) && Storage::disk('public')->exists($state['backgroundPath'])) {
+            $results = [
+                'ok'      => true,
+                'url'     => Storage::disk('public')->url($state['backgroundPath']),
+                'path'    => $state['backgroundPath'],
+                'seconds' => 0,
+            ];
+        }
+
+        return view('portal.design-tool', array_merge($this->designToolViewData($booking, $session), [
+            'booking'      => $booking,
+            'results'      => $results,
+            'input'        => $session->input ?? '',
+            'eventType'    => $session->event_type ?? array_key_first(DesignPromptSetting::EVENT_TYPES),
+            'initialState' => $state,
+            'justGenerated' => false,
+        ]));
+    }
+
+    /** Autosave: sla de huidige stand van de ontwerp-sessie op */
+    public function designToolSaveState(Request $request, string $token): JsonResponse
+    {
+        $booking = $this->designToolBooking($token);
+        if (! $booking) {
+            return response()->json(['ok' => false], 404);
+        }
+
+        $data = $request->validate([
+            'event_type' => ['nullable', 'string'],
+            'input'      => ['nullable', 'string', 'max:2000'],
+            'state'      => ['nullable', 'array'],
+        ]);
+
+        $session = $this->designSession($booking);
+        $session->update([
+            'event_type' => $data['event_type'] ?? $session->event_type,
+            'input'      => $data['input'] ?? $session->input,
+            'state'      => array_merge($session->state ?? [], $data['state'] ?? []),
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Genereer een achtergrond — geblokkeerd na DesignSession::MAX_BACKGROUND_GENERATIONS pogingen */
+    public function designToolGenerate(Request $request, string $token): View
+    {
+        $booking = $this->designToolBooking($token);
+        abort_if(! $booking, 404);
+
+        $session = $this->designSession($booking);
+        $service = app(DesignGenerationService::class);
+
+        if ($session->backgroundLimitReached()) {
+            return view('portal.design-tool', array_merge($this->designToolViewData($booking, $session), [
+                'booking'       => $booking,
+                'results'       => ['ok' => false, 'limit' => true],
+                'input'         => $request->input('input', $session->input ?? ''),
+                'eventType'     => $request->input('event_type', $session->event_type),
+                'initialState'  => $session->state ?? [],
+                'justGenerated' => false,
+            ]));
+        }
+
+        $data     = $service->validateGenerateRequest($request);
+        $refPaths = $service->storeReferenceFiles($request);
+        $results  = $service->generateBackground($data['event_type'], $data['input'], $refPaths, $booking->account_id);
+
+        $state = $session->state ?? [];
+        if ($results['ok']) {
+            $state['backgroundPath'] = $results['path'];
+        }
+
+        $session->update([
+            'event_type'             => $data['event_type'],
+            'input'                  => $data['input'],
+            'state'                  => $state,
+            'background_generations' => $session->background_generations + 1,
+        ]);
+
+        return view('portal.design-tool', array_merge($this->designToolViewData($booking, $session->fresh()), [
+            'booking'       => $booking,
+            'results'       => $results,
+            'input'         => $data['input'],
+            'eventType'     => $data['event_type'],
+            'initialState'  => $state,
+            'justGenerated' => true,
+        ]));
+    }
+
+    /** Stel een logo vrij — geblokkeerd na DesignSession::MAX_LOGO_CUTOUTS pogingen */
+    public function designToolCutoutLogo(Request $request, string $token): JsonResponse
+    {
+        $booking = $this->designToolBooking($token);
+        if (! $booking) {
+            return response()->json(['ok' => false, 'error' => 'Boeking niet gevonden.'], 404);
+        }
+
+        $session = $this->designSession($booking);
+        if ($session->logoLimitReached()) {
+            return response()->json(['ok' => false, 'limit' => true]);
+        }
+
+        $service = app(DesignGenerationService::class);
+        $service->validateLogoRequest($request);
+        $stored = $request->file('logo')->store('design-generator/refs', 'local');
+
+        $result = $service->cutoutLogo(Storage::disk('local')->path($stored));
+        $session->increment('logo_cutouts');
+
+        return response()->json($result);
+    }
+
+    /** Pas een masker (+ optionele gekleurde svg-rand) toe — zelfde logica als de admin-tool, expliciet account-gescoped */
+    public function designToolApplyMask(Request $request, string $token): JsonResponse
+    {
+        $booking = $this->designToolBooking($token);
+        if (! $booking) {
+            return response()->json(['ok' => false, 'error' => 'Boeking niet gevonden.'], 404);
+        }
+
+        $data = $request->validate([
+            'background_path' => ['required', 'string'],
+            'mask_id'          => ['required', 'integer'],
+            'border_color'     => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ]);
+
+        if (
+            ! str_starts_with($data['background_path'], 'design-generator/out/')
+            || ! Storage::disk('public')->exists($data['background_path'])
+        ) {
+            return response()->json(['ok' => false, 'error' => 'Achtergrond niet gevonden.']);
+        }
+
+        $mask = DesignMask::withoutGlobalScope(AccountScope::class)
+            ->where('account_id', $booking->account_id)
+            ->where('id', $data['mask_id'])
+            ->first();
+
+        if (! $mask) {
+            return response()->json(['ok' => false, 'error' => 'Masker niet gevonden.']);
+        }
+
+        try {
+            $binary = app(DesignRenderService::class)
+                ->renderMaskPreview($data['background_path'], $mask, $data['border_color'] ?? null);
+
+            $filename = 'design-generator/out/' . Str::random(24) . '-masked.png';
+            Storage::disk('public')->put($filename, $binary);
+
+            return response()->json(['ok' => true, 'url' => Storage::disk('public')->url($filename)]);
+        } catch (\Throwable $e) {
+            Log::error('Masker toepassen (portaal) mislukt: ' . $e->getMessage());
+
+            return response()->json(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** Klant geeft aan dat het ontwerp af is: mailt de admin met een link, zet strip_status op accepted */
+    public function designToolFinish(string $token): JsonResponse
+    {
+        $booking = $this->designToolBooking($token);
+        if (! $booking) {
+            return response()->json(['ok' => false], 404);
+        }
+
+        $session = $this->designSession($booking);
+        if (empty($session->state['backgroundPath'] ?? null)) {
+            return response()->json(['ok' => false, 'error' => 'Er is nog geen achtergrond gegenereerd.']);
+        }
+
+        $session->update(['finished_at' => now()]);
+        $booking->update(['strip_status' => 'accepted']);
+
+        if ($booking->account->email) {
+            $link = route('design.booking', $booking);
+            app(MailService::class)->sendRaw(
+                $booking->account->email,
+                "Klant heeft zelf een ontwerp gemaakt — {$booking->booking_number}",
+                "<p>{$booking->customer_name} heeft in de AI-ontwerp-tool aangegeven dat het ontwerp klaar is.</p>"
+                . "<p><a href=\"{$link}\">Bekijk en pas het ontwerp aan →</a></p>"
+            );
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Boeking ophalen + guarden op method='ai' + niet-vergrendeld. Null = actie niet toegestaan. */
+    private function designToolBooking(string $token): ?Booking
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)
+            ->with('account')
+            ->first();
+
+        if (! $booking || $booking->strip_design_method !== 'ai') {
+            return null;
+        }
+        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
+            return null;
+        }
+
+        return $booking;
+    }
+
+    private function designSession(Booking $booking): DesignSession
+    {
+        return DesignSession::withoutGlobalScope(AccountScope::class)
+            ->firstOrCreate(['booking_id' => $booking->id], ['account_id' => $booking->account_id]);
+    }
+
+    private function designToolViewData(Booking $booking, DesignSession $session): array
+    {
+        $promptsByType = [];
+        foreach (DesignPromptSetting::EVENT_TYPES as $type => $typeLabel) {
+            $promptsByType[$type] = DesignPromptSetting::currentPrompt('background', $type, $booking->account_id);
+        }
+
+        $token = $booking->public_token;
+
+        return [
+            'dgMode'         => 'portal',
+            'promptKey'      => 'background',
+            'promptLabel'    => DesignPromptSetting::label('background'),
+            'promptDefault'  => DesignPromptSetting::DEFAULTS['background']['prompt'],
+            'promptsByType'  => $promptsByType,
+            'eventTypes'     => DesignPromptSetting::EVENT_TYPES,
+            'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
+            'masks'          => DesignMask::listForAccount($booking->account_id),
+            'session'        => $session,
+            'urls'           => [
+                'generate'         => route('portal.design-tool.generate', $token),
+                'logoCutout'       => route('portal.design-tool.logo', $token),
+                'promptUpdate'     => null,
+                'masksUpload'      => null,
+                'masksApply'       => route('portal.design-tool.mask', $token),
+                'masksDestroyBase' => null,
+                'saveState'        => route('portal.design-tool.state', $token),
+                'finish'           => route('portal.design-tool.finish', $token),
+                'helpLink'         => route('portal.show', $token),
+            ],
+            'limits' => [
+                'backgroundMax'   => DesignSession::MAX_BACKGROUND_GENERATIONS,
+                'logoMax'         => DesignSession::MAX_LOGO_CUTOUTS,
+                'backgroundCount' => $session->background_generations,
+                'logoCount'       => $session->logo_cutouts,
+            ],
+        ];
     }
 
     /** Stap 1: klant kiest een hoofdmethode. Sub-keuzes volgen in vervolgstappen. */
@@ -573,7 +854,7 @@ class PortalController extends Controller
                         ->with('success', 'Betaling ontvangen! Bedankt.');
                 }
             } catch (\Exception $e) {
-                \Log::error('Mollie status sync fout: ' . $e->getMessage());
+                Log::error('Mollie status sync fout: ' . $e->getMessage());
             }
         }
 
@@ -623,7 +904,7 @@ class PortalController extends Controller
             }
 
         } catch (\Exception $e) {
-            \Log::error('Mollie webhook fout: ' . $e->getMessage());
+            Log::error('Mollie webhook fout: ' . $e->getMessage());
         }
 
         return response('ok');

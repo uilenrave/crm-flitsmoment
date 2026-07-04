@@ -47,17 +47,25 @@ class DesignPromptSetting extends Model
     /**
      * Prompt voor een onderdeel + event-type. Valt terug op de algemene (event_type=null)
      * prompt van dit onderdeel, en daarna op de ingebouwde standaardtekst.
+     *
+     * $accountId is verplicht in contexten zonder ingelogde gebruiker (bijv. het klantportaal
+     * op basis van een token) — de gewone AccountScope filtert dan namelijk niets, omdat die
+     * op auth()->user() leunt. Bij een auth-context (admin) mag dit weg (ambient scope volstaat).
      */
-    public static function currentPrompt(string $key, ?string $eventType = null): string
+    public static function currentPrompt(string $key, ?string $eventType = null, ?int $accountId = null): string
     {
+        $query = $accountId
+            ? static::withoutGlobalScope(AccountScope::class)->where('account_id', $accountId)
+            : static::query();
+
         if ($eventType) {
-            $specific = static::where('key', $key)->where('event_type', $eventType)->value('prompt');
+            $specific = (clone $query)->where('key', $key)->where('event_type', $eventType)->value('prompt');
             if ($specific !== null) {
                 return $specific;
             }
         }
 
-        $general = static::where('key', $key)->whereNull('event_type')->value('prompt');
+        $general = (clone $query)->where('key', $key)->whereNull('event_type')->value('prompt');
 
         return $general ?? (self::DEFAULTS[$key]['prompt'] ?? '');
     }

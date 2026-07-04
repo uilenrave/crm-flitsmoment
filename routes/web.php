@@ -47,6 +47,11 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/boeking/{token}/betaling-return', [PortalController::class, 'paymentReturn'])->name('portal.payment-return');
     Route::get('/boeking/{token}/ontwerp', [PortalController::class, 'stripDesignView'])->name('portal.strip-design');
     Route::get('/boeking/{token}/ontwerp-tool', [PortalController::class, 'designTool'])->name('portal.design-tool');
+    Route::post('/boeking/{token}/ontwerp-tool/state', [PortalController::class, 'designToolSaveState'])->name('portal.design-tool.state');
+    Route::post('/boeking/{token}/ontwerp-tool/genereer', [PortalController::class, 'designToolGenerate'])->name('portal.design-tool.generate');
+    Route::post('/boeking/{token}/ontwerp-tool/logo', [PortalController::class, 'designToolCutoutLogo'])->name('portal.design-tool.logo');
+    Route::post('/boeking/{token}/ontwerp-tool/masker', [PortalController::class, 'designToolApplyMask'])->name('portal.design-tool.mask');
+    Route::post('/boeking/{token}/ontwerp-tool/klaar', [PortalController::class, 'designToolFinish'])->name('portal.design-tool.finish');
     Route::post('/boeking/{token}/ontwerp-feedback', [PortalController::class, 'submitStripFeedback'])->name('portal.strip-feedback');
     Route::post('/boeking/{token}/strip-review', [PortalController::class, 'stripReview'])->name('portal.strip-review');
     Route::post('/boeking/{token}/strip-input', [PortalController::class, 'submitStripInput'])->name('portal.strip-input');

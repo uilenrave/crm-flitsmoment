@@ -89,6 +89,20 @@
     .dg-limit-notice { border: 1px solid #fde68a; background: #fffbeb; border-radius: .6rem; padding: .8rem .9rem; font-size: .82rem; color: #92400e; margin-top: .6rem; }
     .dg-limit-notice a { color: #7c3aed; font-weight: 700; }
     .dg-save-indicator { font-size: .7rem; color: #94a3b8; margin-left: .5rem; }
+
+    /* Wizard-chrome — alleen actief in mode=portal */
+    .dg-wizard .dg-step { display: none; }
+    .dg-wizard .dg-step.active { display: block; }
+    .dg-step-indicator { display: none; gap: .5rem; margin-bottom: 1.25rem; align-items: center; }
+    .dg-wizard .dg-step-indicator { display: flex; }
+    .dg-step-dot { width: 2rem; height: 2rem; border-radius: 50%; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; font-size: .8rem; font-weight: 700; flex-shrink: 0; }
+    .dg-step-dot.active { background: #7c3aed; color: #fff; }
+    .dg-step-dot.done { background: #16a34a; color: #fff; }
+    .dg-step-connector { flex: 1; height: 2px; background: #e2e8f0; }
+    .dg-step-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; }
+    .dg-step-nav-btn { font-size: .82rem; font-weight: 700; color: #64748b; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; padding: .5rem .9rem; cursor: pointer; }
+    .dg-step-nav-btn:hover { background: #f8fafc; }
+    .dg-finish-card { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1.5rem; text-align: center; }
 </style>
 
 @php $dgMode = $dgMode ?? 'admin'; @endphp
@@ -135,6 +149,12 @@
 <div class="dg-grid">
     {{-- ── Links: alle edit-opties ── --}}
     <div>
+    @if($dgMode === 'portal')
+    <div class="dg-step-indicator" id="dg-step-indicator"></div>
+    @endif
+
+    <div id="dg-steps-wrapper" class="{{ $dgMode === 'portal' ? 'dg-wizard' : '' }}">
+    <div class="dg-step" data-step="1">
     <form method="POST" action="{{ $urls['generate'] }}" enctype="multipart/form-data" class="card neu-card" style="padding:1.25rem;" onsubmit="dgSubmitting(this)">
         @csrf
 
@@ -187,9 +207,17 @@
         <p class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
         <div id="dg-background-limit-notice" class="dg-limit-notice" style="display:none;"></div>
     </form>
+    @if($dgMode === 'portal')
+    <div class="dg-step-nav">
+        <span></span>
+        <button type="button" class="dg-step-nav-btn" id="dg-step1-next" style="display:none;" onclick="dgWizardGoTo(2)">Volgende →</button>
+    </div>
+    @endif
+    </div>
 
     @if($results['ok'] ?? false)
         @if($dgMode === 'portal' || in_array($eventType, $logoEventTypes))
+        <div class="dg-step" data-step="2">
         <div class="dg-logo-step">
             <label class="dg-label" for="logo_upload">Stap 2 — Logo <span class="dg-hint">— optioneel, wordt vrijgesteld en boven de achtergrond geplakt (max 8 MB)</span></label>
             <input id="logo_upload" type="file" class="dg-file" accept="image/*">
@@ -199,8 +227,16 @@
             <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
             <div id="dg-logo-limit-notice" class="dg-limit-notice" style="display:none;"></div>
         </div>
+        @if($dgMode === 'portal')
+        <div class="dg-step-nav">
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(1)">← Vorige</button>
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(3)">Volgende →</button>
+        </div>
+        @endif
+        </div>
         @endif
 
+        <div class="dg-step" data-step="3">
         <div class="dg-mask-step">
             <label class="dg-label" style="margin-bottom:.7rem;">Stap 3 — Transparantie <span class="dg-hint">— kies een masker, preview is direct</span></label>
             <div id="dg-mask-gallery" class="dg-mask-gallery"></div>
@@ -215,7 +251,30 @@
             </div>
             <p id="dg-mask-error" class="dg-logo-error" style="display:none;"></p>
         </div>
+        @if($dgMode === 'portal')
+        <div class="dg-step-nav">
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(2)">← Vorige</button>
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(4)">Volgende →</button>
+        </div>
+        @endif
+        </div>
+
+        @if($dgMode === 'portal')
+        <div class="dg-step" data-step="4">
+        <div class="dg-finish-card">
+            <div style="font-size:2rem;margin-bottom:.5rem;">🎉</div>
+            <h3 style="margin:0 0 .5rem;font-size:1.05rem;color:#1e293b;">Helemaal tevreden met je ontwerp?</h3>
+            <p class="dg-hint" style="margin:0 0 1rem;">Zodra je op "Hij is af!" klikt, laten we het weten aan Flitsmoment — zij nemen het ontwerp dan over voor productie. Je kunt hierna niet meer wijzigen.</p>
+            <button type="button" class="btn btn-primary" onclick="dgFinishDesign()" id="dg-finish-btn">✅ Hij is af!</button>
+        </div>
+        <div class="dg-step-nav">
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(3)">← Vorige</button>
+            <span></span>
+        </div>
+        </div>
+        @endif
     @endif
+    </div>
     </div>
 
     {{-- ── Rechts: alleen het voorbeeld, blijft staan tijdens scrollen ── --}}
