@@ -37,6 +37,10 @@ Route::post('/medewerker/{token}/afmelden', [StaffPortalController::class, 'with
 // Publiek open-rittenbord (read-only, voor delen in WhatsApp-groep)
 Route::get('/ritten/{account}', [\App\Http\Controllers\RidesBoardController::class, 'show'])->name('rides.board');
 
+// Publiek productiebord (geen login) — vervangt Google Drive voor de photobooths
+Route::get('/productie/{token}', [\App\Http\Controllers\ProductionController::class, 'board'])->name('production.board');
+Route::get('/productie/{token}/download/{booking}', [\App\Http\Controllers\ProductionController::class, 'download'])->name('production.download');
+
 // Webhook voor inkomende leads (bijv. Elementor) — geen auth, geen CSRF, token-beveiligd
 Route::post('/webhook/lead/{token}', [WebhookController::class, 'lead'])->name('webhook.lead');
 
@@ -166,6 +170,11 @@ Route::middleware('auth')->group(function () {
     Route::post('ontwerp-generator/boeking/{booking}/logo', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingCutoutLogo'])->name('design.booking.logo');
     Route::post('ontwerp-generator/boeking/{booking}/stuur', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSendToCustomer'])->name('design.booking.send');
     Route::post('ontwerp-generator/boeking/{booking}/productie', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSetProduction'])->name('design.booking.production');
+
+    // Productie-bestanden (admin-beheer van de publieke productielijst)
+    Route::get('productie-bestanden', [\App\Http\Controllers\ProductionController::class, 'index'])->name('production.index');
+    Route::post('productie-bestanden/{booking}', [\App\Http\Controllers\ProductionController::class, 'upload'])->name('production.upload');
+    Route::delete('productie-bestanden/{booking}', [\App\Http\Controllers\ProductionController::class, 'destroy'])->name('production.destroy');
 
     // Briefings (PDF voor medewerker)
     Route::resource('briefings', BriefingController::class)->except(['show']);
