@@ -210,6 +210,7 @@
 <div class="dg-grid">
     {{-- ── Links: alle edit-opties ── --}}
     <div class="dg-left-col">
+    @yield('dg-header')
     @if($dgMode === 'portal')
     <div class="dg-step-indicator" id="dg-step-indicator"></div>
     @endif
