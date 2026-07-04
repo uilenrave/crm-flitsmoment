@@ -21,6 +21,10 @@
     .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: start; }
     @media (min-width: 900px) { .dg-grid { grid-template-columns: 400px 1fr; } }
     .dg-preview-col { align-self: start; position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow: auto; }
+    /* Zorgt dat de grid-rij (en dus de "ruimte" waarbinnen de preview kan stickyen) altijd minstens
+       even hoog is als het scherm — anders scrolt de preview gewoon mee weg zodra een korte stap
+       (bijv. "Tekst") actief is en de linkerkolom korter is dan de preview zelf. */
+    @media (min-width: 900px) { .dg-left-col { min-height: calc(100vh - 2.5rem); } }
     .dg-label { display: block; font-size: .8rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
     .dg-hint { font-size: .72rem; color: #94a3b8; font-weight: 400; }
     .dg-field { margin-bottom: 1.1rem; }
@@ -112,6 +116,11 @@
 
     .dg-limit-notice { border: 1px solid #fde68a; background: #fffbeb; border-radius: .6rem; padding: .8rem .9rem; font-size: .82rem; color: #92400e; margin-top: .6rem; }
     .dg-limit-notice a { color: #7c3aed; font-weight: 700; }
+
+    .dg-generating-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,.94); z-index: 2000; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; text-align: center; padding: 2rem; }
+    .dg-generating-overlay.show { display: flex; }
+    .dg-spinner { width: 3rem; height: 3rem; border: 4px solid #ede9fe; border-top-color: #7c3aed; border-radius: 50%; animation: dg-spin .8s linear infinite; }
+    @keyframes dg-spin { to { transform: rotate(360deg); } }
     .dg-save-badge { display: none; position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 500; align-items: center; gap: .4rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: .55rem 1rem; font-size: .78rem; font-weight: 700; color: #64748b; box-shadow: 0 4px 16px rgba(15,23,42,.12); }
     .dg-save-badge.show { display: flex; }
     .dg-save-badge.saved { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
@@ -175,9 +184,15 @@
 
 <div id="dg-save-badge" class="dg-save-badge"></div>
 
+<div id="dg-generating-overlay" class="dg-generating-overlay">
+    <div class="dg-spinner"></div>
+    <div id="dg-generating-title" style="font-size:1rem;font-weight:700;color:#1e293b;">✨ Achtergrond wordt gegenereerd…</div>
+    <div id="dg-generating-hint" style="font-size:.85rem;color:#64748b;max-width:320px;">Dit duurt meestal 10 tot 30 seconden. De pagina ververst automatisch zodra het klaar is.</div>
+</div>
+
 <div class="dg-grid">
     {{-- ── Links: alle edit-opties ── --}}
-    <div>
+    <div class="dg-left-col">
     @if($dgMode === 'portal')
     <div class="dg-step-indicator" id="dg-step-indicator"></div>
     @endif

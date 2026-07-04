@@ -91,8 +91,24 @@ function dgSyncColorPicker(value) {
 function dgSubmitting(form) {
     const btn = document.getElementById('dg-submit');
     btn.disabled = true;
-    btn.textContent = '⏳ Bezig met genereren…';
+    btn.textContent = '⏳ Bezig…';
     btn.style.opacity = '.7';
+
+    const method = document.getElementById('dg-background-method')?.value ?? 'ai';
+    const overlay = document.getElementById('dg-generating-overlay');
+    const title = document.getElementById('dg-generating-title');
+    const hint = document.getElementById('dg-generating-hint');
+    if (method === 'upload') {
+        if (title) title.textContent = '📤 Afbeelding wordt verwerkt…';
+        if (hint) hint.textContent = 'Dit duurt meestal maar een paar seconden.';
+    } else if (method === 'color') {
+        if (title) title.textContent = '🎨 Kleur wordt toegepast…';
+        if (hint) hint.textContent = 'Dit duurt meestal maar een paar seconden.';
+    } else {
+        if (title) title.textContent = '✨ Achtergrond wordt gegenereerd…';
+        if (hint) hint.textContent = 'Dit duurt meestal 10 tot 30 seconden. De pagina ververst automatisch zodra het klaar is.';
+    }
+    if (overlay) overlay.classList.add('show');
 }
 
 function dgSavePrompt() {
