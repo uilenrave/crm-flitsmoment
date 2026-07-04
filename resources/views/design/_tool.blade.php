@@ -33,8 +33,9 @@
     .dg-file, .dg-select { width: 100%; padding: .55rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .875rem; background: #fff; box-sizing: border-box; }
     .dg-result { border: 1px solid #e2e8f0; border-radius: .75rem; overflow: hidden; background: #fff; }
     .dg-result-head { display: flex; justify-content: flex-end; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; font-size: .8rem; }
-    .dg-result-body { display: flex; justify-content: center; background: #f8fafc; position: relative; }
-    .dg-result-body img { display: block; max-height: 80vh; width: auto; max-width: 100%; }
+    .dg-result-frame { background: #f8fafc; padding: 1.75rem 1rem; }
+    .dg-result-body { display: flex; justify-content: center; position: relative; }
+    .dg-result-body img { display: block; max-height: 76vh; width: auto; max-width: 100%; }
     .dg-gear { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: .4rem; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; font-size: .85rem; margin-left: .4rem; vertical-align: middle; }
     .dg-gear:hover { background: #f8fafc; }
     .dg-gear.active { background: #ede9fe; border-color: #c4b5fd; }
@@ -397,9 +398,11 @@
                     @endif
                 </div>
                 @if($results['ok'])
-                    <div id="dg-result-body" class="dg-result-body">
-                        <img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
-                        <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
+                    <div class="dg-result-frame">
+                        <div id="dg-result-body" class="dg-result-body">
+                            <img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
+                            <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
+                        </div>
                     </div>
                 @else
                     <div style="padding:1rem;color:#b91c1c;font-size:.8rem;background:#fef2f2;">
