@@ -660,7 +660,7 @@ function dgSelectMask(id) {
 /**
  * "Preview modus" plakt de aan het masker gekoppelde voorbeeldfoto's-afbeelding achter het
  * ontwerp, zodat je door de transparante foto-vensters heen ziet hoe het eruitziet met foto's
- * erin. Puur een lokale weergave-toggle — wordt niet in de sessie-state opgeslagen.
+ * erin. De aan/uit-status wordt meegenomen in de sessie-state (zie dgCollectState).
  */
 function dgTogglePreviewMode() {
     const toggle = document.getElementById('dg-preview-mode-toggle');
@@ -669,6 +669,7 @@ function dgTogglePreviewMode() {
 
     if (!toggle.checked) {
         layer.style.display = 'none';
+        dgMarkDirty();
         return;
     }
 
@@ -676,6 +677,7 @@ function dgTogglePreviewMode() {
     if (mask && mask.previewPhotosUrl) {
         layer.src = mask.previewPhotosUrl;
         layer.style.display = 'block';
+        dgMarkDirty();
     } else {
         alert('Dit masker heeft geen voorbeeldfoto\'s. Voeg ze toe via de maskerbibliotheek (🎭 Maskers).');
         toggle.checked = false;
@@ -941,6 +943,7 @@ function dgCollectState() {
                 content: t.content, color: t.color, fontSlug: t.fontSlug,
                 fontSizePct: t.fontSizePct, xPct: t.xPct, yPct: t.yPct,
             })),
+            previewMode: document.getElementById('dg-preview-mode-toggle')?.checked ?? false,
             step: dgConfig.mode === 'portal' ? dgWizardStep : undefined,
         },
     };
@@ -1010,6 +1013,14 @@ function dgRestoreInitialState() {
     if (dgSelectedMaskId) {
         dgRenderMaskGallery();
         dgSelectMask(dgSelectedMaskId);
+    }
+
+    if (s.previewMode && document.getElementById('dg-result-body')) {
+        const toggle = document.getElementById('dg-preview-mode-toggle');
+        if (toggle) {
+            toggle.checked = true;
+            dgTogglePreviewMode();
+        }
     }
 }
 
