@@ -77,6 +77,7 @@ class DesignRenderService
         $image = new Imagick();
         $image->newImage($loaded->getImageWidth(), $loaded->getImageHeight(), new ImagickPixel('white'));
         $image->setImageFormat('png');
+        $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE); // canvas heeft anders geen alfakanaal-structuur, waardoor een latere maskercompositie (COMPOSITE_DSTIN) geen transparantie kan aanbrengen
         $image->compositeImage($loaded, Imagick::COMPOSITE_OVER, 0, 0);
 
         return $image;
