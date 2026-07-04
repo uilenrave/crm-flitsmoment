@@ -46,7 +46,9 @@
     /* inline-block + max-width/max-height (i.p.v. width:100%) zodat de mockup op korte
        vensters kleiner wordt i.p.v. van het scherm af te lopen — "past precies op het scherm". */
     .dg-mockup-frame { position: relative; display: inline-block; max-width: 100%; border-radius: .75rem; overflow: hidden; background: #f8fafc; line-height: 0; }
-    .dg-mockup-bg { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 6rem); }
+    /* 100vh min de bovenliggende chrome: pagina-header (~3.5rem) + padding boven de grid (~1.5rem)
+       + sticky top-offset (1.25rem) + de .dg-result-head balk boven de mockup zelf (~2.2rem). */
+    .dg-mockup-bg { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 9rem); }
     .dg-mockup-strip-slot { position: absolute; transform: translateX(-50%); }
     .dg-mockup-strip-slot .dg-result-frame { background: transparent; padding: 0; filter: drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
     .dg-mockup-strip-slot .dg-result-body img { max-height: none; }
