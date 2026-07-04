@@ -104,8 +104,9 @@ class DesignGeneratorController extends Controller
             Storage::disk('public')->put($filename, $image->binary);
 
             return response()->json([
-                'ok'  => true,
-                'url' => Storage::disk('public')->url($filename),
+                'ok'   => true,
+                'url'  => Storage::disk('public')->url($filename),
+                'path' => $filename,
             ]);
         } catch (\Throwable $e) {
             Log::error('Logo vrijstellen mislukt: ' . $e->getMessage());
