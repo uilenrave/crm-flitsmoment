@@ -11,6 +11,13 @@
 --}}
 <link rel="stylesheet" href="{{ \App\Services\GoogleFontRegistry::googleFontsCssUrl() }}">
 <style>
+    /* Lokale kaart/knop-stijl — de tool draait zowel in het admin-layout (heeft .card/.btn-primary)
+       als in het portaal-layout (heeft die klassen niet), dus hier zelfvoorzienend gedefinieerd. */
+    .dg-card { background: #fff; border-radius: 1rem; box-shadow: -1px -1px 3px rgba(255,255,255,.8), 2px 2px 5px rgba(0,0,0,.08); }
+    .dg-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; padding: .6rem 1.125rem; border: none; border-radius: .75rem; background: linear-gradient(135deg, #fcd34d 0%, #f59e0b 100%); color: #fff; font-size: .9rem; font-weight: 700; text-decoration: none; cursor: pointer; box-shadow: -2px -2px 5px rgba(255,255,255,.3), 2px 2px 6px rgba(139,111,71,.3), 0 4px 8px rgba(252,211,77,.2); transition: all .2s ease; }
+    .dg-btn-primary:hover { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+    .dg-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
     .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: start; }
     @media (min-width: 900px) { .dg-grid { grid-template-columns: 400px 1fr; } }
     .dg-preview-col { align-self: start; position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow: auto; }
@@ -176,7 +183,7 @@
 
     <div id="dg-steps-wrapper" class="{{ $dgMode === 'portal' ? 'dg-wizard' : '' }}">
     <div class="dg-step" data-step="1">
-    <form method="POST" action="{{ $urls['generate'] }}" enctype="multipart/form-data" class="card neu-card" style="padding:1.25rem;" onsubmit="dgSubmitting(this)">
+    <form method="POST" action="{{ $urls['generate'] }}" enctype="multipart/form-data" class="dg-card" style="padding:1.25rem;" onsubmit="dgSubmitting(this)">
         @csrf
 
         <div class="dg-field">
@@ -253,7 +260,7 @@
 
         @error('event_type') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
 
-        <button type="submit" id="dg-submit" class="btn btn-primary" style="width:100%;justify-content:center;">✨ Genereer achtergrond</button>
+        <button type="submit" id="dg-submit" class="dg-btn-primary" style="width:100%;">✨ Genereer achtergrond</button>
         <p id="dg-submit-hint" class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
         <div id="dg-background-limit-notice" class="dg-limit-notice" style="display:none;"></div>
     </form>
@@ -357,7 +364,7 @@
             <div style="font-size:2rem;margin-bottom:.5rem;">🎉</div>
             <h3 style="margin:0 0 .5rem;font-size:1.05rem;color:#1e293b;">Helemaal tevreden met je ontwerp?</h3>
             <p class="dg-hint" style="margin:0 0 1rem;">Zodra je op "Hij is af!" klikt, laten we het weten aan Flitsmoment — zij nemen het ontwerp dan over voor productie. Je kunt hierna niet meer wijzigen.</p>
-            <button type="button" class="btn btn-primary" onclick="dgFinishDesign()" id="dg-finish-btn">✅ Hij is af!</button>
+            <button type="button" class="dg-btn-primary" onclick="dgFinishDesign()" id="dg-finish-btn">✅ Hij is af!</button>
         </div>
         <div class="dg-step-nav">
             <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(4)">← Vorige</button>
@@ -372,7 +379,7 @@
     {{-- ── Rechts: alleen het voorbeeld, blijft staan tijdens scrollen ── --}}
     <div class="dg-preview-col">
         @if($results === null)
-            <div class="card neu-card" style="padding:2.5rem 1.5rem;text-align:center;color:#94a3b8;">
+            <div class="dg-card" style="padding:2.5rem 1.5rem;text-align:center;color:#94a3b8;">
                 <div style="font-size:2rem;margin-bottom:.5rem;">🖼️</div>
                 <p style="font-weight:600;color:#64748b;margin-bottom:.25rem;">Nog geen achtergrond</p>
                 <p style="font-size:.85rem;">Vul links het thema in en klik op "Genereer achtergrond".</p>
