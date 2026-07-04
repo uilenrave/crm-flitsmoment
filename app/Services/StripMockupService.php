@@ -23,9 +23,19 @@ class StripMockupService
             throw new RuntimeException("Mockup-achtergrond niet gevonden: {$bgPath}");
         }
 
-        $canvas = new Imagick($bgPath);
-        $cw = $canvas->getImageWidth();
-        $ch = $canvas->getImageHeight();
+        // Effen/weinig-verzadigde achtergronden (zoals een lichte marmertextuur) worden door Imagick
+        // bij het inlezen soms als grayscale/palette gedetecteerd, waardoor een latere compositie van
+        // een gekleurde strip er zonder kleur op landt. Fix: eerst overzetten op een truecolor canvas.
+        $loaded = new Imagick($bgPath);
+        $cw = $loaded->getImageWidth();
+        $ch = $loaded->getImageHeight();
+
+        $canvas = new Imagick();
+        $canvas->newImage($cw, $ch, new ImagickPixel('white'));
+        $canvas->setImageFormat('png');
+        $canvas->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE);
+        $canvas->compositeImage($loaded, Imagick::COMPOSITE_OVER, 0, 0);
+        $loaded->clear();
 
         // ── Strip laden + schalen binnen het doelvak (aspect behouden) ──
         $strip = new Imagick($stripPath);

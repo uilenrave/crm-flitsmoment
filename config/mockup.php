@@ -21,7 +21,7 @@ return [
     'strip' => [
         'center_x'   => 0.50, // horizontaal midden (fractie van breedte)
         'top'        => 0.06, // bovenkant strip (fractie van hoogte)
-        'width'      => 0.34, // breedte strip (fractie van breedte)
+        'width'      => 0.50, // breedte strip (fractie van breedte)
         'max_height' => 0.90, // max hoogte strip (fractie van hoogte)
     ],
 
