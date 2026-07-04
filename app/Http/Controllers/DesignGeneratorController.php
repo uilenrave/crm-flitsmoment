@@ -378,6 +378,7 @@ class DesignGeneratorController extends Controller
             'eventType'      => array_key_first(DesignPromptSetting::EVENT_TYPES),
             'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
             'masks'          => $masks,
+            'googleFonts'    => \App\Services\GoogleFontRegistry::labels(),
         ];
     }
 }

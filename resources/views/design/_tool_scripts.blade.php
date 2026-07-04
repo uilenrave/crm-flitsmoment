@@ -24,6 +24,8 @@ window.dgConfig = {
 const dgPromptsByType = {!! Js::from($promptsByType) !!};
 const dgEventTypeLabels = {!! Js::from($eventTypes) !!};
 const dgLogoEventTypes = {!! Js::from($logoEventTypes) !!};
+const dgGoogleFontLabels = {!! Js::from($googleFonts) !!};
+const dgDefaultFontSlug = {{ Js::from(\App\Services\GoogleFontRegistry::DEFAULT_SLUG) }};
 
 function dgEventTypeChanged() {
     const type = document.getElementById('event_type').value;
@@ -363,6 +365,145 @@ function dgShowLimitNotice(elId) {
     el.style.display = 'block';
 }
 
+// ── Tekst-lagen ──
+
+let dgTexts = []; // [{ id, content, color, fontSlug, fontSizePct, xPct, yPct }] — fontSizePct t.o.v. containerbreedte
+let dgActiveTextId = null;
+
+function dgFontFamilyCss(slug) {
+    const label = dgGoogleFontLabels[slug] || dgGoogleFontLabels[dgDefaultFontSlug];
+    return `'${label}', sans-serif`;
+}
+
+function dgAddText(savedState) {
+    const bgBody = document.getElementById('dg-result-body');
+    if (!bgBody) return;
+
+    const id = 't' + Date.now() + Math.floor(Math.random() * 1000);
+    const text = {
+        id: id,
+        content: savedState?.content ?? 'Tekst',
+        color: savedState?.color ?? '#000000',
+        fontSlug: savedState?.fontSlug ?? dgDefaultFontSlug,
+        fontSizePct: savedState?.fontSizePct ?? 5,
+        xPct: savedState?.xPct ?? 50,
+        yPct: savedState?.yPct ?? 50,
+    };
+    dgTexts.push(text);
+    dgCreateTextLayer(text);
+    dgSelectText(id);
+    dgMarkDirty();
+}
+
+function dgCreateTextLayer(text) {
+    const bgBody = document.getElementById('dg-result-body');
+    if (!bgBody) return;
+
+    const layer = document.createElement('div');
+    layer.id = 'dg-text-layer-' + text.id;
+    layer.className = 'dg-text-layer';
+    layer.dataset.textId = text.id;
+    bgBody.appendChild(layer);
+
+    dgRenderTextLayer(text);
+    dgBindTextDrag(layer, text);
+}
+
+function dgRenderTextLayer(text) {
+    const layer = document.getElementById('dg-text-layer-' + text.id);
+    if (!layer) return;
+    const containerWidth = layer.parentElement.clientWidth;
+    layer.textContent = text.content;
+    layer.style.left = text.xPct + '%';
+    layer.style.top = text.yPct + '%';
+    layer.style.color = text.color;
+    layer.style.fontFamily = dgFontFamilyCss(text.fontSlug);
+    layer.style.fontSize = (containerWidth * text.fontSizePct / 100) + 'px';
+    layer.classList.toggle('selected', dgActiveTextId === text.id);
+}
+
+function dgBindTextDrag(layer, text) {
+    let dragging = false, moved = false, startX, startY, startXPct, startYPct, rect;
+    layer.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        dragging = true;
+        moved = false;
+        rect = layer.parentElement.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        startXPct = text.xPct;
+        startYPct = text.yPct;
+        layer.setPointerCapture(e.pointerId);
+    });
+    layer.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dxPct = (e.clientX - startX) / rect.width * 100;
+        const dyPct = (e.clientY - startY) / rect.height * 100;
+        if (Math.abs(dxPct) > 0.3 || Math.abs(dyPct) > 0.3) moved = true;
+        text.xPct = Math.min(100, Math.max(0, startXPct + dxPct));
+        text.yPct = Math.min(100, Math.max(0, startYPct + dyPct));
+        dgRenderTextLayer(text);
+    });
+    layer.addEventListener('pointerup', () => {
+        dragging = false;
+        if (moved) {
+            dgMarkDirty();
+        } else {
+            dgSelectText(text.id);
+        }
+    });
+    layer.addEventListener('pointercancel', () => dragging = false);
+}
+
+function dgSelectText(id) {
+    const text = dgTexts.find(t => t.id === id);
+    if (!text) return;
+    dgActiveTextId = id;
+
+    document.querySelectorAll('.dg-text-layer').forEach(el => {
+        el.classList.toggle('selected', el.dataset.textId === id);
+    });
+
+    const panel = document.getElementById('dg-text-settings');
+    const hint = document.getElementById('dg-text-hint');
+    if (panel) panel.style.display = 'block';
+    if (hint) hint.style.display = 'none';
+
+    const contentEl = document.getElementById('dg-text-content');
+    const colorEl = document.getElementById('dg-text-color');
+    const fontEl = document.getElementById('dg-text-font');
+    const sizeEl = document.getElementById('dg-text-size');
+    if (contentEl) contentEl.value = text.content;
+    if (colorEl) colorEl.value = text.color;
+    if (fontEl) fontEl.value = text.fontSlug;
+    if (sizeEl) sizeEl.value = text.fontSizePct;
+}
+
+function dgUpdateActiveText() {
+    const text = dgTexts.find(t => t.id === dgActiveTextId);
+    if (!text) return;
+    text.content = document.getElementById('dg-text-content')?.value || 'Tekst';
+    text.color = document.getElementById('dg-text-color')?.value || text.color;
+    text.fontSlug = document.getElementById('dg-text-font')?.value || text.fontSlug;
+    text.fontSizePct = parseFloat(document.getElementById('dg-text-size')?.value) || text.fontSizePct;
+    dgRenderTextLayer(text);
+    dgMarkDirty();
+}
+
+function dgRemoveActiveText() {
+    if (!dgActiveTextId) return;
+    const layer = document.getElementById('dg-text-layer-' + dgActiveTextId);
+    if (layer) layer.remove();
+    dgTexts = dgTexts.filter(t => t.id !== dgActiveTextId);
+    dgActiveTextId = null;
+
+    const panel = document.getElementById('dg-text-settings');
+    const hint = document.getElementById('dg-text-hint');
+    if (panel) panel.style.display = 'none';
+    if (hint) hint.style.display = 'block';
+    dgMarkDirty();
+}
+
 let dgBackgroundPath = {!! Js::from($results['path'] ?? null) !!};
 let dgMasks = {!! Js::from($masks) !!};
 let dgSelectedMaskId = null;
@@ -669,6 +810,10 @@ function dgCollectState() {
                 path: l.path, xPct: l.xPct, yPct: l.yPct,
                 widthPct: l.widthPct, rotateDeg: l.rotateDeg,
             })),
+            texts: dgTexts.map(t => ({
+                content: t.content, color: t.color, fontSlug: t.fontSlug,
+                fontSizePct: t.fontSizePct, xPct: t.xPct, yPct: t.yPct,
+            })),
             step: dgConfig.mode === 'portal' ? dgWizardStep : undefined,
         },
     };
@@ -722,6 +867,23 @@ function dgRestoreInitialState() {
         });
     }
 
+    if (s.texts?.length && document.getElementById('dg-result-body')) {
+        s.texts.forEach(textState => {
+            if (!textState?.content) return;
+            const text = {
+                id: 't' + Date.now() + Math.floor(Math.random() * 1000),
+                content: textState.content,
+                color: textState.color ?? '#000000',
+                fontSlug: textState.fontSlug ?? dgDefaultFontSlug,
+                fontSizePct: textState.fontSizePct ?? 5,
+                xPct: textState.xPct ?? 50,
+                yPct: textState.yPct ?? 50,
+            };
+            dgTexts.push(text);
+            dgCreateTextLayer(text);
+        });
+    }
+
     if (dgSelectedMaskId) {
         dgRenderMaskGallery();
         dgSelectMask(dgSelectedMaskId);
@@ -731,7 +893,7 @@ function dgRestoreInitialState() {
 // ── Wizard-navigatie (alleen mode=portal) ──
 
 let dgWizardStep = 1;
-const dgWizardStepLabels = ['Achtergrond', 'Logo', 'Transparantie', 'Klaar'];
+const dgWizardStepLabels = ['Achtergrond', 'Logo', 'Tekst', 'Transparantie', 'Klaar'];
 
 function dgWizardGoTo(step) {
     if (dgConfig.mode !== 'portal') return;
@@ -777,7 +939,7 @@ function dgWizardInit() {
 
     let startStep = 1;
     const savedStep = dgConfig.initialState?.step;
-    if (! dgConfig.justGenerated && dgBackgroundPath && savedStep >= 1 && savedStep <= 4) {
+    if (! dgConfig.justGenerated && dgBackgroundPath && savedStep >= 1 && savedStep <= 5) {
         startStep = savedStep;
     }
 

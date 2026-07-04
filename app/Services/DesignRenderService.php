@@ -45,6 +45,12 @@ class DesignRenderService
             }
         }
 
+        foreach (($state['texts'] ?? []) as $text) {
+            if (! empty($text['content'])) {
+                $this->compositeText($image, $text);
+            }
+        }
+
         return $image->getImageBlob();
     }
 
@@ -127,6 +133,39 @@ class DesignRenderService
         $y = (int) round(($canvasHeight * $yPct / 100) - ($logoImage->getImageHeight() / 2));
 
         $image->compositeImage($logoImage, Imagick::COMPOSITE_OVER, $x, $y);
+    }
+
+    /**
+     * Tekst-state is percentage-gebaseerd (xPct/yPct/fontSizePct t.o.v. het canvas), net als logo's,
+     * zodat de server exact dezelfde plaatsing/grootte reproduceert als de browser-preview.
+     * xPct/yPct is het MIDDEN van de tekst (matcht de gecentreerde drag-positionering in de preview).
+     */
+    private function compositeText(Imagick $image, array $text): void
+    {
+        $canvasWidth  = $image->getImageWidth();
+        $canvasHeight = $image->getImageHeight();
+
+        $fontSizePct = (float) ($text['fontSizePct'] ?? 4);
+        $fontSizePx  = max(6, (int) round($canvasWidth * $fontSizePct / 100));
+
+        $draw = new \ImagickDraw();
+        $draw->setFont(GoogleFontRegistry::ttfPath($text['fontSlug'] ?? GoogleFontRegistry::DEFAULT_SLUG));
+        $draw->setFontSize($fontSizePx);
+        $draw->setFillColor(new ImagickPixel($text['color'] ?? '#000000'));
+        $draw->setTextAlignment(Imagick::ALIGN_CENTER);
+        $draw->setGravity(Imagick::GRAVITY_NORTHWEST);
+
+        $content = (string) $text['content'];
+        $metrics = $image->queryFontMetrics($draw, $content);
+
+        $xPct = (float) ($text['xPct'] ?? 50);
+        $yPct = (float) ($text['yPct'] ?? 50);
+
+        $x = (int) round($canvasWidth * $xPct / 100);
+        $topY = ($canvasHeight * $yPct / 100) - ($metrics['textHeight'] / 2);
+        $y = (int) round($topY + $metrics['ascender']);
+
+        $image->annotateImage($draw, $x, $y, 0, $content);
     }
 
     /**

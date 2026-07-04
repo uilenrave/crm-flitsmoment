@@ -7,7 +7,9 @@
     - $urls: array met generate/logoCutout/promptUpdate/masksUpload/masksApply/masksDestroyBase/saveState/finish
     - $eventTypes, $eventType, $promptLabel, $promptKey, $promptDefault, $promptsByType, $logoEventTypes, $masks
     - $results, $input
+    - $googleFonts: array slug => label, voor de tekst-tool (App\Services\GoogleFontRegistry)
 --}}
+<link rel="stylesheet" href="{{ \App\Services\GoogleFontRegistry::googleFontsCssUrl() }}">
 <style>
     .dg-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: start; }
     @media (min-width: 900px) { .dg-grid { grid-template-columns: 400px 1fr; } }
@@ -57,6 +59,11 @@
     .dg-logo-handle { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
     .dg-logo-handle.resize { right: 2px; bottom: 2px; cursor: nwse-resize; }
     .dg-logo-handle.rotate { right: 2px; top: 2px; cursor: grab; }
+
+    .dg-text-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
+    .dg-text-settings { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; }
+    .dg-text-layer { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); touch-action: none; user-select: none; cursor: move; white-space: nowrap; padding: .15rem .3rem; line-height: 1.2; }
+    .dg-text-layer.selected { outline: 2px dashed #7c3aed; outline-offset: 3px; border-radius: .2rem; }
 
     .dg-mask-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
     .dg-mask-preview-bg {
@@ -276,8 +283,48 @@
         @endif
 
         <div class="dg-step" data-step="3">
+        <div class="dg-text-step">
+            <label class="dg-label" style="margin-bottom:.7rem;">Stap 3 — Tekst <span class="dg-hint">— optioneel, voeg tekstregels toe en versleep ze in het voorbeeld</span></label>
+            <button type="button" class="dg-logo-btn" onclick="dgAddText()">➕ Tekst toevoegen</button>
+
+            <div id="dg-text-settings" class="dg-text-settings" style="display:none;">
+                <div class="dg-field">
+                    <label class="dg-label" for="dg-text-content">Tekst</label>
+                    <input id="dg-text-content" type="text" class="dg-file" oninput="dgUpdateActiveText()">
+                </div>
+                <div style="display:flex;gap:.75rem;">
+                    <div class="dg-field" style="flex:1;">
+                        <label class="dg-label" for="dg-text-color">Kleur</label>
+                        <input id="dg-text-color" type="color" style="width:100%;height:2.3rem;border:1px solid #e2e8f0;border-radius:.5rem;cursor:pointer;" oninput="dgUpdateActiveText()">
+                    </div>
+                    <div class="dg-field" style="flex:2;">
+                        <label class="dg-label" for="dg-text-font">Lettertype</label>
+                        <select id="dg-text-font" class="dg-select" onchange="dgUpdateActiveText()">
+                            @foreach($googleFonts as $slug => $label)
+                                <option value="{{ $slug }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                <div class="dg-field">
+                    <label class="dg-label" for="dg-text-size">Grootte</label>
+                    <input id="dg-text-size" type="range" min="1.5" max="14" step="0.5" style="width:100%;" oninput="dgUpdateActiveText()">
+                </div>
+                <button type="button" class="dg-logo-list-btn danger" onclick="dgRemoveActiveText()">✕ Deze tekst verwijderen</button>
+            </div>
+            <p id="dg-text-hint" class="dg-hint" style="margin-top:.6rem;">Klik op een tekst in het voorbeeld om 'm te bewerken.</p>
+        </div>
+        @if($dgMode === 'portal')
+        <div class="dg-step-nav">
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(2)">← Vorige</button>
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(4)">Volgende →</button>
+        </div>
+        @endif
+        </div>
+
+        <div class="dg-step" data-step="4">
         <div class="dg-mask-step">
-            <label class="dg-label" style="margin-bottom:.7rem;">Stap 3 — Transparantie <span class="dg-hint">— kies een masker, preview is direct</span></label>
+            <label class="dg-label" style="margin-bottom:.7rem;">Stap 4 — Transparantie <span class="dg-hint">— kies een masker, preview is direct</span></label>
             <div id="dg-mask-gallery" class="dg-mask-gallery"></div>
 
             <div id="dg-color-row" class="dg-color-row" style="display:none;">
@@ -294,14 +341,14 @@
         </div>
         @if($dgMode === 'portal')
         <div class="dg-step-nav">
-            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(2)">← Vorige</button>
-            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(4)">Volgende →</button>
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(3)">← Vorige</button>
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(5)">Volgende →</button>
         </div>
         @endif
         </div>
 
         @if($dgMode === 'portal')
-        <div class="dg-step" data-step="4">
+        <div class="dg-step" data-step="5">
         <div class="dg-finish-card">
             <div style="font-size:2rem;margin-bottom:.5rem;">🎉</div>
             <h3 style="margin:0 0 .5rem;font-size:1.05rem;color:#1e293b;">Helemaal tevreden met je ontwerp?</h3>
@@ -309,7 +356,7 @@
             <button type="button" class="btn btn-primary" onclick="dgFinishDesign()" id="dg-finish-btn">✅ Hij is af!</button>
         </div>
         <div class="dg-step-nav">
-            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(3)">← Vorige</button>
+            <button type="button" class="dg-step-nav-btn" onclick="dgWizardGoTo(4)">← Vorige</button>
             <span></span>
         </div>
         </div>

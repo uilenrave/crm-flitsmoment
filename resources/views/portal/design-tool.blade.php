@@ -14,10 +14,10 @@
         <div style="padding:.875rem 1.125rem;border-radius:.75rem;margin-bottom:1.25rem;font-size:.9rem;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;">{{ session('error') }}</div>
     @endif
 
-    @include('design._tool', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input'))
+    @include('design._tool', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input', 'googleFonts'))
 </div>
 
 @push('scripts')
-@include('design._tool_scripts', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input', 'initialState', 'limits', 'justGenerated'))
+@include('design._tool_scripts', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input', 'initialState', 'limits', 'justGenerated', 'googleFonts'))
 @endpush
 @endsection

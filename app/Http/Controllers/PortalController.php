@@ -351,6 +351,7 @@ class PortalController extends Controller
             'eventTypes'     => DesignPromptSetting::EVENT_TYPES,
             'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
             'masks'          => DesignMask::listForAccount($booking->account_id),
+            'googleFonts'    => \App\Services\GoogleFontRegistry::labels(),
             'session'        => $session,
             'urls'           => [
                 'generate'         => route('portal.design-tool.generate', $token),
