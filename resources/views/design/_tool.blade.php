@@ -88,6 +88,16 @@
 
     .dg-text-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
     .dg-text-settings { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; }
+    .dg-font-picker { position: relative; }
+    .dg-font-picker-btn { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .55rem .7rem; border: 1px solid #e2e8f0; border-radius: .5rem; font-size: .95rem; background: #fff; cursor: pointer; text-align: left; overflow: hidden; }
+    .dg-font-picker-btn:hover { background: #f8fafc; }
+    #dg-font-picker-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dg-font-picker-arrow { color: #94a3b8; font-size: .7rem; flex-shrink: 0; }
+    .dg-font-picker-list { display: none; position: absolute; z-index: 100; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+    .dg-font-picker-list.open { display: block; }
+    .dg-font-picker-item { padding: .55rem .85rem; font-size: 1.05rem; cursor: pointer; border-bottom: 1px solid #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dg-font-picker-item:last-child { border-bottom: none; }
+    .dg-font-picker-item:hover { background: #f5f3ff; }
     .dg-text-layer { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); touch-action: none; user-select: none; cursor: move; white-space: nowrap; padding: .15rem .3rem; line-height: 1.2; }
     .dg-text-layer.selected { outline: 2px dashed #7c3aed; outline-offset: 3px; border-radius: .2rem; }
 
@@ -347,12 +357,19 @@
                         <input id="dg-text-color" type="color" style="width:100%;height:2.3rem;border:1px solid #e2e8f0;border-radius:.5rem;cursor:pointer;" oninput="dgUpdateActiveText()">
                     </div>
                     <div class="dg-field" style="flex:2;">
-                        <label class="dg-label" for="dg-text-font">Lettertype</label>
-                        <select id="dg-text-font" class="dg-select" onchange="dgUpdateActiveText()">
-                            @foreach($googleFonts as $slug => $label)
-                                <option value="{{ $slug }}" style="font-family:'{{ $label }}', sans-serif;">{{ $label }}</option>
-                            @endforeach
-                        </select>
+                        <label class="dg-label" for="dg-font-picker-btn">Lettertype</label>
+                        <div class="dg-font-picker" id="dg-font-picker">
+                            <button type="button" id="dg-font-picker-btn" class="dg-font-picker-btn" onclick="dgToggleFontPicker()">
+                                <span id="dg-font-picker-label" style="font-family:'{{ $googleFonts[array_key_first($googleFonts)] }}', sans-serif;">{{ $googleFonts[array_key_first($googleFonts)] }}</span>
+                                <span class="dg-font-picker-arrow">▾</span>
+                            </button>
+                            <div id="dg-font-picker-list" class="dg-font-picker-list">
+                                @foreach($googleFonts as $slug => $label)
+                                    <div class="dg-font-picker-item" data-slug="{{ $slug }}" style="font-family:'{{ $label }}', sans-serif;" onclick="dgPickFont('{{ $slug }}', {{ Js::from($label) }})">{{ $label }}</div>
+                                @endforeach
+                            </div>
+                        </div>
+                        <input type="hidden" id="dg-text-font" value="{{ array_key_first($googleFonts) }}">
                     </div>
                 </div>
                 <div class="dg-field">

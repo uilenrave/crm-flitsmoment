@@ -501,13 +501,45 @@ function dgSelectText(id) {
 
     const contentEl = document.getElementById('dg-text-content');
     const colorEl = document.getElementById('dg-text-color');
-    const fontEl = document.getElementById('dg-text-font');
     const sizeEl = document.getElementById('dg-text-size');
     if (contentEl) contentEl.value = text.content;
     if (colorEl) colorEl.value = text.color;
-    if (fontEl) fontEl.value = text.fontSlug;
     if (sizeEl) sizeEl.value = text.fontSizePct;
+    dgSyncFontPickerDisplay(text.fontSlug);
 }
+
+// ── Custom font-dropdown (native <select>-opties stylen per item werkt onbetrouwbaar in browsers) ──
+
+function dgToggleFontPicker() {
+    document.getElementById('dg-font-picker-list')?.classList.toggle('open');
+}
+
+function dgPickFont(slug, label) {
+    const hidden = document.getElementById('dg-text-font');
+    if (hidden) hidden.value = slug;
+    dgSyncFontPickerDisplay(slug, label);
+    document.getElementById('dg-font-picker-list')?.classList.remove('open');
+    dgUpdateActiveText();
+}
+
+function dgSyncFontPickerDisplay(slug, label) {
+    label = label ?? dgGoogleFontLabels[slug] ?? slug;
+    const btnLabel = document.getElementById('dg-font-picker-label');
+    const hidden = document.getElementById('dg-text-font');
+    if (hidden) hidden.value = slug;
+    if (btnLabel) {
+        btnLabel.textContent = label;
+        btnLabel.style.fontFamily = `'${label}', sans-serif`;
+    }
+}
+
+document.addEventListener('click', (e) => {
+    const picker = document.getElementById('dg-font-picker');
+    const list = document.getElementById('dg-font-picker-list');
+    if (picker && list && !picker.contains(e.target)) {
+        list.classList.remove('open');
+    }
+});
 
 function dgUpdateActiveText() {
     const text = dgTexts.find(t => t.id === dgActiveTextId);
