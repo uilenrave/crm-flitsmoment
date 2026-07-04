@@ -6,8 +6,8 @@ use App\Models\Booking;
 use App\Models\DesignMask;
 use App\Models\DesignPromptSetting;
 use App\Models\DesignSession;
+use App\Services\DesignGenerationService;
 use App\Services\DesignRenderService;
-use App\Services\ImageGeneration\ImageGenerationManager;
 use App\Services\StripDesignService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -20,10 +20,6 @@ use Illuminate\View\View;
 
 class DesignGeneratorController extends Controller
 {
-    /** Vaste canvasmaat voor de achtergrond — onafhankelijk van event-type. */
-    private const CANVAS_WIDTH = 600;
-    private const CANVAS_HEIGHT = 1800;
-
     /** Toon het ontwerp-generator formulier (los, niet aan een boeking gekoppeld) */
     public function index(): View
     {
@@ -44,7 +40,7 @@ class DesignGeneratorController extends Controller
     {
         $data = $this->validateGenerateRequest($request);
         $refPaths = $this->storeReferenceFiles($request);
-        $results = $this->generateBackgroundImage($data['event_type'], $data['input'], $refPaths);
+        $results = app(DesignGenerationService::class)->generateBackground($data['event_type'], $data['input'], $refPaths);
 
         return view('design.index', array_merge($this->baseViewData(), [
             'results'   => $results,
@@ -59,7 +55,7 @@ class DesignGeneratorController extends Controller
         $data = $this->validateLogoRequest($request);
         $stored = $request->file('logo')->store('design-generator/refs', 'local');
 
-        return response()->json($this->cutoutLogoImage(Storage::disk('local')->path($stored)));
+        return response()->json(app(DesignGenerationService::class)->cutoutLogo(Storage::disk('local')->path($stored)));
     }
 
     /** Pas een masker (+ optionele gekleurde svg-rand) toe op een gegenereerde achtergrond (standalone preview) */
@@ -232,7 +228,7 @@ class DesignGeneratorController extends Controller
     {
         $data = $this->validateGenerateRequest($request);
         $refPaths = $this->storeReferenceFiles($request);
-        $results = $this->generateBackgroundImage($data['event_type'], $data['input'], $refPaths);
+        $results = app(DesignGenerationService::class)->generateBackground($data['event_type'], $data['input'], $refPaths);
 
         $session = $this->session($booking);
         $state   = $session->state ?? [];
@@ -262,7 +258,7 @@ class DesignGeneratorController extends Controller
         $data = $this->validateLogoRequest($request);
         $stored = $request->file('logo')->store('design-generator/refs', 'local');
 
-        return response()->json($this->cutoutLogoImage(Storage::disk('local')->path($stored)));
+        return response()->json(app(DesignGenerationService::class)->cutoutLogo(Storage::disk('local')->path($stored)));
     }
 
     /** Verstuur het huidige ontwerp naar de klant (mockup + mail, zoals de bestaande handmatige upload) */
@@ -350,102 +346,6 @@ class DesignGeneratorController extends Controller
         }
 
         return $refPaths;
-    }
-
-    /** Genereer + cover-crop een achtergrondafbeelding via Gemini. Retourneert het standaard results-array. */
-    private function generateBackgroundImage(string $eventType, string $input, array $refPaths): array
-    {
-        $template = DesignPromptSetting::currentPrompt('background', $eventType);
-        $prompt = str_contains($template, '{beschrijving}')
-            ? str_replace('{beschrijving}', $input, $template)
-            : $template . "\n\n" . $input;
-
-        $started = microtime(true);
-        try {
-            $manager = app(ImageGenerationManager::class);
-            $image   = $manager->driver('gemini')->generate($prompt, $refPaths, null);
-            $binary  = $this->coverCropToCanvas($image->binary, self::CANVAS_WIDTH, self::CANVAS_HEIGHT);
-
-            $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
-            Storage::disk('public')->put($filename, $binary);
-
-            return [
-                'ok'      => true,
-                'url'     => Storage::disk('public')->url($filename),
-                'path'    => $filename,
-                'seconds' => round(microtime(true) - $started, 1),
-            ];
-        } catch (\Throwable $e) {
-            Log::error('Achtergrond-generatie mislukt: ' . $e->getMessage());
-
-            return [
-                'ok'    => false,
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    /** Stel een logo vrij als transparante PNG (via GPT/OpenAI — Gemini kan geen echte transparantie). */
-    private function cutoutLogoImage(string $localPath): array
-    {
-        $prompt = 'Cut out only the logo from this image. Remove the background completely so it becomes '
-            . 'fully transparent (alpha channel = 0), keep the logo itself unchanged — do not redraw, '
-            . 'recolor, restyle, or add effects. No shadow, no border, no added background color. '
-            . 'The output must have a genuinely transparent background.';
-
-        try {
-            $manager = app(ImageGenerationManager::class);
-            $image   = $manager->driver('openai')->generate($prompt, [$localPath], null);
-
-            $filename = 'design-generator/logos/' . Str::random(24) . '.' . $image->extension();
-            Storage::disk('public')->put($filename, $image->binary);
-
-            return [
-                'ok'   => true,
-                'url'  => Storage::disk('public')->url($filename),
-                'path' => $filename,
-            ];
-        } catch (\Throwable $e) {
-            Log::error('Logo vrijstellen mislukt: ' . $e->getMessage());
-
-            return [
-                'ok'    => false,
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    /**
-     * Forceer de gegenereerde achtergrond op het vaste canvas (zoals CSS background-size: cover):
-     * schalen tot beide dimensies gedekt zijn, daarna vanuit het midden bijsnijden op maat.
-     * Gemini's aspect ratio klopt niet altijd exact — dit garandeert altijd 600×1800px.
-     */
-    private function coverCropToCanvas(string $binary, int $targetWidth, int $targetHeight): string
-    {
-        $image = new \Imagick();
-        $image->readImageBlob($binary);
-        $image = $image->mergeImageLayers(\Imagick::LAYERMETHOD_FLATTEN);
-
-        $srcWidth  = $image->getImageWidth();
-        $srcHeight = $image->getImageHeight();
-        $scale     = max($targetWidth / $srcWidth, $targetHeight / $srcHeight);
-
-        $image->resizeImage(
-            (int) ceil($srcWidth * $scale),
-            (int) ceil($srcHeight * $scale),
-            \Imagick::FILTER_LANCZOS,
-            1
-        );
-
-        $cropX = (int) round(($image->getImageWidth() - $targetWidth) / 2);
-        $cropY = (int) round(($image->getImageHeight() - $targetHeight) / 2);
-        $image->cropImage($targetWidth, $targetHeight, max(0, $cropX), max(0, $cropY));
-        $image->setImagePage(0, 0, 0, 0);
-
-        $image->setImageFormat('jpg');
-        $image->setImageCompressionQuality(92);
-
-        return $image->getImageBlob();
     }
 
     /** Basisbeveiliging voor geüploade SVG's: verwijder scripts en on*-event-handlers vóórdat we ze opslaan/inline tonen */
