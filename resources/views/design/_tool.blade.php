@@ -106,15 +106,6 @@
     .dg-text-layer.selected { outline: 2px dashed #7c3aed; outline-offset: 3px; border-radius: .2rem; }
 
     .dg-mask-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
-    .dg-mask-preview-bg {
-        background-image:
-            linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
-            linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
-            linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
-            linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
-        background-size: 20px 20px;
-        background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
-    }
     .dg-svg-border-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     .dg-svg-border-layer svg { width: 100%; height: 100%; display: block; }
 

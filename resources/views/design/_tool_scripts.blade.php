@@ -624,7 +624,6 @@ function dgSelectMask(id) {
     if (!mask) {
         img.style.webkitMaskImage = '';
         img.style.maskImage = '';
-        bgBody.classList.remove('dg-mask-preview-bg');
         borderLayer.innerHTML = '';
         colorRow.style.display = 'none';
         return;
@@ -641,7 +640,6 @@ function dgSelectMask(id) {
     // dat zag eruit als "de hele strip wordt 50% transparant".
     img.style.maskMode = 'alpha';
     img.style.webkitMaskMode = 'alpha';
-    bgBody.classList.add('dg-mask-preview-bg');
 
     if (mask.svgContent) {
         borderLayer.innerHTML = mask.svgContent;
