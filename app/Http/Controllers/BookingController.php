@@ -1027,26 +1027,6 @@ class BookingController extends Controller
         return response(view('bookings._design_modal', compact('booking'))->render());
     }
 
-    /**
-     * Stel desgewenst een mockup samen van een geüploade strip-afbeelding.
-     * Geeft het (mogelijk nieuwe) opslagpad terug; bij een PDF of een fout blijft het origineel.
-     */
-    private function maybeApplyMockup(string $path, ?string $mime): string
-    {
-        if (! str_starts_with((string) $mime, 'image/')) {
-            return $path;
-        }
-        try {
-            $blob     = app(\App\Services\StripMockupService::class)->render(Storage::disk('public')->path($path));
-            $mockPath = 'strip-designs/mockup_' . \Illuminate\Support\Str::random(20) . '.jpg';
-            Storage::disk('public')->put($mockPath, $blob);
-            return $mockPath;
-        } catch (\Throwable $e) {
-            \Log::error('Strip-mockup samenstellen mislukt: ' . $e->getMessage());
-            return $path;
-        }
-    }
-
     public function uploadStripDesign(Request $request, Booking $booking): RedirectResponse
     {
         $request->validate([
@@ -1055,9 +1035,9 @@ class BookingController extends Controller
             'mockup'            => ['nullable', 'boolean'],
         ]);
 
-        $oudDesignUrl = $booking->strip_design_url;
-        $nieuweUrl    = null;
-        $filename     = null;
+        $stripDesignService = app(\App\Services\StripDesignService::class);
+        $nieuweUrl = null;
+        $filename  = null;
 
         if ($request->hasFile('strip_design_file')) {
             $file      = $request->file('strip_design_file');
@@ -1066,7 +1046,7 @@ class BookingController extends Controller
 
             // Mockup samenstellen als het vinkje aanstaat (alleen voor afbeeldingen)
             if ($request->boolean('mockup')) {
-                $mockPath = $this->maybeApplyMockup($path, $file->getMimeType());
+                $mockPath = $stripDesignService->applyMockupIfImage($path, $file->getMimeType());
                 if ($mockPath !== $path) {
                     $path     = $mockPath;
                     $filename = pathinfo($filename, PATHINFO_FILENAME) . ' (mockup).jpg';
@@ -1083,33 +1063,7 @@ class BookingController extends Controller
             return back()->with('error', 'Geen bestand of URL opgegeven.');
         }
 
-        // Voeg toe aan strip_designs lijst
-        $designs   = $booking->strip_designs ?? [];
-        $designs[] = [
-            'url'         => $nieuweUrl,
-            'filename'    => $filename,
-            'uploaded_at' => now()->toIso8601String(),
-        ];
-
-        $updateData = [
-            'strip_design_url' => $nieuweUrl,
-            'strip_status'     => 'review',
-            'strip_designs'    => $designs,
-        ];
-
-        // Wis opmerkingen als het ontwerp is aangepast
-        if ($nieuweUrl !== $oudDesignUrl) {
-            $updateData['strip_notes']       = null;
-            $updateData['strip_feedback']    = null;
-            $updateData['strip_feedback_at'] = null;
-        }
-
-        $booking->update($updateData);
-
-        if ($nieuweUrl !== $oudDesignUrl && $booking->customer_email) {
-            $booking->load('account');
-            app(MailService::class)->send('customer_strip_design_added', $booking, $booking->customer_email);
-        }
+        $stripDesignService->attachDesign($booking, $nieuweUrl, $filename);
 
         return redirect()->route('bookings.index')->with('success', "Ontwerp toegevoegd en mail verstuurd naar {$booking->customer_name}.");
     }
