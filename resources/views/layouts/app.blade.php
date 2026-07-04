@@ -26,7 +26,11 @@
             --warning: #d97706;
         }
 
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f5; color: var(--text); display: flex; min-height: 100vh; }
+        /* height (niet min-height): .content hieronder is bedoeld als de enige scrollende regio
+           (overflow-y:auto, met .topbar/.sidebar erbuiten) — met min-height groeide de hele pagina
+           gewoon mee bij lange content, waardoor .content nooit echt hoefde te scrollen en sticky
+           elementen daarbinnen (zoals de ontwerp-preview) geen effectieve "plakruimte" hadden. */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f5; color: var(--text); display: flex; height: 100vh; }
 
         /* Sidebar - Icon-only (uitklapbaar) */
         .sidebar { width: 60px; background: #f8f7f5; color: #1e293b; display: flex; flex-direction: column; flex-shrink: 0; border-right: 1px solid rgba(0,0,0,.05); transition: width .25s ease; }
