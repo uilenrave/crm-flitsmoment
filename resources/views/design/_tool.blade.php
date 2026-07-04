@@ -446,11 +446,6 @@
                 <p style="font-size:.85rem;">Vul links het thema in en klik op "Genereer achtergrond".</p>
             </div>
         @else
-            @if($input)
-            <div style="font-size:.8rem;color:#64748b;margin-bottom:.75rem;padding:.6rem .85rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.5rem;">
-                <strong>Categorie:</strong> {{ $eventTypes[$eventType] ?? $eventType }} — <strong>Thema:</strong> {{ \Illuminate\Support\Str::limit($input, 220) }}
-            </div>
-            @endif
             <div class="dg-result">
                 <div class="dg-result-head">
                     @if($results['ok'])

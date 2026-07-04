@@ -1,4 +1,6 @@
-@php($hideHeader = true)
+@php
+    $hideHeader = true;
+@endphp
 @extends('layouts.portal')
 
 @section('title', 'Ontwerp je fotostrip')

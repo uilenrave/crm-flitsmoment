@@ -1,3 +1,6 @@
+@php
+    $hideHeader = true;
+@endphp
 @extends('layouts.app')
 
 @section('title', 'Ontwerp-generator')

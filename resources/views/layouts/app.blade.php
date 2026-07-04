@@ -390,6 +390,7 @@
 </div>
 
 <main class="main">
+    @unless($hideHeader ?? false)
     <div class="topbar">
         <h2>@yield('title', 'Dashboard')</h2>
         <div style="display:flex;align-items:center;gap:.5rem;">
@@ -399,6 +400,7 @@
             </button>
         </div>
     </div>
+    @endunless
     <div class="content">
         @if(session('success'))
             <div class="alert alert-success">{{ session('success') }}</div>
