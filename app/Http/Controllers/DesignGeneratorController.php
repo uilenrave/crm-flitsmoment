@@ -116,14 +116,16 @@ class DesignGeneratorController extends Controller
     public function uploadMask(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'label'     => ['required', 'string', 'max:100'],
-            'mask'      => ['required', 'image', 'max:8192'],
-            'thumbnail' => ['nullable', 'image', 'max:8192'],
-            'svg'       => ['nullable', 'file', 'mimes:svg', 'max:2048'],
+            'label'          => ['required', 'string', 'max:100'],
+            'mask'           => ['required', 'image', 'max:8192'],
+            'thumbnail'      => ['nullable', 'image', 'max:8192'],
+            'svg'            => ['nullable', 'file', 'mimes:svg', 'max:2048'],
+            'preview_photos' => ['nullable', 'image', 'max:8192'],
         ], [], [
-            'mask'      => 'maskerafbeelding',
-            'thumbnail' => 'thumbnail-afbeelding',
-            'svg'       => 'svg-bestand',
+            'mask'           => 'maskerafbeelding',
+            'thumbnail'      => 'thumbnail-afbeelding',
+            'svg'            => 'svg-bestand',
+            'preview_photos' => 'voorbeeldfoto\'s-afbeelding',
         ]);
 
         $maskImage = new \Imagick($request->file('mask')->getRealPath());
@@ -146,27 +148,38 @@ class DesignGeneratorController extends Controller
             Storage::disk('public')->put($svgFilename, $svgContent);
         }
 
+        $previewPhotosFilename = null;
+        if ($request->hasFile('preview_photos')) {
+            $previewPhotosFilename = 'design-generator/masks/' . Str::random(24) . '-preview.'
+                . $request->file('preview_photos')->extension();
+            Storage::disk('public')->put($previewPhotosFilename, file_get_contents($request->file('preview_photos')->getRealPath()));
+        }
+
         $mask = DesignMask::create([
-            'label'          => $data['label'],
-            'path'           => $filename,
-            'thumbnail_path' => $thumbFilename,
-            'svg_path'       => $svgFilename,
+            'label'               => $data['label'],
+            'path'                => $filename,
+            'thumbnail_path'      => $thumbFilename,
+            'svg_path'            => $svgFilename,
+            'preview_photos_path' => $previewPhotosFilename,
         ]);
 
         return response()->json([
-            'ok'           => true,
-            'id'           => $mask->id,
-            'label'        => $mask->label,
-            'url'          => $mask->url,
-            'thumbnailUrl' => $mask->thumbnail_url,
-            'svgContent'   => $mask->svg_path ? Storage::disk('public')->get($mask->svg_path) : null,
+            'ok'               => true,
+            'id'               => $mask->id,
+            'label'            => $mask->label,
+            'url'              => $mask->url,
+            'thumbnailUrl'     => $mask->thumbnail_url,
+            'svgContent'       => $mask->svg_path ? Storage::disk('public')->get($mask->svg_path) : null,
+            'previewPhotosUrl' => $mask->preview_photos_url,
         ]);
     }
 
     /** Verwijder een masker uit de bibliotheek */
     public function destroyMask(DesignMask $mask): JsonResponse
     {
-        Storage::disk('public')->delete(array_filter([$mask->path, $mask->thumbnail_path, $mask->svg_path]));
+        Storage::disk('public')->delete(array_filter([
+            $mask->path, $mask->thumbnail_path, $mask->svg_path, $mask->preview_photos_path,
+        ]));
         $mask->delete();
 
         return response()->json(['ok' => true]);
@@ -362,11 +375,12 @@ class DesignGeneratorController extends Controller
         }
 
         $masks = DesignMask::orderBy('label')->get()->map(fn (DesignMask $m) => [
-            'id'           => $m->id,
-            'label'        => $m->label,
-            'url'          => $m->url,
-            'thumbnailUrl' => $m->thumbnail_url,
-            'svgContent'   => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
+            'id'               => $m->id,
+            'label'            => $m->label,
+            'url'              => $m->url,
+            'thumbnailUrl'     => $m->thumbnail_url,
+            'svgContent'       => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
+            'previewPhotosUrl' => $m->preview_photos_url,
         ])->values();
 
         return [

@@ -49,6 +49,9 @@
     .dg-mockup-strip-slot .dg-result-frame { background: transparent; padding: 0; filter: drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
     .dg-mockup-strip-slot .dg-result-body img { max-height: none; }
     .dg-mockup-tape { position: absolute; transform: translate(-50%, -50%); pointer-events: none; }
+
+    .dg-preview-mode-toggle { display: inline-flex; align-items: center; gap: .35rem; font-size: .78rem; font-weight: 600; color: #64748b; cursor: pointer; margin-right: auto; }
+    .dg-preview-photos-layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
     .dg-result-body img { display: block; max-height: 76vh; width: auto; max-width: 100%; }
     .dg-gear { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: .4rem; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; font-size: .85rem; margin-left: .4rem; vertical-align: middle; }
     .dg-gear:hover { background: #f8fafc; }
@@ -184,6 +187,10 @@
             <div class="dg-modal-form-row">
                 <label class="dg-label" for="modal_mask_svg">Rand-svg <span class="dg-hint">— optioneel, gevulde vorm (geen stroke), exact over het masker</span></label>
                 <input id="modal_mask_svg" type="file" class="dg-file" accept=".svg,image/svg+xml">
+            </div>
+            <div class="dg-modal-form-row">
+                <label class="dg-label" for="modal_mask_preview_photos">Voorbeeldfoto's <span class="dg-hint">— optioneel, exact even groot als het masker; wordt achter het ontwerp getoond in "Preview modus"</span></label>
+                <input id="modal_mask_preview_photos" type="file" class="dg-file" accept="image/*">
             </div>
             <button type="button" id="dg-mask-upload-btn" class="dg-logo-btn" onclick="dgUploadMaskToLibrary()">⬆ Toevoegen aan bibliotheek</button>
             <p id="dg-mask-upload-error" class="dg-logo-error" style="display:none;"></p>
@@ -421,6 +428,9 @@
             <div class="dg-result">
                 <div class="dg-result-head">
                     @if($results['ok'])
+                        <label class="dg-preview-mode-toggle">
+                            <input type="checkbox" id="dg-preview-mode-toggle" onchange="dgTogglePreviewMode()"> Preview modus
+                        </label>
                         <a href="{{ $results['url'] }}" download style="font-size:.78rem;color:#7c3aed;font-weight:600;">⬇ Download ({{ $results['seconds'] }}s)</a>
                     @endif
                 </div>
@@ -431,7 +441,8 @@
                         <div class="dg-mockup-strip-slot" style="left:{{ $mockupCfg['strip']['center_x'] * 100 }}%;top:{{ $mockupCfg['strip']['top'] * 100 }}%;width:{{ $mockupCfg['strip']['width'] * 100 }}%;">
                             <div class="dg-result-frame">
                                 <div id="dg-result-body" class="dg-result-body">
-                                    <img src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
+                                    <img id="dg-preview-photos-layer" class="dg-preview-photos-layer" alt="" style="display:none;">
+                                    <img id="dg-design-img" src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
                                     <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
                                 </div>
                             </div>

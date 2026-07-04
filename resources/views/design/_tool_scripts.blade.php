@@ -571,7 +571,7 @@ function dgAutoSelectMaskIfNeeded() {
 
 function dgSelectMask(id) {
     const bgBody = document.getElementById('dg-result-body');
-    const img = bgBody?.querySelector('img');
+    const img = document.getElementById('dg-design-img');
     const colorRow = document.getElementById('dg-color-row');
     if (!img) return;
 
@@ -614,6 +614,33 @@ function dgSelectMask(id) {
 
     dgMarkDirty();
     dgScheduleMaskApply();
+    dgTogglePreviewMode();
+}
+
+/**
+ * "Preview modus" plakt de aan het masker gekoppelde voorbeeldfoto's-afbeelding achter het
+ * ontwerp, zodat je door de transparante foto-vensters heen ziet hoe het eruitziet met foto's
+ * erin. Puur een lokale weergave-toggle — wordt niet in de sessie-state opgeslagen.
+ */
+function dgTogglePreviewMode() {
+    const toggle = document.getElementById('dg-preview-mode-toggle');
+    const layer = document.getElementById('dg-preview-photos-layer');
+    if (!toggle || !layer) return;
+
+    if (!toggle.checked) {
+        layer.style.display = 'none';
+        return;
+    }
+
+    const mask = dgMasks.find(m => m.id === dgSelectedMaskId);
+    if (mask && mask.previewPhotosUrl) {
+        layer.src = mask.previewPhotosUrl;
+        layer.style.display = 'block';
+    } else {
+        alert('Dit masker heeft geen voorbeeldfoto\'s. Voeg ze toe via de maskerbibliotheek (🎭 Maskers).');
+        toggle.checked = false;
+        layer.style.display = 'none';
+    }
 }
 
 function dgBorderColorChanged() {
@@ -736,6 +763,13 @@ function dgRenderMaskList() {
             item.appendChild(tag);
         }
 
+        if (m.previewPhotosUrl) {
+            const tag = document.createElement('span');
+            tag.className = 'svg-tag';
+            tag.textContent = 'preview-foto\'s';
+            item.appendChild(tag);
+        }
+
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'dg-mask-delete';
@@ -752,6 +786,7 @@ function dgUploadMaskToLibrary() {
     const fileInput = document.getElementById('modal_mask_file');
     const thumbInput = document.getElementById('modal_mask_thumb');
     const svgInput = document.getElementById('modal_mask_svg');
+    const previewPhotosInput = document.getElementById('modal_mask_preview_photos');
     const errorEl = document.getElementById('dg-mask-upload-error');
     errorEl.style.display = 'none';
 
@@ -771,6 +806,7 @@ function dgUploadMaskToLibrary() {
     fd.append('mask', fileInput.files[0]);
     if (thumbInput.files.length) fd.append('thumbnail', thumbInput.files[0]);
     if (svgInput.files.length) fd.append('svg', svgInput.files[0]);
+    if (previewPhotosInput.files.length) fd.append('preview_photos', previewPhotosInput.files[0]);
 
     fetch(dgConfig.urls.masksUpload, {
         method: 'POST',
@@ -782,7 +818,10 @@ function dgUploadMaskToLibrary() {
         btn.disabled = false;
         btn.textContent = original;
         if (data.ok) {
-            dgMasks.push({ id: data.id, label: data.label, url: data.url, thumbnailUrl: data.thumbnailUrl, svgContent: data.svgContent });
+            dgMasks.push({
+                id: data.id, label: data.label, url: data.url, thumbnailUrl: data.thumbnailUrl,
+                svgContent: data.svgContent, previewPhotosUrl: data.previewPhotosUrl,
+            });
             dgRenderMaskList();
             dgRenderMaskGallery();
             dgAutoSelectMaskIfNeeded();
@@ -790,6 +829,7 @@ function dgUploadMaskToLibrary() {
             fileInput.value = '';
             thumbInput.value = '';
             svgInput.value = '';
+            previewPhotosInput.value = '';
         } else {
             errorEl.textContent = 'Uploaden mislukt: ' + (data.error || 'onbekende fout');
             errorEl.style.display = 'block';

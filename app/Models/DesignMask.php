@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 
 class DesignMask extends Model
 {
-    protected $fillable = ['account_id', 'label', 'path', 'thumbnail_path', 'svg_path'];
+    protected $fillable = ['account_id', 'label', 'path', 'thumbnail_path', 'svg_path', 'preview_photos_path'];
 
     protected static function booted(): void
     {
@@ -42,6 +42,11 @@ class DesignMask extends Model
         return $this->svg_path ? Storage::disk('public')->url($this->svg_path) : null;
     }
 
+    public function getPreviewPhotosUrlAttribute(): ?string
+    {
+        return $this->preview_photos_path ? Storage::disk('public')->url($this->preview_photos_path) : null;
+    }
+
     /**
      * Maskers voor de tool-frontend, als array klaar voor Js::from(). Expliciet op account_id
      * gescoped (i.p.v. de ambient auth-gebaseerde AccountScope) — nodig vanuit het portaal,
@@ -54,11 +59,12 @@ class DesignMask extends Model
             ->orderBy('label')
             ->get()
             ->map(fn (self $m) => [
-                'id'           => $m->id,
-                'label'        => $m->label,
-                'url'          => $m->url,
-                'thumbnailUrl' => $m->thumbnail_url,
-                'svgContent'   => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
+                'id'               => $m->id,
+                'label'            => $m->label,
+                'url'              => $m->url,
+                'thumbnailUrl'     => $m->thumbnail_url,
+                'svgContent'       => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
+                'previewPhotosUrl' => $m->preview_photos_url,
             ])
             ->values();
     }
