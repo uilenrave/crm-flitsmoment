@@ -13,6 +13,7 @@ class Account extends Model
         'mollie_key', 'mollie_enabled', 'eboekhouden_enabled', 'eboekhouden_api_key',
         'origin_address', 'travel_free_km', 'travel_cost_per_km',
         'booking_sequence', 'booking_sequence_year',
+        'production_token',
     ];
 
     protected $casts = [

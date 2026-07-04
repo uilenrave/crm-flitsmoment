@@ -6,6 +6,7 @@ use App\Scopes\AccountScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -23,6 +24,7 @@ class Booking extends Model
         'event_notes',
         'delivery_instructions', 'delivery_instructions_images',
         'strip_status', 'strip_design_url', 'strip_notes', 'strip_feedback', 'strip_feedback_at', 'strip_version', 'strip_comments', 'strip_designs', 'strip_intake_data', 'strip_format', 'strip_design_method', 'strip_self_tool', 'strip_template_id', 'gallery_url', 'gallery_token',
+        'production_file_path', 'production_file_at',
         'base_price', 'total_price', 'amount_total',
         'status', 'payment_status', 'public_token', 'portal_enabled', 'hide_prices', 'gallery_skipped',
         'confirmed_at', 'cancelled_at', 'completed_at',
@@ -42,6 +44,7 @@ class Booking extends Model
         'customer_pickup_at'       => 'datetime',
         'customer_return_at'       => 'datetime',
         'customer_pickup_approved' => 'boolean',
+        'production_file_at'  => 'datetime',
         'portal_enabled'      => 'boolean',
         'delivery_open'       => 'boolean',
         'pickup_open'         => 'boolean',
@@ -203,6 +206,11 @@ class Booking extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class)->withoutGlobalScope(AccountScope::class);
+    }
+
+    public function designSession(): HasOne
+    {
+        return $this->hasOne(DesignSession::class)->withoutGlobalScope(AccountScope::class);
     }
 
     public function items(): HasMany
