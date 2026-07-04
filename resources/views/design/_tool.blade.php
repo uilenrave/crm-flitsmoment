@@ -50,7 +50,7 @@
     .dg-logo-list { display: flex; flex-direction: column; gap: .5rem; margin-top: .8rem; }
     .dg-logo-list-item { display: flex; align-items: center; gap: .6rem; padding: .5rem; border: 1px solid #f1f5f9; border-radius: .5rem; }
     .dg-logo-list-item img { width: 36px; height: 36px; object-fit: contain; border-radius: .3rem; background: #f8fafc repeating-conic-gradient(#e5e7eb 0% 25%, #f8fafc 0% 50%) 50% / 8px 8px; }
-    .dg-logo-list-item .label { flex: 1; font-size: .8rem; font-weight: 600; color: #334155; }
+    .dg-logo-list-item .label { flex: 1; font-size: .8rem; font-weight: 600; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .dg-logo-list-btn { font-size: .72rem; font-weight: 600; color: #334155; background: #fff; border: 1px solid #e2e8f0; border-radius: .35rem; padding: .3rem .55rem; cursor: pointer; }
     .dg-logo-list-btn:hover { background: #f8fafc; }
     .dg-logo-list-btn.danger { color: #b91c1c; }
@@ -104,7 +104,10 @@
 
     .dg-limit-notice { border: 1px solid #fde68a; background: #fffbeb; border-radius: .6rem; padding: .8rem .9rem; font-size: .82rem; color: #92400e; margin-top: .6rem; }
     .dg-limit-notice a { color: #7c3aed; font-weight: 700; }
-    .dg-save-indicator { font-size: .7rem; color: #94a3b8; margin-left: .5rem; }
+    .dg-save-badge { display: none; position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 500; align-items: center; gap: .4rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: .55rem 1rem; font-size: .78rem; font-weight: 700; color: #64748b; box-shadow: 0 4px 16px rgba(15,23,42,.12); }
+    .dg-save-badge.show { display: flex; }
+    .dg-save-badge.saved { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
+    .dg-save-badge.dirty { color: #b45309; border-color: #fde68a; background: #fffbeb; }
 
     /* Wizard-chrome — alleen actief in mode=portal */
     .dg-wizard .dg-step { display: none; }
@@ -161,6 +164,8 @@
     </div>
 </div>
 @endif
+
+<div id="dg-save-badge" class="dg-save-badge"></div>
 
 <div class="dg-grid">
     {{-- ── Links: alle edit-opties ── --}}
@@ -335,9 +340,7 @@
                 <input id="dg-border-color" type="color" value="#000000" oninput="dgBorderColorChanged()" style="display:none;">
             </div>
 
-            <div class="dg-logo-actions">
-                <button type="button" id="dg-mask-apply-btn" class="dg-logo-btn" onclick="dgApplyMask()" disabled>✅ Toepassen op afbeelding</button>
-            </div>
+            <p id="dg-mask-apply-status" class="dg-hint" style="display:none;margin-top:.6rem;">⏳ Wordt toegepast…</p>
             <p id="dg-mask-error" class="dg-logo-error" style="display:none;"></p>
         </div>
         @if($dgMode === 'portal')

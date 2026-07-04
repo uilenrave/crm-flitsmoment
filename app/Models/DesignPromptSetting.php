@@ -15,6 +15,7 @@ class DesignPromptSetting extends Model
         'bruiloft'      => 'Bruiloft',
         'verjaardag'    => 'Verjaardag',
         'bedrijfsfeest' => 'Bedrijfsfeest',
+        'anders'        => 'Anders',
     ];
 
     /** Event-types waarbij het optionele logo-uploadveld getoond wordt. */

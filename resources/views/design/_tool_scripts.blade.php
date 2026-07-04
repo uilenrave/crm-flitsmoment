@@ -135,6 +135,7 @@ function dgCutoutLogo() {
 
     const btn = document.getElementById('dg-logo-cutout-btn');
     const original = btn.textContent;
+    const originalName = fileInput.files[0].name;
     btn.disabled = true;
     btn.textContent = '⏳ Vrijstellen…';
 
@@ -152,7 +153,7 @@ function dgCutoutLogo() {
         btn.textContent = original;
         if (data.ok) {
             fileInput.value = '';
-            dgAddLogoLayer(data.url, data.path);
+            dgAddLogoLayer(data.url, data.path, { originalName: originalName });
             dgMarkDirty();
         } else if (data.limit) {
             dgShowLimitNotice('dg-logo-limit-notice');
@@ -203,6 +204,7 @@ function dgAddLogoLayer(url, path, savedState) {
             id: id,
             path: path,
             url: url,
+            originalName: savedState?.originalName ?? 'Logo',
             xPct: savedState?.xPct ?? (50 + dgLogos.length * 8),
             yPct: savedState?.yPct ?? (50 + dgLogos.length * 8),
             widthPct: savedState?.widthPct ?? 35,
@@ -333,7 +335,8 @@ function dgRenderLogoList() {
 
         const label = document.createElement('span');
         label.className = 'label';
-        label.textContent = 'Logo ' + (idx + 1);
+        label.textContent = logo.originalName;
+        label.title = logo.originalName;
         item.appendChild(label);
 
         const centerBtn = document.createElement('button');
@@ -549,7 +552,6 @@ function dgAutoSelectMaskIfNeeded() {
 function dgSelectMask(id) {
     const bgBody = document.getElementById('dg-result-body');
     const img = bgBody?.querySelector('img');
-    const applyBtn = document.getElementById('dg-mask-apply-btn');
     const colorRow = document.getElementById('dg-color-row');
     if (!img) return;
 
@@ -565,7 +567,6 @@ function dgSelectMask(id) {
         bgBody.classList.remove('dg-mask-preview-bg');
         borderLayer.innerHTML = '';
         colorRow.style.display = 'none';
-        applyBtn.disabled = true;
         return;
     }
 
@@ -581,7 +582,6 @@ function dgSelectMask(id) {
     img.style.maskMode = 'alpha';
     img.style.webkitMaskMode = 'alpha';
     bgBody.classList.add('dg-mask-preview-bg');
-    applyBtn.disabled = false;
 
     if (mask.svgContent) {
         borderLayer.innerHTML = mask.svgContent;
@@ -593,6 +593,7 @@ function dgSelectMask(id) {
     }
 
     dgMarkDirty();
+    dgScheduleMaskApply();
 }
 
 function dgBorderColorChanged() {
@@ -620,17 +621,30 @@ function dgBorderColorChanged() {
         });
     }
     dgMarkDirty();
+    dgScheduleMaskApply();
 }
 
+let dgMaskApplyTimer = null;
+
+function dgScheduleMaskApply() {
+    if (!dgSelectedMaskId || !dgBackgroundPath) return;
+    if (dgMaskApplyTimer) clearTimeout(dgMaskApplyTimer);
+    dgMaskApplyTimer = setTimeout(dgApplyMask, 500);
+}
+
+/**
+ * De preview zelf is al direct zichtbaar via de CSS-mask (dgSelectMask/dgBorderColorChanged).
+ * Deze functie bakt op de achtergrond een echte (server-side) versie zodat de downloadlink een
+ * kloppend plat PNG geeft — de klant/admin hoeft hier nergens voor te klikken, het gebeurt
+ * automatisch (gedebounced) zodra het masker of de randkleur wijzigt.
+ */
 function dgApplyMask() {
     const errorEl = document.getElementById('dg-mask-error');
+    const statusEl = document.getElementById('dg-mask-apply-status');
     errorEl.style.display = 'none';
     if (!dgSelectedMaskId || !dgBackgroundPath) return;
 
-    const btn = document.getElementById('dg-mask-apply-btn');
-    const original = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '⏳ Bezig…';
+    if (statusEl) statusEl.style.display = 'block';
 
     const mask = dgMasks.find(m => m.id === dgSelectedMaskId);
     const borderEnabled = document.getElementById('dg-border-enabled')?.checked ?? false;
@@ -647,20 +661,8 @@ function dgApplyMask() {
     })
     .then(r => r.json())
     .then(data => {
-        btn.disabled = false;
-        btn.textContent = original;
+        if (statusEl) statusEl.style.display = 'none';
         if (data.ok) {
-            const bgBody = document.getElementById('dg-result-body');
-            const img = bgBody.querySelector('img');
-            img.style.webkitMaskImage = '';
-            img.style.maskImage = '';
-            img.src = data.url;
-            bgBody.classList.remove('dg-mask-preview-bg');
-            document.getElementById('dg-svg-border-layer').innerHTML = '';
-            document.getElementById('dg-color-row').style.display = 'none';
-            dgSelectedMaskId = null;
-            dgRenderMaskGallery();
-            dgAutoSelectMaskIfNeeded();
             const dl = document.querySelector('.dg-result-head a[download]');
             if (dl) dl.href = data.url;
         } else {
@@ -669,8 +671,7 @@ function dgApplyMask() {
         }
     })
     .catch(() => {
-        btn.disabled = false;
-        btn.textContent = original;
+        if (statusEl) statusEl.style.display = 'none';
         errorEl.textContent = 'Toepassen mislukt (netwerkfout).';
         errorEl.style.display = 'block';
     });
@@ -806,6 +807,16 @@ let dgDirty = false;
 
 function dgMarkDirty() {
     dgDirty = true;
+    dgSetSaveBadge('dirty');
+}
+
+function dgSetSaveBadge(state) {
+    const badge = document.getElementById('dg-save-badge');
+    if (!badge || !dgConfig.urls.saveState) return;
+    badge.classList.add('show');
+    badge.classList.toggle('dirty', state === 'dirty');
+    badge.classList.toggle('saved', state === 'saved');
+    badge.textContent = state === 'saved' ? '✓ Opgeslagen' : '● Niet opgeslagen';
 }
 
 function dgCollectState() {
@@ -820,7 +831,7 @@ function dgCollectState() {
                 : null,
             logos: dgLogos.map(l => ({
                 path: l.path, xPct: l.xPct, yPct: l.yPct,
-                widthPct: l.widthPct, rotateDeg: l.rotateDeg,
+                widthPct: l.widthPct, rotateDeg: l.rotateDeg, originalName: l.originalName,
             })),
             texts: dgTexts.map(t => ({
                 content: t.content, color: t.color, fontSlug: t.fontSlug,
@@ -835,7 +846,6 @@ function dgAutosaveTick() {
     if (!dgDirty || !dgConfig.urls.saveState) return;
     dgDirty = false;
 
-    const indicator = document.getElementById('dg-save-indicator');
     fetch(dgConfig.urls.saveState, {
         method: 'POST',
         headers: {
@@ -844,10 +854,7 @@ function dgAutosaveTick() {
         },
         body: JSON.stringify(dgCollectState()),
     }).then(() => {
-        if (indicator) {
-            indicator.textContent = 'Opgeslagen ✓';
-            setTimeout(() => { indicator.textContent = ''; }, 2000);
-        }
+        dgSetSaveBadge('saved');
     });
 }
 

@@ -10,7 +10,6 @@
         <p style="margin:.25rem 0 0;font-size:.8rem;color:#64748b;">
             {{ $booking->event_date?->format('d M Y') }} · {{ $booking->booking_number }}
             · <a href="{{ route('bookings.index') }}" style="color:#7c3aed;">← Terug naar boekingen</a>
-            <span id="dg-save-indicator" style="margin-left:.5rem;color:#16a34a;font-weight:600;"></span>
         </p>
     </div>
 
