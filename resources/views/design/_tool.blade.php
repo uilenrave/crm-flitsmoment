@@ -146,10 +146,11 @@
     .dg-generating-overlay.show { display: flex; }
     .dg-spinner { width: 3rem; height: 3rem; border: 4px solid #ede9fe; border-top-color: #7c3aed; border-radius: 50%; animation: dg-spin .8s linear infinite; }
     @keyframes dg-spin { to { transform: rotate(360deg); } }
-    .dg-save-badge { display: none; position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 500; align-items: center; gap: .4rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: .55rem 1rem; font-size: .78rem; font-weight: 700; color: #64748b; box-shadow: 0 4px 16px rgba(15,23,42,.12); }
+    .dg-save-badge { display: none; position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 500; align-items: center; gap: .5rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: .55rem 1rem; font-size: .78rem; font-weight: 700; color: #64748b; box-shadow: 0 4px 16px rgba(15,23,42,.12); }
     .dg-save-badge.show { display: flex; }
     .dg-save-badge.saved { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
     .dg-save-badge.dirty { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+    .dg-spinner-sm { width: .85rem; height: .85rem; border: 2px solid #fde68a; border-top-color: #b45309; border-radius: 50%; animation: dg-spin .7s linear infinite; flex-shrink: 0; }
 
     /* Wizard-chrome — alleen actief in mode=portal */
     .dg-wizard .dg-step { display: none; }
@@ -378,7 +379,10 @@
                     <label class="dg-label" for="dg-text-size">Grootte</label>
                     <input id="dg-text-size" type="range" min="1.5" max="14" step="0.5" style="width:100%;" oninput="dgUpdateActiveText()">
                 </div>
-                <button type="button" class="dg-logo-list-btn danger" onclick="dgRemoveActiveText()">✕ Deze tekst verwijderen</button>
+                <div style="display:flex;gap:.5rem;">
+                    <button type="button" class="dg-logo-list-btn" onclick="dgCenterActiveText()">↔ Centreren</button>
+                    <button type="button" class="dg-logo-list-btn danger" onclick="dgRemoveActiveText()">✕ Deze tekst verwijderen</button>
+                </div>
             </div>
             <p id="dg-text-hint" class="dg-hint" style="margin-top:.6rem;">Klik op een tekst in het voorbeeld om 'm te bewerken.</p>
         </div>

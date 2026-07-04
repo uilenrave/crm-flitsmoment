@@ -552,6 +552,14 @@ function dgUpdateActiveText() {
     dgMarkDirty();
 }
 
+function dgCenterActiveText() {
+    const text = dgTexts.find(t => t.id === dgActiveTextId);
+    if (!text) return;
+    text.xPct = 50;
+    dgRenderTextLayer(text);
+    dgMarkDirty();
+}
+
 function dgRemoveActiveText() {
     if (!dgActiveTextId) return;
     const layer = document.getElementById('dg-text-layer-' + dgActiveTextId);
@@ -908,7 +916,11 @@ function dgSetSaveBadge(state) {
     badge.classList.add('show');
     badge.classList.toggle('dirty', state === 'dirty');
     badge.classList.toggle('saved', state === 'saved');
-    badge.textContent = state === 'saved' ? '✓ Opgeslagen' : '● Niet opgeslagen';
+    // "Niet opgeslagen" toont een draaiende spinner i.p.v. een stilstaand bolletje, zodat het
+    // voelt alsof hij actief aan het opslaan is (de automatische opslag volgt binnen 10s).
+    badge.innerHTML = state === 'saved'
+        ? '✓ Opgeslagen'
+        : '<span class="dg-spinner-sm"></span> Niet opgeslagen';
 }
 
 function dgCollectState() {
