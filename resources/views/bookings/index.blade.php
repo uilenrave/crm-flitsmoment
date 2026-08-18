@@ -75,13 +75,15 @@ function showFilename(id, input) {
     }
 }
 
-// Strip status AJAX dropdown
+// Strip status AJAX dropdown — waiting_input (legacy) blijft voor stale-tab veiligheid.
 const stripColors = {
-    waiting_input: { bg: '#fef3c7', text: '#92400e' },
-    designing:     { bg: '#dbeafe', text: '#1e40af' },
-    review:        { bg: '#f3e8ff', text: '#6b21a8' },
-    accepted:      { bg: '#dcfce7', text: '#15803d' },
-    ready:         { bg: '#d1fae5', text: '#065f46' },
+    awaiting_customer_design: { bg: '#fef3c7', text: '#92400e' },
+    waiting_input:            { bg: '#fef3c7', text: '#92400e' },
+    customer_self_designing:  { bg: '#e0e7ff', text: '#3730a3' },
+    designing:                { bg: '#dbeafe', text: '#1e40af' },
+    review:                   { bg: '#f3e8ff', text: '#6b21a8' },
+    accepted:                 { bg: '#dcfce7', text: '#15803d' },
+    ready:                    { bg: '#d1fae5', text: '#065f46' },
 };
 
 const paymentColors = {
@@ -115,7 +117,11 @@ function ajaxSelect(sel, bodyKey) {
                 sel.style.borderColor = c + '40';
                 sel.dataset.saved = value; // bijwerken na succesvolle save
             } else {
-                const c = stripColors[value] || { bg: '#f1f5f9', text: '#475569' };
+                // Bij een geaccepteerd AI-ontwerp zet de server de status automatisch door naar
+                // 'ready' (productie klaargezet); volg dan de teruggegeven eindstatus.
+                const finalValue = data.status || value;
+                if (data.status && data.status !== value) sel.value = data.status;
+                const c = stripColors[finalValue] || { bg: '#f1f5f9', text: '#475569' };
                 sel.style.background   = c.bg;
                 sel.style.color        = c.text;
                 sel.style.borderColor  = c.bg;
@@ -257,15 +263,15 @@ document.addEventListener('change', function(e) {
     @php
         $betalingKleuren = ['unpaid'=>'#dc2626','partial'=>'#d97706','paid'=>'#16a34a','cancelled'=>'#737373','refunded'=>'#ea580c'];
         $betalingLabels  = ['unpaid'=>'Niet betaald','paid'=>'Betaald'];
-        $stripKleuren    = ['waiting_input'=>['bg'=>'#fef3c7','text'=>'#92400e'],'designing'=>['bg'=>'#dbeafe','text'=>'#1e40af'],'review'=>['bg'=>'#f3e8ff','text'=>'#6b21a8'],'accepted'=>['bg'=>'#dcfce7','text'=>'#15803d'],'ready'=>['bg'=>'#d1fae5','text'=>'#065f46']];
-        $stripLabels     = ['waiting_input'=>'⏳ Input aanleveren','designing'=>'🎨 Ontwerpen','review'=>'👀 Ter beoordeling','accepted'=>'✅ Goedgekeurd','ready'=>'🎉 Ontwerp klaar'];
+        $stripKleuren    = \App\Models\Booking::STRIP_STATUS_COLORS;
+        $stripLabels     = \App\Models\Booking::STRIP_STATUS_LABELS;
         $catIcons        = ['photobooth'=>'📸','background'=>'🖼️','prop_box'=>'🎩','extra'=>'✨'];
     @endphp
 
     <div>
         @forelse($bookings as $boeking)
         @php
-            $currentStrip = $boeking->strip_status ?? null;
+            $currentStrip = $boeking->strip_status === 'waiting_input' ? 'awaiting_customer_design' : ($boeking->strip_status ?? null);
             $bk = $betalingKleuren[$boeking->payment_status] ?? '#737373';
             $sk = $currentStrip ? ($stripKleuren[$currentStrip] ?? ['bg'=>'#f1f5f9','text'=>'#475569']) : null;
 

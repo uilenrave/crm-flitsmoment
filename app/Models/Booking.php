@@ -12,6 +12,50 @@ use Illuminate\Support\Str;
 
 class Booking extends Model
 {
+    /**
+     * Actieve fotostrip-statussen in vaste volgorde. Let op: de DB-enum bevat óók de legacy
+     * waarde 'waiting_input' (nooit droppen), maar de code produceert die niet meer — bestaande
+     * rijen zijn gemigreerd naar 'awaiting_customer_design'. Gebruik stripStatusLabel() voor
+     * weergave zodat een eventuele achtergebleven legacy-waarde toch netjes rendert.
+     */
+    public const STRIP_STATUS_LABELS = [
+        'awaiting_customer_design' => '📨 Wachten op klant',
+        'customer_self_designing' => '✍️ Klant ontwerpt zelf',
+        'designing'                => '🎨 Wij ontwerpen',
+        'review'                   => '👀 Ter beoordeling',
+        'accepted'                 => '✅ Goedgekeurd',
+        'ready'                    => '🎉 Klaar voor productie',
+    ];
+
+    public const STRIP_STATUS_COLORS = [
+        'awaiting_customer_design' => ['bg' => '#fef3c7', 'text' => '#92400e'],
+        'customer_self_designing' => ['bg' => '#e0e7ff', 'text' => '#3730a3'],
+        'designing'                => ['bg' => '#dbeafe', 'text' => '#1e40af'],
+        'review'                   => ['bg' => '#f3e8ff', 'text' => '#6b21a8'],
+        'accepted'                 => ['bg' => '#dcfce7', 'text' => '#15803d'],
+        'ready'                    => ['bg' => '#d1fae5', 'text' => '#065f46'],
+    ];
+
+    /** Statuslabel met legacy-fallback: 'waiting_input' → zelfde als 'awaiting_customer_design'. */
+    public static function stripStatusLabel(?string $status): ?string
+    {
+        if ($status === 'waiting_input') {
+            $status = 'awaiting_customer_design';
+        }
+
+        return $status ? (self::STRIP_STATUS_LABELS[$status] ?? $status) : null;
+    }
+
+    /** Kleuren (bg/text) voor een status, met dezelfde legacy-fallback. */
+    public static function stripStatusColor(?string $status): array
+    {
+        if ($status === 'waiting_input') {
+            $status = 'awaiting_customer_design';
+        }
+
+        return self::STRIP_STATUS_COLORS[$status] ?? ['bg' => '#f1f5f9', 'text' => '#475569'];
+    }
+
     protected $fillable = [
         'account_id', 'lead_id', 'offer_id',
         'booking_number', 'booking_type',
@@ -31,6 +75,8 @@ class Booking extends Model
         'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_status', 'eboekhouden_synced_at', 'eboekhouden_relation_id', 'eboekhouden_skip_invoice', 'extra_invoices', 'eboekhouden_pay_url',
         'intake_data', 'intake_current_step', 'intake_completed', 'intake_completed_at',
         'strip_format', 'pickup_preference', 'pickup_contact_person', 'pickup_contact_time',
+        'location_contact_type', 'location_contact_phone', 'location_contact_email',
+        'pending_change', 'pending_change_token',
         'review_mail_sent_at',
         'delivery_staff_id', 'pickup_staff_id', 'delivery_open', 'pickup_open',
     ];
@@ -57,6 +103,7 @@ class Booking extends Model
         'eboekhouden_synced_at' => 'datetime',
         'extra_invoices'        => 'array',
         'intake_data'           => 'array',
+        'pending_change'        => 'array',
         'strip_comments'        => 'array',
         'strip_designs'         => 'array',
         'strip_intake_data'     => 'array',

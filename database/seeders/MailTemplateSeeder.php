@@ -24,6 +24,12 @@ class MailTemplateSeeder extends Seeder
         }
     }
 
+    /** Alleen de opgegeven template-keys (voor gerichte seeders die bestaande, mogelijk aangepaste templates niet mogen overschrijven). */
+    public function only(array $keys): array
+    {
+        return array_values(array_filter($this->defaultTemplates(), fn (array $t) => in_array($t['key'], $keys, true)));
+    }
+
     private function defaultTemplates(): array
     {
         return [
@@ -271,6 +277,9 @@ class MailTemplateSeeder extends Seeder
             ],
 
             [
+                // VEROUDERD: sinds de portaal-vereenvoudiging (2 keuzepaden) is er geen aparte
+                // template-galerij meer, dus deze mail heeft geen verzendpad meer. Regel blijft
+                // staan zodat bestaande mail-instellingen niet verdwijnen.
                 'key'            => 'admin_strip_method_template',
                 'name'           => 'Klant koos template (admin)',
                 'description'    => 'Verstuurd zodra de klant een template uit de galerij heeft gekozen.',
@@ -363,6 +372,144 @@ class MailTemplateSeeder extends Seeder
 
 <p style="font-size:13px;color:#64748b;">Heb je zelf nog vragen of opmerkingen over je ervaring? Stuur ons gerust een berichtje terug.</p>
 <p>Alvast heel erg bedankt!</p>
+<p>Met vriendelijke groet,<br><strong>{{bedrijf_naam}}</strong></p>
+                '),
+            ],
+
+            // ─── Herinneringen 48 uur van tevoren ───────────────────
+
+            [
+                'key'            => 'customer_to_go_reminder',
+                'name'           => 'To Go herinnering (48u vooraf)',
+                'description'    => 'Verstuurd 48 uur vóór het ophaalmoment van een To Go boeking — met ophaal- en retourtijd en de nadruk dat het exacte tijdvensters zijn.',
+                'recipient_type' => 'customer',
+                'subject'        => '⏰ Herinnering: ophalen & terugbrengen photobooth — {{boeking_nummer}}',
+                'body'           => $this->wrap('Bijna zover! Je photobooth ophalen 📦', '
+<p>Hallo <strong>{{klant_voornaam}}</strong>,</p>
+<p>Over 2 dagen is het zover! Een korte maar belangrijke herinnering over het <strong>ophalen en terugbrengen</strong> van je photobooth (boeking <strong>{{boeking_nummer}}</strong>).</p>
+
+<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#c2410c;">📦 Ophalen bij ons</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{ophaal_window}}</p>
+</div>
+<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#c2410c;">🔄 Terugbrengen bij ons</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{retour_window}}</p>
+</div>
+
+<p style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 16px;border-radius:6px;color:#991b1b;">
+  <strong>Let op — dit is een exact tijdstip, geen &laquo;vanaf&raquo;-tijd.</strong><br>
+  We plannen elk ophaal- en retourmoment strak in en zijn specifiek in dat halfuur aanwezig — staat er <strong>10:00</strong>, dan zijn we er van <strong>10:00 tot 10:30</strong>. Daarbuiten zijn we er vaak niet, dus kom alsjeblieft binnen dit tijdvenster langs. Zo voorkomen we dat je voor een dichte deur staat. 🙏
+</p>
+
+<p><strong>Controleer even of alles klopt.</strong> Neem in je portaal nog één keer je gegevens, de ophaal- en retourtijden en het adres door, zodat we zeker weten dat alles goed staat voor de grote dag.</p>
+
+<p style="background:#eff6ff;border-left:4px solid #3b82f6;padding:12px 16px;border-radius:6px;color:#1e3a8a;">
+  <strong>☔ De photobooth mag in principe niet buiten staan.</strong><br>
+  De apparatuur is niet weer- en vochtbestendig. Zorg dus voor een <strong>droge, overdekte plek binnen</strong>. Twijfel je over de opstelplek? Laat het ons even weten, dan denken we mee.
+</p>
+<p style="text-align:center;margin:26px 0;">
+  <a href="{{portal_link}}" style="background:#2563eb;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block;">Mijn boeking bekijken</a>
+</p>
+
+<p>Tot snel en veel plezier met de photobooth!</p>
+<p>Met vriendelijke groet,<br><strong>{{bedrijf_naam}}</strong></p>
+                '),
+            ],
+
+            [
+                'key'            => 'customer_full_service_reminder',
+                'name'           => 'Full Service herinnering (48u vooraf)',
+                'description'    => 'Verstuurd 48 uur vóór de bezorging van een Full Service boeking — met de bezorg- en ophaaltijd van de photobooth.',
+                'recipient_type' => 'customer',
+                'subject'        => '⏰ Herinnering: bezorging & ophalen photobooth — {{boeking_nummer}}',
+                'body'           => $this->wrap('Bijna zover! Wij komen langs 🚚', '
+<p>Hallo <strong>{{klant_voornaam}}</strong>,</p>
+<p>Over 2 dagen komen we langs met de photobooth voor je evenement (boeking <strong>{{boeking_nummer}}</strong>). Een korte herinnering met de <strong>bezorg- en ophaaltijden</strong>.</p>
+
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#1d4ed8;">🚚 Wij bezorgen de photobooth</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{bezorg_window}}</p>
+</div>
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#1d4ed8;">📦 Wij halen de photobooth op</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{ophaal_fs_window}}</p>
+</div>
+
+<p><strong>Controleer even of alles klopt.</strong> Neem in je portaal nog één keer je gegevens, de bezorg- en ophaaltijden en de locatie door, zodat we zeker weten dat alles goed staat voor je evenement.</p>
+
+<p style="background:#eff6ff;border-left:4px solid #3b82f6;padding:12px 16px;border-radius:6px;color:#1e3a8a;">
+  <strong>☔ De photobooth mag in principe niet buiten staan.</strong><br>
+  De apparatuur is niet weer- en vochtbestendig. Zorg dus voor een <strong>droge, overdekte plek binnen</strong> waar wij de photobooth kunnen neerzetten. Twijfel je over de opstelplek? Laat het ons even weten, dan denken we mee.
+</p>
+<p style="text-align:center;margin:26px 0;">
+  <a href="{{portal_link}}" style="background:#2563eb;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block;">Mijn boeking bekijken</a>
+</p>
+
+<p>Tot snel!</p>
+<p>Met vriendelijke groet,<br><strong>{{bedrijf_naam}}</strong></p>
+                '),
+            ],
+
+            // ─── Bezorg/ophaalmoment aangepast ──────────────────────
+
+            [
+                'key'            => 'customer_times_updated_to_go',
+                'name'           => 'Ophaal/retour aangepast (To Go)',
+                'description'    => 'Verstuurd zodra het ophaal- en retourmoment van een To Go boeking is aangepast (na goedkeuring van een wijziging of handmatig vanuit het CRM).',
+                'recipient_type' => 'customer',
+                'subject'        => 'We hebben je ophaal- en retourmoment aangepast — {{boeking_nummer}}',
+                'body'           => $this->wrap('Je ophaal- en retourmoment is aangepast 📦', '
+<p>Hallo <strong>{{klant_voornaam}}</strong>,</p>
+<p>Goed nieuws — we hebben het ophaal- en retourmoment van je photobooth (boeking <strong>{{boeking_nummer}}</strong>) aangepast. Dit zijn de nieuwe tijden:</p>
+
+<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#c2410c;">📦 Ophalen bij ons</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{ophaal_window}}</p>
+</div>
+<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#c2410c;">🔄 Terugbrengen bij ons</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{retour_window}}</p>
+</div>
+
+<p style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 16px;border-radius:6px;color:#991b1b;">
+  <strong>Let op — dit is een exact tijdstip, geen &laquo;vanaf&raquo;-tijd.</strong><br>
+  We zijn specifiek in dat halfuur aanwezig — staat er <strong>10:00</strong>, dan zijn we er van <strong>10:00 tot 10:30</strong>. Kom dus alsjeblieft binnen dit tijdvenster langs op <strong>Ravenswade 132, 3439 LD Nieuwegein</strong>.
+</p>
+
+<p style="text-align:center;margin:26px 0;">
+  <a href="{{portal_link}}" style="background:#2563eb;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block;">Mijn boeking bekijken</a>
+</p>
+
+<p>Klopt er iets niet? Laat het ons gerust weten.</p>
+<p>Met vriendelijke groet,<br><strong>{{bedrijf_naam}}</strong></p>
+                '),
+            ],
+
+            [
+                'key'            => 'customer_times_updated_full_service',
+                'name'           => 'Bezorg/ophaal aangepast (Full Service)',
+                'description'    => 'Verstuurd zodra het bezorg- en ophaalmoment van een Full Service boeking is aangepast (na goedkeuring van een wijziging of handmatig vanuit het CRM).',
+                'recipient_type' => 'customer',
+                'subject'        => 'We hebben je bezorg- en ophaalmoment aangepast — {{boeking_nummer}}',
+                'body'           => $this->wrap('Je bezorg- en ophaalmoment is aangepast 🚚', '
+<p>Hallo <strong>{{klant_voornaam}}</strong>,</p>
+<p>Goed nieuws — we hebben het bezorg- en ophaalmoment van je photobooth (boeking <strong>{{boeking_nummer}}</strong>) aangepast. Dit zijn de nieuwe tijden:</p>
+
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#1d4ed8;">🚚 Wij bezorgen de photobooth</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{bezorg_window}}</p>
+</div>
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#1d4ed8;">📦 Wij halen de photobooth op</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{ophaal_fs_window}}</p>
+</div>
+
+<p style="text-align:center;margin:26px 0;">
+  <a href="{{portal_link}}" style="background:#2563eb;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block;">Mijn boeking bekijken</a>
+</p>
+
+<p>Klopt er iets niet? Laat het ons gerust weten.</p>
 <p>Met vriendelijke groet,<br><strong>{{bedrijf_naam}}</strong></p>
                 '),
             ],

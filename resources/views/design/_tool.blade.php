@@ -9,7 +9,9 @@
     - $results, $input
     - $googleFonts: array slug => label, voor de tekst-tool (App\Services\GoogleFontRegistry)
 --}}
-<link rel="stylesheet" href="{{ \App\Services\GoogleFontRegistry::googleFontsCssUrl() }}">
+<style>
+    {!! \App\Services\GoogleFontRegistry::localFontFacesCss() !!}
+</style>
 <style>
     /* Lokale kaart/knop-stijl — de tool draait zowel in het admin-layout (heeft .card/.btn-primary)
        als in het portaal-layout (heeft die klassen niet), dus hier zelfvoorzienend gedefinieerd. */
@@ -41,18 +43,20 @@
     .dg-result-frame { background: #f8fafc; padding: 1.75rem 1rem; }
     .dg-result-body { display: flex; justify-content: center; position: relative; }
 
-    /* Mockup-weergave: dezelfde achtergrond+plakband als StripMockupService::render() (het manuele
-       upload-pad), zodat de live preview er hetzelfde uitziet als het uiteindelijke mockup-bestand. */
-    /* inline-block + max-width/max-height (i.p.v. width:100%) zodat de mockup op korte
-       vensters kleiner wordt i.p.v. van het scherm af te lopen — "past precies op het scherm". */
-    .dg-mockup-frame { position: relative; display: inline-block; max-width: 100%; border-radius: .75rem; overflow: hidden; background: #f8fafc; line-height: 0; }
-    /* 100vh min de bovenliggende chrome: pagina-header (~3.5rem) + padding boven de grid (~1.5rem)
-       + sticky top-offset (1.25rem) + de .dg-result-head balk boven de mockup zelf (~2.2rem). */
-    .dg-mockup-bg { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 9rem); }
-    .dg-mockup-strip-slot { position: absolute; transform: translateX(-50%); }
+    /* Mockup-weergave: alleen de strip zelf (met slagschaduw) + een plakbandje erover —
+       géén achtergrondfoto meer, puur de strip losstaand in de preview-kolom. */
+    .dg-mockup-frame { position: relative; display: flex; justify-content: center; max-width: 100%; line-height: 0; padding: 1.5rem 1rem; background: {{ config('mockup.canvas_color') }}; }
+    .dg-mockup-strip-slot { position: relative; }
     .dg-mockup-strip-slot .dg-result-frame { background: transparent; padding: 0; filter: drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
-    .dg-mockup-strip-slot .dg-result-body img { max-height: none; }
-    .dg-mockup-tape { position: absolute; transform: translate(-50%, -50%); pointer-events: none; }
+    .dg-mockup-strip-slot .dg-result-body img { max-height: calc(100vh - 9rem); }
+    .dg-mockup-tape { position: absolute; top: 0; left: 50%; width: 55%; transform: translate(-50%, -50%); pointer-events: none; }
+
+    .dg-history { padding: .7rem .9rem .8rem; border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; margin-bottom: 1rem; }
+    .dg-history-title { font-size: .75rem; font-weight: 700; color: #64748b; margin-bottom: .5rem; }
+    .dg-history-strip { display: flex; gap: .5rem; overflow-x: auto; padding-bottom: .3rem; }
+    .dg-history-item { flex: 0 0 auto; width: 44px; aspect-ratio: 1/3; border: 2px solid #e2e8f0; border-radius: .35rem; overflow: hidden; cursor: pointer; background: #f8fafc; }
+    .dg-history-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .dg-history-item.active { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.2); }
 
     .dg-preview-mode-toggle { display: inline-flex; align-items: center; gap: .35rem; font-size: .78rem; font-weight: 600; color: #64748b; cursor: pointer; margin-right: auto; }
     .dg-preview-photos-layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
@@ -71,7 +75,7 @@
     .dg-settings-saved.show { opacity: 1; }
 
     .dg-logo-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
-    .dg-logo-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+    .dg-logo-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
     .dg-logo-btn { font-size: .78rem; font-weight: 700; color: #7c3aed; background: #fff; border: 1px solid #ddd6fe; border-radius: .4rem; padding: .4rem .7rem; cursor: pointer; }
     .dg-logo-btn:hover { background: #f5f3ff; }
     .dg-logo-btn:disabled { opacity: .5; cursor: default; }
@@ -85,10 +89,13 @@
     .dg-logo-list-btn.danger { color: #b91c1c; }
     .dg-logo-layer { position: absolute; top: 50%; left: 50%; touch-action: none; user-select: none; cursor: move; }
     .dg-logo-layer img { display: block; width: 100%; height: 100%; pointer-events: none; }
-    .dg-logo-handle { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); touch-action: none; }
-    .dg-logo-handle.resize { right: 2px; bottom: 2px; cursor: nwse-resize; }
-    .dg-logo-handle.rotate { top: -26px; left: 50%; right: auto; transform: translateX(-50%); cursor: grab; }
-    .dg-logo-rotate-stem { position: absolute; left: 50%; top: -10px; width: 2px; height: 10px; background: #7c3aed; transform: translateX(-50%); pointer-events: none; }
+    .dg-logo-layer.selected img { outline: 2px dashed #7c3aed; outline-offset: 2px; }
+    .dg-logo-handle, .dg-logo-rotate-stem { display: none; }
+    .dg-logo-layer.selected .dg-logo-handle, .dg-logo-layer.selected .dg-logo-rotate-stem { display: block; }
+    .dg-logo-handle { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #7c3aed; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); touch-action: none; }
+    .dg-logo-handle.resize { right: -8px; bottom: -8px; cursor: nwse-resize; }
+    .dg-logo-handle.rotate { top: -8px; left: 50%; right: auto; transform: translateX(-50%); cursor: grab; }
+    .dg-logo-rotate-stem { position: absolute; left: 50%; top: -4px; width: 2px; height: 4px; background: #7c3aed; transform: translateX(-50%); pointer-events: none; }
 
     .dg-text-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
     .dg-text-settings { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; }
@@ -104,18 +111,32 @@
     .dg-font-picker-item:hover { background: #f5f3ff; }
     .dg-text-layer { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); touch-action: none; user-select: none; cursor: move; white-space: nowrap; padding: .15rem .3rem; line-height: 1.2; }
     .dg-text-layer.selected { outline: 2px dashed #7c3aed; outline-offset: 3px; border-radius: .2rem; }
+    /* Rotate-handle op de tekstlaag — hergebruikt de logo-handle-styling, alleen zichtbaar indien geselecteerd. */
+    .dg-text-layer .dg-logo-handle, .dg-text-layer .dg-logo-rotate-stem { display: none; }
+    .dg-text-layer.selected .dg-logo-handle, .dg-text-layer.selected .dg-logo-rotate-stem { display: block; }
 
     .dg-mask-step { border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: 1rem 1.1rem; margin-top: 1.25rem; }
-    .dg-svg-border-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .dg-svg-border-layer svg { width: 100%; height: 100%; display: block; }
 
     .dg-mask-gallery { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .8rem; }
     .dg-mask-thumb { width: 64px; height: 64px; border: 2px solid #e2e8f0; border-radius: .5rem; padding: 2px; cursor: pointer; background: #f8fafc repeating-conic-gradient(#e5e7eb 0% 25%, #f8fafc 0% 50%) 50% / 10px 10px; }
     .dg-mask-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
     .dg-mask-thumb.selected { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.2); }
     .dg-mask-thumb-label { font-size: .68rem; text-align: center; color: #64748b; margin-top: .2rem; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dg-color-row { display: flex; align-items: center; gap: .6rem; margin-bottom: .7rem; }
-    .dg-color-row input[type=color] { width: 2.4rem; height: 2rem; border: 1px solid #e2e8f0; border-radius: .4rem; padding: 2px; cursor: pointer; }
+
+    .dg-template-categories { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .8rem; }
+    .dg-template-cat-btn { font-size: .78rem; font-weight: 600; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: .35rem .75rem; cursor: pointer; }
+    .dg-template-cat-btn:hover { background: #f1f5f9; }
+    .dg-template-cat-btn.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .dg-template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: .55rem; max-height: 340px; overflow-y: auto; padding: .2rem; }
+    .dg-template-item { cursor: pointer; border: 2px solid #e2e8f0; border-radius: .5rem; overflow: hidden; aspect-ratio: 1/3; background: #f8fafc; }
+    .dg-template-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .dg-template-item.selected { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.2); }
+
+    /* Elementenbibliotheek — transparante PNG's op een geblokte achtergrond, vierkant en 'contain' (niet croppen). */
+    .dg-element-library { margin-top: .7rem; border: 1px solid #e2e8f0; border-radius: .6rem; padding: .7rem; background: #fafafa; }
+    .dg-element-grid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); }
+    .dg-element-grid .dg-template-item { aspect-ratio: 1/1; background: #fff repeating-conic-gradient(#eef2f7 0% 25%, #fff 0% 50%) 50% / 12px 12px; }
+    .dg-element-grid .dg-template-item img { object-fit: contain; padding: 3px; }
 
     .dg-masks-btn { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; color: #334155; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; padding: .4rem .75rem; cursor: pointer; }
     .dg-masks-btn:hover { background: #f8fafc; }
@@ -135,9 +156,11 @@
     .dg-limit-notice { border: 1px solid #fde68a; background: #fffbeb; border-radius: .6rem; padding: .8rem .9rem; font-size: .82rem; color: #92400e; margin-top: .6rem; }
     .dg-limit-notice a { color: #7c3aed; font-weight: 700; }
 
-    .dg-generating-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,.94); z-index: 2000; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; text-align: center; padding: 2rem; }
+    /* Niet-blokkerend: een los kaartje linksonder i.p.v. een full-screen overlay, zodat je
+       ondertussen gewoon door kan werken (bijv. tekst toevoegen) terwijl er iets genereert. */
+    .dg-generating-overlay { display: none; position: fixed; left: 1.25rem; bottom: 1.25rem; z-index: 2000; background: #fff; border: 1px solid #e2e8f0; border-radius: .85rem; box-shadow: 0 8px 24px rgba(15,23,42,.15); align-items: center; gap: .85rem; text-align: left; padding: .9rem 1.15rem; max-width: 320px; pointer-events: none; }
     .dg-generating-overlay.show { display: flex; }
-    .dg-spinner { width: 3rem; height: 3rem; border: 4px solid #ede9fe; border-top-color: #7c3aed; border-radius: 50%; animation: dg-spin .8s linear infinite; }
+    .dg-spinner { width: 1.75rem; height: 1.75rem; border: 3px solid #ede9fe; border-top-color: #7c3aed; border-radius: 50%; animation: dg-spin .8s linear infinite; flex-shrink: 0; }
     @keyframes dg-spin { to { transform: rotate(360deg); } }
     .dg-save-badge { display: none; position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 500; align-items: center; gap: .5rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: .55rem 1rem; font-size: .78rem; font-weight: 700; color: #64748b; box-shadow: 0 4px 16px rgba(15,23,42,.12); }
     .dg-save-badge.show { display: flex; }
@@ -191,10 +214,6 @@
                 <input id="modal_mask_thumb" type="file" class="dg-file" accept="image/*">
             </div>
             <div class="dg-modal-form-row">
-                <label class="dg-label" for="modal_mask_svg">Rand-svg <span class="dg-hint">— optioneel, gevulde vorm (geen stroke), exact over het masker</span></label>
-                <input id="modal_mask_svg" type="file" class="dg-file" accept=".svg,image/svg+xml">
-            </div>
-            <div class="dg-modal-form-row">
                 <label class="dg-label" for="modal_mask_preview_photos">Voorbeeldfoto's <span class="dg-hint">— optioneel, exact even groot als het masker; wordt achter het ontwerp getoond in "Preview modus"</span></label>
                 <input id="modal_mask_preview_photos" type="file" class="dg-file" accept="image/*">
             </div>
@@ -209,36 +228,42 @@
 
 <div id="dg-generating-overlay" class="dg-generating-overlay">
     <div class="dg-spinner"></div>
-    <div id="dg-generating-title" style="font-size:1rem;font-weight:700;color:#1e293b;">✨ Achtergrond wordt gegenereerd…</div>
-    <div id="dg-generating-hint" style="font-size:.85rem;color:#64748b;max-width:320px;">Dit duurt meestal 10 tot 30 seconden. De pagina ververst automatisch zodra het klaar is.</div>
+    <div>
+        <div id="dg-generating-title" style="font-size:.85rem;font-weight:700;color:#1e293b;">✨ Achtergrond wordt gegenereerd…</div>
+        <div id="dg-generating-hint" style="font-size:.75rem;color:#64748b;margin-top:.15rem;">Je kunt gewoon doorwerken, dit gebeurt op de achtergrond.</div>
+    </div>
 </div>
 
 <div class="dg-grid">
     {{-- ── Links: alle edit-opties ── --}}
     <div class="dg-left-col">
     @yield('dg-header')
+
+    {{-- Geschiedenis van gegenereerde achtergronden — in de linkerkolom, horizontaal scrollbaar.
+         JS regelt tonen/verbergen (pas zichtbaar zodra er iets valt terug te stappen). --}}
+    <div id="dg-history" class="dg-history" style="display:none;">
+        <div class="dg-history-title">↩︎ Vorige ontwerpen — klik om terug te stappen</div>
+        <div id="dg-history-strip" class="dg-history-strip"></div>
+    </div>
+
     @if($dgMode === 'portal')
     <div class="dg-step-indicator" id="dg-step-indicator"></div>
     @endif
 
     <div id="dg-steps-wrapper" class="{{ $dgMode === 'portal' ? 'dg-wizard' : '' }}">
     <div class="dg-step" data-step="1">
-    <form method="POST" action="{{ $urls['generate'] }}" enctype="multipart/form-data" class="dg-card" style="padding:1.25rem;" onsubmit="dgSubmitting(this)">
+    <form method="POST" action="{{ $urls['generate'] }}" enctype="multipart/form-data" class="dg-card" style="padding:1.25rem;" onsubmit="dgSubmitting(this, event)">
         @csrf
 
-        <div class="dg-field">
-            <label class="dg-label" for="event_type">Type event</label>
-            <select id="event_type" name="event_type" class="dg-select" onchange="dgEventTypeChanged()">
-                @foreach($eventTypes as $value => $typeLabel)
-                    <option value="{{ $value }}" @selected(old('event_type', $eventType) === $value)>{{ $typeLabel }}</option>
-                @endforeach
-            </select>
-        </div>
+        {{-- Type event is verborgen: het onderliggende prompt-systeem gebruikt nog wel een type,
+             maar de klant/admin kiest niets meer — de "Thema / sfeer"-invoer stuurt het ontwerp aan. --}}
+        <input type="hidden" id="event_type" name="event_type" value="{{ old('event_type', $eventType) }}">
 
         <div class="dg-bg-tabs">
             <button type="button" class="dg-bg-tab active" data-method="ai" onclick="dgSetBackgroundMethod('ai')">✨ AI genereren</button>
             <button type="button" class="dg-bg-tab" data-method="upload" onclick="dgSetBackgroundMethod('upload')">📤 Eigen afbeelding</button>
             <button type="button" class="dg-bg-tab" data-method="color" onclick="dgSetBackgroundMethod('color')">🎨 Kleur kiezen</button>
+            <button type="button" class="dg-bg-tab" data-method="template" onclick="dgSetBackgroundMethod('template')">🖼️ Kies een template</button>
         </div>
         <input type="hidden" name="background_method" id="dg-background-method" value="ai">
 
@@ -298,12 +323,23 @@
             @error('background_color') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
         </div>
 
+        <div id="dg-bg-panel-template" class="dg-bg-panel" style="display:none;">
+            <div class="dg-field">
+                <label class="dg-label">Template <span class="dg-hint">— gebruik een van onze voorgemaakte achtergronden</span></label>
+                <div class="dg-template-categories" id="dg-template-categories"></div>
+                <div class="dg-template-grid" id="dg-template-grid"></div>
+                <input type="hidden" name="template_id" id="dg-template-id" value="{{ old('template_id') }}">
+            </div>
+            @error('template_id') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
+        </div>
+
         @error('event_type') <p style="color:#dc2626;font-size:.8rem;margin:0 0 .5rem;">{{ $message }}</p> @enderror
 
         <button type="submit" id="dg-submit" class="dg-btn-primary" style="width:100%;">✨ Genereer achtergrond</button>
         <p id="dg-submit-hint" class="dg-hint" style="margin:.6rem 0 0;text-align:center;">Genereren kan 10–30 seconden duren.</p>
         <p id="dg-background-count-hint" class="dg-hint" style="margin:.3rem 0 0;text-align:center;display:none;"></p>
         <div id="dg-background-limit-notice" class="dg-limit-notice" style="display:none;"></div>
+        <p id="dg-generate-error" class="dg-logo-error" style="display:none;text-align:center;"></p>
     </form>
     @if($dgMode === 'portal')
     <div class="dg-step-nav">
@@ -317,14 +353,30 @@
         @if($dgMode === 'portal' || in_array($eventType, $logoEventTypes))
         <div class="dg-step" data-step="2">
         <div class="dg-logo-step">
-            <label class="dg-label" for="logo_upload">Stap 2 — Logo's <span class="dg-hint">— optioneel, max 3 stuks, elk wordt vrijgesteld en op de achtergrond geplakt (max 8 MB p/st)</span></label>
+            <label class="dg-label" for="logo_upload">Stap 2 — Elementen <span class="dg-hint">— logo's, illustraties, … optioneel, max 8 stuks (max 8 MB p/st)</span></label>
             <input id="logo_upload" type="file" class="dg-file" accept="image/*">
-            <div class="dg-logo-actions">
-                <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Logo vrijstaand maken</button>
+            <div style="margin-top:.6rem;">
+                <label class="dg-label" for="dg-cutout-description" style="font-weight:600;">Wat wil je vrijstaand maken? <span class="dg-hint">— optioneel, helpt de AI het hele element te pakken</span></label>
+                <input id="dg-cutout-description" type="text" class="dg-file" maxlength="200" placeholder="bijv. de volledige illustratie van de olifant, of: het logo">
             </div>
+            <div class="dg-logo-actions">
+                <button type="button" id="dg-logo-cutout-btn" class="dg-logo-btn" onclick="dgCutoutLogo()">✂️ Vrijstaand maken (AI verwijdert achtergrond)</button>
+                <button type="button" id="dg-logo-upload-btn" class="dg-logo-btn" onclick="dgUploadLogoDirect()">➕ Direct toevoegen (eigen achtergrond blijft)</button>
+                @if(!empty($elementCategories))
+                {{-- Tijdelijk verborgen aan klantzijde (portaal); admin-editor mag de bibliotheek al wel gebruiken. --}}
+                <button type="button" id="dg-element-lib-btn" class="dg-logo-btn" onclick="dgToggleElementLibrary()"
+                        @if($dgMode === 'portal') style="display:none;" @endif>📚 Uit bibliotheek kiezen</button>
+                @endif
+            </div>
+            @if(!empty($elementCategories))
+            <div id="dg-element-library" class="dg-element-library" style="display:none;">
+                <div class="dg-template-categories" id="dg-element-categories"></div>
+                <div class="dg-template-grid dg-element-grid" id="dg-element-grid"></div>
+            </div>
+            @endif
             <p id="dg-logo-error" class="dg-logo-error" style="display:none;"></p>
             <p id="dg-logo-count-hint" class="dg-hint" style="display:none;margin-top:.4rem;"></p>
-            <p id="dg-logo-max-notice" class="dg-hint" style="display:none;margin-top:.4rem;">Maximaal 3 logo's — verwijder er eerst één om een nieuwe toe te voegen.</p>
+            <p id="dg-logo-max-notice" class="dg-hint" style="display:none;margin-top:.4rem;">Maximaal 8 elementen — verwijder er eerst één om een nieuwe toe te voegen.</p>
             <div id="dg-logo-limit-notice" class="dg-limit-notice" style="display:none;"></div>
             <div id="dg-logo-list" class="dg-logo-list"></div>
         </div>
@@ -368,11 +420,25 @@
                         <input type="hidden" id="dg-text-font" value="{{ array_key_first($googleFonts) }}">
                     </div>
                 </div>
-                <div class="dg-field">
-                    <label class="dg-label" for="dg-text-size">Grootte</label>
-                    <input id="dg-text-size" type="range" min="1.5" max="14" step="0.5" style="width:100%;" oninput="dgUpdateActiveText()">
+                <div style="display:flex;gap:.75rem;align-items:flex-end;">
+                    <div class="dg-field" style="flex:2;margin-bottom:0;">
+                        <label class="dg-label" for="dg-text-size">Grootte <span id="dg-text-size-val" style="font-weight:600;color:#7c3aed;">—</span></label>
+                        <input id="dg-text-size" type="range" min="1.5" max="30" step="0.5" style="width:100%;" oninput="dgUpdateActiveText()">
+                    </div>
+                    <div class="dg-field" style="flex:1;margin-bottom:0;">
+                        <label class="dg-label" for="dg-text-weight">Dikte</label>
+                        <select id="dg-text-weight" class="dg-select" onchange="dgUpdateActiveText()">
+                            <option value="300">Licht</option>
+                            <option value="400">Normaal</option>
+                            <option value="700">Vet</option>
+                        </select>
+                    </div>
                 </div>
-                <div style="display:flex;gap:.5rem;">
+                <div class="dg-field" style="margin-bottom:0;margin-top:.75rem;">
+                    <label class="dg-label" for="dg-text-spacing">Letterafstand <span id="dg-text-spacing-val" style="font-weight:600;color:#7c3aed;">—</span></label>
+                    <input id="dg-text-spacing" type="range" min="-0.05" max="0.5" step="0.01" value="0" style="width:100%;" oninput="dgUpdateActiveText()">
+                </div>
+                <div style="display:flex;gap:.5rem;margin-top:1rem;">
                     <button type="button" class="dg-logo-list-btn" onclick="dgCenterActiveText()">↔ Centreren</button>
                     <button type="button" class="dg-logo-list-btn danger" onclick="dgRemoveActiveText()">✕ Deze tekst verwijderen</button>
                 </div>
@@ -391,13 +457,6 @@
         <div class="dg-mask-step">
             <label class="dg-label" style="margin-bottom:.7rem;">Stap 4 — Transparantie <span class="dg-hint">— kies een masker, preview is direct</span></label>
             <div id="dg-mask-gallery" class="dg-mask-gallery"></div>
-
-            <div id="dg-color-row" class="dg-color-row" style="display:none;">
-                <label class="dg-label" style="margin:0;display:flex;align-items:center;gap:.4rem;cursor:pointer;">
-                    <input type="checkbox" id="dg-border-enabled" onchange="dgBorderColorChanged()"> Gekleurde rand tonen
-                </label>
-                <input id="dg-border-color" type="color" value="#000000" oninput="dgBorderColorChanged()" style="display:none;">
-            </div>
 
             <p id="dg-mask-apply-status" class="dg-hint" style="display:none;margin-top:.6rem;">⏳ Wordt toegepast…</p>
             <p id="dg-mask-error" class="dg-logo-error" style="display:none;"></p>
@@ -448,17 +507,15 @@
                 @if($results['ok'])
                     @php($mockupCfg = config('mockup'))
                     <div class="dg-mockup-frame">
-                        <img src="{{ asset('mockups/' . $mockupCfg['background_file']) }}" class="dg-mockup-bg" alt="">
-                        <div class="dg-mockup-strip-slot" style="left:{{ $mockupCfg['strip']['center_x'] * 100 }}%;top:{{ $mockupCfg['strip']['top'] * 100 }}%;width:{{ $mockupCfg['strip']['width'] * 100 }}%;">
+                        <div class="dg-mockup-strip-slot">
                             <div class="dg-result-frame">
                                 <div id="dg-result-body" class="dg-result-body">
                                     <img id="dg-preview-photos-layer" class="dg-preview-photos-layer" alt="" style="display:none;">
                                     <img id="dg-design-img" src="{{ $results['url'] }}" alt="Gegenereerde achtergrond">
-                                    <div id="dg-svg-border-layer" class="dg-svg-border-layer"></div>
                                 </div>
                             </div>
+                            <img src="{{ asset('mockups/' . $mockupCfg['tape_file']) }}" class="dg-mockup-tape" alt="">
                         </div>
-                        <img src="{{ asset('mockups/' . $mockupCfg['tape_file']) }}" class="dg-mockup-tape" alt="" style="left:{{ $mockupCfg['tape']['center_x'] * 100 }}%;top:{{ $mockupCfg['tape']['center_y'] * 100 }}%;width:{{ $mockupCfg['tape']['width'] * 100 }}%;">
                     </div>
                 @else
                     <div style="padding:1rem;color:#b91c1c;font-size:.8rem;background:#fef2f2;">

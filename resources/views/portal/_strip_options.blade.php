@@ -1,12 +1,10 @@
 @php
     $method = $booking->strip_design_method;
     $status = $booking->strip_status;
-    $tool   = $booking->strip_self_tool;
     $tpl    = $booking->stripTemplate;
     $canSwitch = ! in_array($status, ['accepted', 'ready']);
 
-    $canvaTemplateUrl = 'https://www.canva.com/design/templates/';
-    $designEmail      = 'ontwerp@flitsmoment.nl';
+    $designEmail = 'ontwerp@flitsmoment.nl';
 
     // Photoshop-templates die al in /public/templates/ staan
     $photoshopTemplates = [
@@ -16,22 +14,22 @@
         ['file' => 'template4', 'name' => 'Template 4'],
     ];
 
-    $availableThemes  = $stripTemplates->pluck('theme')->unique()->values();
-    $availableFormats = $stripTemplates->pluck('format')->unique()->values();
-
     // Bepaal de huidige UI-stap op basis van de DB-state.
-    // "designing" staat bewust vooraan: zodra de klant via het hulp-formulier onder een
-    // pad om hulp heeft gevraagd, nemen wij het over — ongeacht welk pad (ai/self/etc.) was gekozen.
+    // - accepted/ready → altijd 'final' (afgerond), óók de oude Google Drive-boekingen zónder
+    //   strip_design_url; die vielen voorheen foutief terug op de keuzekaarten.
+    // - review vereist wél een ontwerp om te tonen.
+    // - designing staat vóór de methode-keuze: zodra wij aan de slag zijn (hulp-formulier of admin)
+    //   tonen we "wij zijn aan de slag" i.p.v. de keuzekaarten — anders zou de klant onze lopende
+    //   sessie kunnen resetten door alsnog een methode te kiezen.
+    // - Legacy: method 'self' (met of zonder oude tool) → template_hub; 'template'/'custom' → designing.
     $stripState =
-        ! $method                                                    ? 'choose_method'
-        : ($status === 'designing'                                   ? 'designing'
-        : ($method === 'ai' && ! in_array($status, ['review', 'accepted', 'ready']) ? 'ai_wizard'
-        : ($method === 'self' && ! $tool                             ? 'choose_self_tool'
-        : ($method === 'self'                                        ? 'self_waiting'
-        : ($method === 'template' && ! $booking->strip_template_id   ? 'choose_template'
-        : ($method === 'template' && $status === 'waiting_input'     ? 'template_text'
-        : ($method === 'custom'   && $status !== 'designing'         ? 'custom_brief'
-        : 'final')))))));
+        in_array($status, ['accepted', 'ready'])              ? 'final'
+        : ($status === 'review' && $booking->strip_design_url ? 'final'
+        : ($status === 'designing' ? 'designing'
+        : (! $method               ? 'choose_method'
+        : ($method === 'ai'        ? 'ai_wizard'
+        : ($method === 'self'      ? 'template_hub'
+        : 'designing')))));  // legacy 'template' + 'custom' → "wij zijn aan de slag"-paneel
 @endphp
 
 <style>
@@ -346,11 +344,9 @@
         <span class="section-title">Fotostrip ontwerp</span>
         @if($method)
             <span class="strip-method-badge">
-                @if($method === 'self' && $tool === 'photoshop') 🖌 Photoshop
-                @elseif($method === 'self' && $tool === 'canva') 🎨 Canva
-                @elseif($method === 'self') 🎨 Zelf ontwerpen
+                @if($method === 'self') 🎨 Zelf met template
                 @elseif($method === 'ai') ✨ AI-tool
-                @elseif($method === 'template') 📋 Template #{{ $tpl?->number ?? '?' }}
+                @elseif($method === 'template') 📋 Template (verouderd)
                 @else ✏️ Wij ontwerpen
                 @endif
             </span>
@@ -358,7 +354,7 @@
     </div>
     <div class="section-body">
 
-    {{-- ═══════════ STAP 1: FOTOSTRIP ZELF ONTWERPEN ═══════════ --}}
+    {{-- ═══════════ STAP 1: HOE WIL JE ONTWERPEN? (2 kaarten) ═══════════ --}}
     @if($stripState === 'choose_method')
         <div class="strip-step-label">Fotostrip zelf ontwerpen</div>
         <div class="strip-step-question">Hoe wil je je fotostrip-ontwerp maken?</div>
@@ -366,22 +362,13 @@
         <form method="POST" action="{{ route('portal.strip-choose-path', $booking->public_token) }}" id="strip-method-form">
             @csrf
             <div class="strip-options">
-                <label class="strip-option" data-method="photoshop">
-                    <input type="radio" name="path" value="photoshop" style="display:none;" onchange="stripSelectMethod(this)">
-                    <span class="strip-option-radio"></span>
-                    <span class="strip-option-icon">🖌</span>
-                    <span class="strip-option-body">
-                        <span class="strip-option-title">Photoshop templates</span>
-                        <span class="strip-option-desc">Download onze .psd-templates en werk offline in Adobe Photoshop.</span>
-                    </span>
-                </label>
-                <label class="strip-option" data-method="canva">
-                    <input type="radio" name="path" value="canva" style="display:none;" onchange="stripSelectMethod(this)">
+                <label class="strip-option" data-method="template">
+                    <input type="radio" name="path" value="template" style="display:none;" onchange="stripSelectMethod(this)">
                     <span class="strip-option-radio"></span>
                     <span class="strip-option-icon">🎨</span>
                     <span class="strip-option-body">
-                        <span class="strip-option-title">Canva templates</span>
-                        <span class="strip-option-desc">Werk online in je browser met onze kant-en-klare templates. Gratis account volstaat.</span>
+                        <span class="strip-option-title">Gebruik een template</span>
+                        <span class="strip-option-desc">Kies een kant-en-klaar Canva-template (online, gratis) of download onze Photoshop-bestanden.</span>
                     </span>
                 </label>
                 <label class="strip-option" data-method="ai">
@@ -401,95 +388,60 @@
             </div>
         </form>
 
-    {{-- ═══════════ STAP 2A: SELF — TOOL KIEZEN ═══════════ --}}
-    @elseif($stripState === 'choose_self_tool')
-        <div class="strip-step-label">Stap 2 — Met welk programma?</div>
-        <div class="strip-step-question">Welk programma wil je gebruiken om te ontwerpen?</div>
-
-        <form method="POST" action="{{ route('portal.strip-self-tool', $booking->public_token) }}" id="strip-tool-form">
-            @csrf
-            <div class="strip-options">
-                <label class="strip-option" data-method="canva">
-                    <input type="radio" name="tool" value="canva" style="display:none;" onchange="stripSelectMethod(this)">
-                    <span class="strip-option-radio"></span>
-                    <span class="strip-option-icon">🎨</span>
-                    <span class="strip-option-body">
-                        <span class="strip-option-title">Canva</span>
-                        <span class="strip-option-desc">Online te gebruiken in je browser, geen software nodig. Gratis account volstaat.</span>
-                    </span>
-                </label>
-                <label class="strip-option" data-method="photoshop">
-                    <input type="radio" name="tool" value="photoshop" style="display:none;" onchange="stripSelectMethod(this)">
-                    <span class="strip-option-radio"></span>
-                    <span class="strip-option-icon">🖌</span>
-                    <span class="strip-option-body">
-                        <span class="strip-option-title">Photoshop</span>
-                        <span class="strip-option-desc">Werk je liever offline in Adobe Photoshop? Download dan onze <code>.psd</code>-templates.</span>
-                    </span>
-                </label>
-            </div>
-            <div class="strip-actions">
-                <button type="button" class="strip-btn strip-btn-secondary" onclick="stripResetChoice()">← Vorige</button>
-                <button type="submit" class="strip-btn strip-btn-primary" id="strip-method-submit" disabled>Volgende →</button>
-            </div>
-        </form>
-
-    {{-- ═══════════ STAP 3: SELF — INSTRUCTIES + WACHT OP DESIGN ═══════════ --}}
-    @elseif($stripState === 'self_waiting')
+    {{-- ═══════════ TEMPLATE-HUB: CANVA PROMINENT + PHOTOSHOP INKLAPBAAR ═══════════ --}}
+    @elseif($stripState === 'template_hub')
         <div class="strip-step-label">Aan jou de eer 🎨</div>
-        <div class="strip-step-question">
-            @if($tool === 'canva') Ontwerp je fotostrip in Canva
-            @else Ontwerp je fotostrip in Photoshop
-            @endif
-        </div>
+        <div class="strip-step-question">Ontwerp je fotostrip met een template</div>
 
-        @if($tool === 'canva')
-            <p class="strip-form-help">Kies een Canva-template om mee te starten:</p>
-            @php
-                $canvaTpls = $canvaTemplates ?? collect();
-                $availFormats = $canvaTpls->pluck('format')->unique()->values();
-            @endphp
+        @php
+            $canvaTpls = $canvaTemplates ?? collect();
+            $availFormats = $canvaTpls->pluck('format')->unique()->values();
+        @endphp
 
-            @if($canvaTpls->isEmpty())
-                <p style="font-size:.9rem;color:var(--muted);">Op dit moment zijn er nog geen Canva-templates beschikbaar. Neem contact met ons op voor een ander pad.</p>
-            @else
-                {{-- Filter-pillen op categorie/format --}}
-                @if($availFormats->count() > 1)
-                <div class="strip-filter-group" style="margin-bottom:.5rem;">
-                    <div class="strip-filter-row">
-                        <button type="button" class="strip-filter-btn is-active" data-filter="format" data-value="" onclick="canvaFilterApply(this)">Alle</button>
-                        @foreach(\App\Models\CanvaTemplate::FORMAT_LABELS as $val => $lbl)
-                            @if($availFormats->contains($val))
-                            <button type="button" class="strip-filter-btn" data-filter="format" data-value="{{ $val }}" onclick="canvaFilterApply(this)">{{ $lbl }}</button>
-                            @endif
-                        @endforeach
-                    </div>
-                </div>
-                @endif
+        <p class="strip-form-help">Kies een Canva-template om mee te starten — online, in je browser, gratis account volstaat:</p>
 
-                <div class="canva-grid" id="canva-gallery">
-                    @foreach($canvaTpls as $tpl)
-                    <a href="{{ $tpl->canva_url }}" target="_blank" rel="noopener" class="canva-card" data-format="{{ $tpl->format }}">
-                        <div class="canva-card-thumb">
-                            <img src="{{ $tpl->image_url }}" alt="{{ $tpl->title }}">
-                        </div>
-                        <div class="canva-card-body">
-                            <div class="canva-card-title">{{ $tpl->title }}</div>
-                            <div class="canva-card-format">{{ $tpl->format_label }} · 📷 {{ $tpl->photo_count }} {{ $tpl->photo_count === 1 ? 'foto' : 'foto\'s' }}</div>
-                        </div>
-                    </a>
+        @if($canvaTpls->isEmpty())
+            <p style="font-size:.9rem;color:var(--muted);">Op dit moment zijn er nog geen Canva-templates beschikbaar. Gebruik dan de Photoshop-templates hieronder, of vraag onze hulp.</p>
+        @else
+            {{-- Filter-pillen op format --}}
+            @if($availFormats->count() > 1)
+            <div class="strip-filter-group" style="margin-bottom:.5rem;">
+                <div class="strip-filter-row">
+                    <button type="button" class="strip-filter-btn is-active" data-filter="format" data-value="" onclick="canvaFilterApply(this)">Alle</button>
+                    @foreach(\App\Models\CanvaTemplate::FORMAT_LABELS as $val => $lbl)
+                        @if($availFormats->contains($val))
+                        <button type="button" class="strip-filter-btn" data-filter="format" data-value="{{ $val }}" onclick="canvaFilterApply(this)">{{ $lbl }}</button>
+                        @endif
                     @endforeach
                 </div>
-                <p id="canva-no-results" class="strip-no-results" style="display:none;">Geen Canva-templates gevonden in deze categorie.</p>
+            </div>
             @endif
+
+            <div class="canva-grid" id="canva-gallery">
+                @foreach($canvaTpls as $tpl)
+                <a href="{{ $tpl->canva_url }}" target="_blank" rel="noopener" class="canva-card" data-format="{{ $tpl->format }}">
+                    <div class="canva-card-thumb">
+                        <img src="{{ $tpl->image_url }}" alt="{{ $tpl->title }}">
+                    </div>
+                    <div class="canva-card-body">
+                        <div class="canva-card-title">{{ $tpl->title }}</div>
+                        <div class="canva-card-format">{{ $tpl->format_label }} · 📷 {{ $tpl->photo_count }} {{ $tpl->photo_count === 1 ? 'foto' : 'foto\'s' }}</div>
+                    </div>
+                </a>
+                @endforeach
+            </div>
+            <p id="canva-no-results" class="strip-no-results" style="display:none;">Geen Canva-templates gevonden in deze categorie.</p>
 
             <ol style="padding-left:1.25rem;margin:1rem 0 0;font-size:.9rem;line-height:1.7;color:var(--text);">
                 <li>Klik een template — die opent direct in Canva.</li>
                 <li>Pas het ontwerp aan met je eigen tekst, kleuren en eventueel foto's.</li>
                 <li>Klik <strong>Delen → Downloaden</strong> en kies <strong>PNG</strong> of <strong>PDF (afdruk)</strong>.</li>
             </ol>
-        @else
-            <p class="strip-form-help">Kies een Photoshop-template om mee te starten:</p>
+        @endif
+
+        {{-- Photoshop als bescheiden, inklapbaar alternatief --}}
+        <details class="strip-psd-details" style="margin-top:1.25rem;border:1px solid var(--border);border-radius:.6rem;padding:.75rem 1rem;">
+            <summary style="cursor:pointer;font-weight:600;font-size:.9rem;color:var(--text);">🖌 Liever Photoshop? Download hier de .psd-templates</summary>
             <div class="strip-psd-grid">
                 @foreach($photoshopTemplates as $pt)
                 <div class="strip-psd-card">
@@ -503,12 +455,12 @@
                 </div>
                 @endforeach
             </div>
-            <ol style="padding-left:1.25rem;margin:1rem 0 0;font-size:.9rem;line-height:1.7;color:var(--text);">
+            <ol style="padding-left:1.25rem;margin:.75rem 0 0;font-size:.9rem;line-height:1.7;color:var(--text);">
                 <li>Download een template, pak de ZIP uit.</li>
                 <li>Open het <code>.psd</code>-bestand in Photoshop.</li>
                 <li>Pas tekstlagen, kleuren en eventueel foto's aan en exporteer als <strong>PNG</strong> of <strong>PDF</strong>.</li>
             </ol>
-        @endif
+        </details>
 
         <div class="strip-email-callout">
             <div class="strip-email-callout-title">📨 Stuur je ontwerp naar ons</div>
@@ -531,109 +483,9 @@
 
         @include('portal._strip_help_form')
 
-    {{-- ═══════════ STAP 2B: TEMPLATE KIEZEN ═══════════ --}}
-    @elseif($stripState === 'choose_template')
-        <div class="strip-step-label">Stap 2 — Kies een template</div>
-        <div class="strip-step-question">Welk ontwerp spreekt je aan?</div>
-
-        @if($stripTemplates->isEmpty())
-            <p style="font-size:.9rem;color:var(--muted);">Op dit moment zijn er geen templates beschikbaar. Kies een andere optie of neem contact met ons op.</p>
-            <div class="strip-actions">
-                <button type="button" class="strip-btn strip-btn-secondary" onclick="stripResetChoice()">← Vorige</button>
-            </div>
-        @else
-            <p class="strip-form-help">Filter en klik een ontwerp om het op groot formaat te bekijken en te kiezen.</p>
-
-            <div class="strip-filter-group">
-                <div class="strip-filter-label">Formaat</div>
-                <div class="strip-filter-row">
-                    <button type="button" class="strip-filter-btn is-active" data-filter="format" data-value="" onclick="stripFilterApply(this)">Alle</button>
-                    @foreach(\App\Models\StripTemplate::FORMAT_LABELS as $val => $lbl)
-                        @if($availableFormats->contains($val))
-                        <button type="button" class="strip-filter-btn" data-filter="format" data-value="{{ $val }}" onclick="stripFilterApply(this)">{{ $lbl }}</button>
-                        @endif
-                    @endforeach
-                </div>
-            </div>
-            <div class="strip-filter-group">
-                <div class="strip-filter-label">Thema</div>
-                <div class="strip-filter-row">
-                    <button type="button" class="strip-filter-btn is-active" data-filter="theme" data-value="" onclick="stripFilterApply(this)">Alle</button>
-                    @foreach(\App\Models\StripTemplate::THEME_LABELS as $val => $lbl)
-                        @if($availableThemes->contains($val))
-                        <button type="button" class="strip-filter-btn" data-filter="theme" data-value="{{ $val }}" onclick="stripFilterApply(this)">{{ $lbl }}</button>
-                        @endif
-                    @endforeach
-                </div>
-            </div>
-
-            <div class="strip-gallery" id="strip-gallery">
-                @foreach($stripTemplates as $t)
-                <div class="strip-tpl-card" data-theme="{{ $t->theme }}" data-format="{{ $t->format }}"
-                     onclick="stripOpenPreview({{ $t->id }}, {{ $t->number }}, '{{ addslashes($t->name ?? '') }}', '{{ $t->image_url }}', '{{ $t->theme_label }}', '{{ $t->format_label }}')">
-                    <div class="strip-tpl-thumb">
-                        <img src="{{ $t->image_url }}" alt="">
-                        <span class="strip-tpl-number">#{{ $t->number }}</span>
-                    </div>
-                    @if($t->name)<div class="strip-tpl-name">{{ $t->name }}</div>@endif
-                </div>
-                @endforeach
-            </div>
-            <p id="strip-no-results" class="strip-no-results" style="display:none;">Geen templates gevonden met deze filter. Probeer een andere combinatie.</p>
-
-            <div class="strip-actions">
-                <button type="button" class="strip-btn strip-btn-secondary" onclick="stripResetChoice()">← Vorige</button>
-            </div>
-        @endif
-
-    {{-- ═══════════ STAP 3: TEMPLATE — TEKST AANLEVEREN ═══════════ --}}
-    @elseif($stripState === 'template_text')
-        <div class="strip-tpl-preview">
-            <div class="strip-tpl-preview-img"><img src="{{ $tpl->image_url }}" alt=""></div>
-            <div style="flex:1;min-width:0;">
-                <div class="strip-tpl-preview-meta-label">Gekozen template</div>
-                <div class="strip-tpl-preview-title">#{{ $tpl->number }}{{ $tpl->name ? ' · '.$tpl->name : '' }}</div>
-                <div class="strip-tag-row">
-                    <span class="strip-tag strip-tag-theme">{{ $tpl->theme_label }}</span>
-                    <span class="strip-tag strip-tag-format">{{ $tpl->format_label }}</span>
-                </div>
-            </div>
-        </div>
-
-        <form method="POST" action="{{ route('portal.strip-input', $booking->public_token) }}" class="strip-form-block">
-            @csrf
-            <div class="strip-step-question" style="margin-bottom:.5rem;">✍️ Welke tekst moet er op de strip komen?</div>
-            <p class="strip-form-help">We verwerken je tekst in dit template en sturen je een voorbeeld ter goedkeuring.</p>
-            <textarea name="strip_input_text" rows="4" required maxlength="3000"
-                      placeholder="Bijv. naam bruidspaar, datum, locatie, of een ander leuk zinnetje..."></textarea>
-            <div class="strip-actions">
-                <button type="button" class="strip-btn strip-btn-secondary" onclick="stripResetChoice()">← Andere template</button>
-                <button type="submit" class="strip-btn strip-btn-primary">📨 Tekst versturen</button>
-            </div>
-        </form>
-
-    {{-- ═══════════ STAP 2C: CUSTOM — BRIEF AANLEVEREN ═══════════ --}}
-    @elseif($stripState === 'custom_brief')
-        <div class="strip-step-label">Stap 2 — Vertel ons je wensen</div>
-        <div class="strip-step-question">Wat moet er op je fotostrip komen?</div>
-
-        <form method="POST" action="{{ route('portal.strip-input', $booking->public_token) }}" enctype="multipart/form-data" class="strip-form-block">
-            @csrf
-            <p class="strip-form-help">Beschrijf je wensen en upload eventueel je logo, uitnodiging of huisstijl-bestanden.</p>
-            <label>Wensen & tekst</label>
-            <textarea name="strip_input_text" rows="5" required maxlength="3000"
-                      placeholder="Bijv. naam bruidspaar, datum, kleuren van het thema, gewenste tekst..."></textarea>
-            <label>Bestanden (optioneel, max 5)</label>
-            <input type="file" name="strip_input_files[]" multiple accept="image/jpeg,image/png,image/gif,image/webp,application/pdf">
-            <div class="strip-actions">
-                <button type="button" class="strip-btn strip-btn-secondary" onclick="stripResetChoice()">← Vorige</button>
-                <button type="submit" class="strip-btn strip-btn-primary">📨 Versturen</button>
-            </div>
-        </form>
-
-    {{-- ═══════════ STAP 4: IN PRODUCTIE — DESIGNING ═══════════ --}}
+    {{-- ═══════════ IN PRODUCTIE — DESIGNING (wij zijn aan de slag) ═══════════ --}}
     @elseif($stripState === 'designing')
-        @if($method === 'template' && $tpl)
+        @if($tpl)
         <div class="strip-tpl-preview">
             <div class="strip-tpl-preview-img"><img src="{{ $tpl->image_url }}" alt=""></div>
             <div style="flex:1;min-width:0;">
@@ -672,7 +524,7 @@
                 </div>
             </div>
             <div style="margin-top:1rem;">
-                <a href="{{ route('portal.strip-design', $booking->public_token) }}" class="strip-btn strip-btn-primary strip-btn-full">Bekijk & beoordeel ontwerp →</a>
+                <a href="#fotostrip-ontwerp" class="strip-btn strip-btn-primary strip-btn-full">↓ Bekijk & beoordeel je ontwerp hieronder</a>
             </div>
         @elseif($status === 'accepted')
             <div class="strip-status-panel" style="border-color:#86efac;background:#f0fdf4;">
@@ -694,7 +546,7 @@
     @endif
 
     {{-- Reset / wissel-knop — alleen als methode al gezet is én niet meer in flow-stappen die hun eigen "Vorige" hebben --}}
-    @if($method && $canSwitch && in_array($stripState, ['self_waiting', 'ai_wizard', 'designing']))
+    @if($method && $canSwitch && in_array($stripState, ['template_hub', 'ai_wizard', 'designing']))
         <div style="margin-top:1rem;padding-top:1rem;border-top:1px dashed var(--border);text-align:right;">
             <form method="POST" action="{{ route('portal.strip-reset', $booking->public_token) }}" style="display:inline;">
                 @csrf
@@ -714,26 +566,6 @@
 <form id="strip-hidden-reset" method="POST" action="{{ route('portal.strip-reset', $booking->public_token) }}" style="display:none;">@csrf</form>
 @endif
 
-{{-- Modal: template preview --}}
-<div id="strip-preview-modal" class="strip-modal-backdrop" onclick="if(event.target===this) stripClosePreview()">
-    <div class="strip-modal">
-        <div class="strip-modal-body">
-            <img id="strip-preview-img" class="strip-modal-image" alt="">
-            <div id="strip-preview-title" class="strip-modal-title"></div>
-            <div id="strip-preview-tags" class="strip-modal-tags"></div>
-            <p class="strip-modal-note">Na bevestiging vragen we je welke tekst er op dit ontwerp moet komen.</p>
-            <form method="POST" action="{{ route('portal.strip-template-select', $booking->public_token) }}">
-                @csrf
-                <input type="hidden" name="template_id" id="strip-preview-id">
-                <div class="strip-modal-actions">
-                    <button type="button" class="strip-btn strip-btn-secondary" onclick="stripClosePreview()">Annuleren</button>
-                    <button type="submit" class="strip-btn strip-btn-primary">✓ Kies dit ontwerp</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <script>
 function stripSelectMethod(input) {
     const form = input.form;
@@ -745,24 +577,6 @@ function stripSelectMethod(input) {
 function stripResetChoice() {
     const f = document.getElementById('strip-hidden-reset');
     if (f) f.submit();
-}
-function stripFilterApply(btn) {
-    const filter = btn.dataset.filter;
-    document.querySelectorAll('.strip-filter-btn[data-filter="' + filter + '"]').forEach(b => b.classList.remove('is-active'));
-    btn.classList.add('is-active');
-    const filters = {};
-    document.querySelectorAll('.strip-filter-btn.is-active').forEach(b => {
-        if (b.dataset.value) filters[b.dataset.filter] = b.dataset.value;
-    });
-    let visible = 0;
-    document.querySelectorAll('.strip-tpl-card').forEach(card => {
-        let match = true;
-        for (const key in filters) { if (card.dataset[key] !== filters[key]) { match = false; break; } }
-        card.style.display = match ? '' : 'none';
-        if (match) visible++;
-    });
-    const noResults = document.getElementById('strip-no-results');
-    if (noResults) noResults.style.display = visible === 0 ? 'block' : 'none';
 }
 function canvaFilterApply(btn) {
     // Scope tot Canva-galerij — voorkomt collision met strip-template filter
@@ -781,19 +595,4 @@ function canvaFilterApply(btn) {
     const noResults = document.getElementById('canva-no-results');
     if (noResults) noResults.style.display = visible === 0 ? 'block' : 'none';
 }
-function stripOpenPreview(id, number, name, imageUrl, theme, format) {
-    document.getElementById('strip-preview-id').value     = id;
-    document.getElementById('strip-preview-img').src      = imageUrl;
-    document.getElementById('strip-preview-title').textContent = 'Template #' + number + (name ? ' · ' + name : '');
-    document.getElementById('strip-preview-tags').innerHTML =
-        '<span class="strip-tag strip-tag-theme">' + theme + '</span>' +
-        '<span class="strip-tag strip-tag-format">' + format + '</span>';
-    document.getElementById('strip-preview-modal').classList.add('is-open');
-}
-function stripClosePreview() {
-    document.getElementById('strip-preview-modal').classList.remove('is-open');
-}
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') stripClosePreview();
-});
 </script>

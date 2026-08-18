@@ -11,9 +11,15 @@
 */
 
 return [
-    // Assets in resources/mockups/
-    'background_file' => 'background.jpg',
-    'tape_file'       => 'tape.png',
+    // Assets in resources/mockups/ — geen achtergrondfoto meer, gewoon een effen wit canvas
+    // op onderstaand formaat (zelfde afmetingen als de vorige houten achtergrond, zodat de
+    // fracties hieronder ongewijzigd kunnen blijven).
+    'canvas_width'  => 606,
+    'canvas_height' => 1033,
+    // Achtergrondkleur achter de strip — ook gebruikt door de live preview in de ontwerp-tool,
+    // zodat preview en klant-mockup er identiek uitzien.
+    'canvas_color'  => '#f5f0e6', // zachte beige
+    'tape_file'     => 'tape.png',
 
     // Plaatsing van de strip op de achtergrond
     // Achtergrond is nu 606x706 (compacter dan de oude 606x1026) — herijkt zodat de strip

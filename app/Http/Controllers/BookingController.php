@@ -226,7 +226,7 @@ class BookingController extends Controller
             'delivery_instructions'         => ['nullable', 'string', 'max:5000'],
             'delivery_instructions_files'   => ['nullable', 'array'],
             'delivery_instructions_files.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
-            'strip_status'         => ['nullable', 'in:waiting_input,awaiting_customer_design,designing,review,accepted,ready'],
+            'strip_status'         => ['nullable', 'in:waiting_input,awaiting_customer_design,customer_self_designing,designing,review,accepted,ready'],
             'strip_design_method'  => ['nullable', 'in:self,template,custom,ai'],
             'strip_self_tool'      => ['nullable', 'in:canva,photoshop'],
             'strip_template_id'    => ['nullable', 'exists:strip_templates,id'],
@@ -442,7 +442,7 @@ class BookingController extends Controller
             'delivery_instructions'         => ['nullable', 'string', 'max:5000'],
             'delivery_instructions_files'   => ['nullable', 'array'],
             'delivery_instructions_files.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
-            'strip_status'         => ['nullable', 'in:waiting_input,awaiting_customer_design,designing,review,accepted,ready'],
+            'strip_status'         => ['nullable', 'in:waiting_input,awaiting_customer_design,customer_self_designing,designing,review,accepted,ready'],
             'strip_design_method'  => ['nullable', 'in:self,template,custom,ai'],
             'strip_self_tool'      => ['nullable', 'in:canva,photoshop'],
             'strip_template_id'    => ['nullable', 'exists:strip_templates,id'],
@@ -567,7 +567,7 @@ class BookingController extends Controller
             }
         }
 
-        // Strip status veranderd naar 'accepted' → mails
+        // Strip status veranderd naar 'accepted' → mails + AI-ontwerp automatisch naar productie
         if ($oudStripStatus !== 'accepted' && $booking->strip_status === 'accepted') {
             if ($booking->customer_email) {
                 $mail->send('customer_strip_accepted', $booking, $booking->customer_email);
@@ -575,6 +575,9 @@ class BookingController extends Controller
             if ($booking->account->email) {
                 $mail->send('admin_strip_accepted', $booking, $booking->account->email);
             }
+
+            // AI-ontwerp geaccepteerd → automatisch het productie-PNG (met masker) klaarzetten.
+            app(\App\Services\DesignRenderService::class)->publishBookingToProduction($booking);
         }
 
         return redirect()->route('bookings.show', $booking)->with('success', 'Boeking bijgewerkt.');
@@ -958,6 +961,27 @@ class BookingController extends Controller
         return redirect()->route('bookings.show', $booking);
     }
 
+    /** Stuur de klant de "bezorg/ophaalmoment aangepast"-mail met de huidige (opgeslagen) tijden. */
+    public function sendTimesMail(Booking $booking): RedirectResponse
+    {
+        if (! $booking->customer_email) {
+            return back()->with('error', 'Deze boeking heeft geen e-mailadres van de klant.');
+        }
+
+        $key = $booking->booking_type === 'to_go'
+            ? 'customer_times_updated_to_go'
+            : 'customer_times_updated_full_service';
+
+        $sent = app(\App\Services\MailService::class)->send($key, $booking, $booking->customer_email);
+
+        return back()->with(
+            $sent ? 'success' : 'error',
+            $sent
+                ? '✅ Mail met bezorg- en ophaaltijd verstuurd naar ' . $booking->customer_email . '.'
+                : 'Versturen mislukt — controleer of de mailtemplate actief is.'
+        );
+    }
+
     /** Boekingsbevestiging opnieuw sturen */
     public function resendConfirmation(Booking $booking): RedirectResponse
     {
@@ -1002,22 +1026,23 @@ class BookingController extends Controller
     public function updateStripStatus(Request $request, Booking $booking): JsonResponse
     {
         $request->validate([
-            'strip_status' => ['required', 'in:waiting_input,designing,review,accepted,ready'],
+            'strip_status' => ['required', 'in:awaiting_customer_design,customer_self_designing,designing,review,accepted,ready'],
         ]);
 
+        $wasAccepted = $booking->strip_status === 'accepted';
         $booking->update(['strip_status' => $request->strip_status]);
 
-        $labels = [
-            'waiting_input' => 'Input aanleveren',
-            'designing'     => 'Ontwerpen',
-            'review'        => 'Wachten op goedkeuring',
-            'accepted'      => 'Goedgekeurd',
-            'ready'         => 'Ontwerp staat klaar',
-        ];
+        // AI-ontwerp geaccepteerd → automatisch het productie-PNG (met masker) klaarzetten.
+        // Kan strip_status naar 'ready' zetten; retourneer daarom de uiteindelijke status.
+        if (! $wasAccepted && $request->strip_status === 'accepted') {
+            app(\App\Services\DesignRenderService::class)->publishBookingToProduction($booking);
+            $booking->refresh();
+        }
 
         return response()->json([
             'success' => true,
-            'label'   => $labels[$request->strip_status] ?? $request->strip_status,
+            'label'   => Booking::stripStatusLabel($booking->strip_status),
+            'status'  => $booking->strip_status,
         ]);
     }
 

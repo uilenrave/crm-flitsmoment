@@ -17,25 +17,14 @@ class StripMockupService
     public function render(string $stripPath): string
     {
         $cfg = config('mockup');
-        $bgPath = resource_path('mockups/' . $cfg['background_file']);
+        $cw  = (int) $cfg['canvas_width'];
+        $ch  = (int) $cfg['canvas_height'];
 
-        if (! is_file($bgPath)) {
-            throw new RuntimeException("Mockup-achtergrond niet gevonden: {$bgPath}");
-        }
-
-        // Effen/weinig-verzadigde achtergronden (zoals een lichte marmertextuur) worden door Imagick
-        // bij het inlezen soms als grayscale/palette gedetecteerd, waardoor een latere compositie van
-        // een gekleurde strip er zonder kleur op landt. Fix: eerst overzetten op een truecolor canvas.
-        $loaded = new Imagick($bgPath);
-        $cw = $loaded->getImageWidth();
-        $ch = $loaded->getImageHeight();
-
+        // Effen canvas (kleur uit config) i.p.v. een achtergrondfoto — gewoon de strip met een lichte slagschaduw.
         $canvas = new Imagick();
-        $canvas->newImage($cw, $ch, new ImagickPixel('white'));
+        $canvas->newImage($cw, $ch, new ImagickPixel($cfg['canvas_color']));
         $canvas->setImageFormat('png');
         $canvas->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE);
-        $canvas->compositeImage($loaded, Imagick::COMPOSITE_OVER, 0, 0);
-        $loaded->clear();
 
         // ── Strip laden + schalen binnen het doelvak (aspect behouden) ──
         $strip = new Imagick($stripPath);
@@ -80,7 +69,7 @@ class StripMockupService
         // ── Uitvoer ──
         $canvas->setImageFormat($cfg['format']);
         if ($cfg['format'] === 'jpeg') {
-            $canvas->setImageBackgroundColor(new ImagickPixel('white'));
+            $canvas->setImageBackgroundColor(new ImagickPixel($cfg['canvas_color']));
             $canvas->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
             $canvas->setImageCompressionQuality((int) $cfg['quality']);
         }

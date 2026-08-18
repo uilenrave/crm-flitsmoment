@@ -26,12 +26,15 @@ const dgEventTypeLabels = {!! Js::from($eventTypes) !!};
 const dgLogoEventTypes = {!! Js::from($logoEventTypes) !!};
 const dgGoogleFontLabels = {!! Js::from($googleFonts) !!};
 const dgDefaultFontSlug = {{ Js::from(\App\Services\GoogleFontRegistry::DEFAULT_SLUG) }};
+const dgTemplateCategories = {!! Js::from($templateCategories ?? []) !!};
 
 function dgEventTypeChanged() {
     const type = document.getElementById('event_type').value;
     const promptField = document.getElementById('dg-prompt-template');
     if (promptField) promptField.value = dgPromptsByType[type] || '';
-    document.getElementById('dg-current-type-label').textContent = '(' + (dgEventTypeLabels[type] || type) + ')';
+    // Type-label leeg laten: het "Type event"-veld is verborgen, dus een "(Bruiloft)"-suffix is verwarrend.
+    const typeLabel = document.getElementById('dg-current-type-label');
+    if (typeLabel) typeLabel.textContent = '';
     dgMarkDirty();
 }
 
@@ -43,14 +46,16 @@ function dgToggleSettings() {
 }
 
 const dgBgSubmitLabels = {
-    ai:     '✨ Genereer achtergrond',
-    upload: '📤 Upload afbeelding',
-    color:  '🎨 Gebruik deze kleur',
+    ai:       '✨ Genereer achtergrond',
+    upload:   '📤 Upload afbeelding',
+    color:    '🎨 Gebruik deze kleur',
+    template: '🖼️ Gebruik deze template',
 };
 const dgBgSubmitHints = {
-    ai:     'Genereren kan 10–30 seconden duren.',
-    upload: '',
-    color:  '',
+    ai:       'Genereren kan 10–30 seconden duren.',
+    upload:   '',
+    color:    '',
+    template: '',
 };
 
 function dgSetBackgroundMethod(method) {
@@ -74,7 +79,153 @@ function dgSetBackgroundMethod(method) {
     const hint = document.getElementById('dg-submit-hint');
     if (hint) hint.textContent = dgBgSubmitHints[method] ?? '';
 
+    if (method === 'template') dgInitTemplatePicker();
+
     dgMarkDirty();
+}
+
+let dgTemplatePickerInitialized = false;
+let dgActiveTemplateCategory = null;
+
+function dgInitTemplatePicker() {
+    if (dgTemplatePickerInitialized || !dgTemplateCategories.length) return;
+    dgTemplatePickerInitialized = true;
+
+    const catWrap = document.getElementById('dg-template-categories');
+    dgTemplateCategories.forEach((cat, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'dg-template-cat-btn' + (i === 0 ? ' active' : '');
+        btn.textContent = cat.label;
+        btn.dataset.slug = cat.slug;
+        btn.onclick = () => dgShowTemplateCategory(cat.slug);
+        catWrap.appendChild(btn);
+    });
+
+    dgShowTemplateCategory(dgTemplateCategories[0].slug);
+}
+
+function dgShowTemplateCategory(slug) {
+    dgActiveTemplateCategory = slug;
+    document.querySelectorAll('.dg-template-cat-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.slug === slug);
+    });
+
+    const cat = dgTemplateCategories.find(c => c.slug === slug);
+    const grid = document.getElementById('dg-template-grid');
+    grid.innerHTML = '';
+    if (!cat) return;
+
+    const selectedId = document.getElementById('dg-template-id').value;
+    cat.items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'dg-template-item' + (String(item.id) === String(selectedId) ? ' selected' : '');
+        div.title = item.label;
+        div.onclick = () => dgSelectTemplate(item.id, div);
+        const img = document.createElement('img');
+        img.src = item.url;
+        img.loading = 'lazy';
+        img.alt = item.label;
+        div.appendChild(img);
+        grid.appendChild(div);
+    });
+}
+
+function dgSelectTemplate(id, el) {
+    document.getElementById('dg-template-id').value = id;
+    document.querySelectorAll('.dg-template-item').forEach(item => item.classList.remove('selected'));
+    el.classList.add('selected');
+    dgMarkDirty();
+}
+
+// ── Elementenbibliotheek (vrijgestelde elementen herbruiken als laag) ──
+const dgElementCategories = {!! Js::from($elementCategories ?? []) !!};
+let dgElementPickerInitialized = false;
+let dgActiveElementCategory = null;
+
+function dgToggleElementLibrary() {
+    const panel = document.getElementById('dg-element-library');
+    if (!panel) return;
+    const open = panel.style.display === 'none' || !panel.style.display;
+    panel.style.display = open ? 'block' : 'none';
+    if (open) dgInitElementPicker();
+}
+
+function dgInitElementPicker() {
+    if (dgElementPickerInitialized || !dgElementCategories.length) return;
+    dgElementPickerInitialized = true;
+
+    const catWrap = document.getElementById('dg-element-categories');
+    dgElementCategories.forEach((cat, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'dg-template-cat-btn' + (i === 0 ? ' active' : '');
+        btn.textContent = cat.label;
+        btn.dataset.slug = cat.slug;
+        btn.onclick = () => dgShowElementCategory(cat.slug);
+        catWrap.appendChild(btn);
+    });
+
+    dgShowElementCategory(dgElementCategories[0].slug);
+}
+
+function dgShowElementCategory(slug) {
+    dgActiveElementCategory = slug;
+    document.querySelectorAll('#dg-element-categories .dg-template-cat-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.slug === slug);
+    });
+
+    const cat = dgElementCategories.find(c => c.slug === slug);
+    const grid = document.getElementById('dg-element-grid');
+    grid.innerHTML = '';
+    if (!cat) return;
+
+    cat.items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'dg-template-item';
+        div.title = item.label || 'Element';
+        div.onclick = () => dgSelectLibraryElement(item.id);
+        const img = document.createElement('img');
+        img.src = item.url;
+        img.loading = 'lazy';
+        img.alt = item.label || '';
+        div.appendChild(img);
+        grid.appendChild(div);
+    });
+}
+
+// Plaats een goedgekeurd bibliotheek-element als nieuwe laag (geen AI-call).
+function dgSelectLibraryElement(id) {
+    const errorEl = document.getElementById('dg-logo-error');
+    if (errorEl) errorEl.style.display = 'none';
+
+    if (dgLogos.length >= DG_MAX_LOGOS) {
+        if (errorEl) { errorEl.textContent = 'Maximaal ' + DG_MAX_LOGOS + ' elementen bereikt.'; errorEl.style.display = 'block'; }
+        return;
+    }
+    if (!dgConfig.urls.elementUse) return;
+
+    const fd = new FormData();
+    fd.append('element_id', id);
+
+    fetch(dgConfig.urls.elementUse, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content },
+        body: fd,
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            dgAddLogoLayer(data.url, data.path, { originalName: 'Bibliotheek-element' });
+            dgMarkDirty();
+        } else if (errorEl) {
+            errorEl.textContent = 'Element plaatsen mislukt: ' + (data.error || 'onbekende fout');
+            errorEl.style.display = 'block';
+        }
+    })
+    .catch(() => {
+        if (errorEl) { errorEl.textContent = 'Element plaatsen mislukt (netwerkfout).'; errorEl.style.display = 'block'; }
+    });
 }
 
 function dgSyncColorHex(value) {
@@ -88,27 +239,122 @@ function dgSyncColorPicker(value) {
     if (colorField) colorField.value = value;
 }
 
-function dgSubmitting(form) {
+const dgGenerateLabels = {
+    upload:   ['📤 Afbeelding wordt verwerkt…', 'Even geduld, dit duurt meestal maar een paar seconden.'],
+    color:    ['🎨 Kleur wordt toegepast…', 'Even geduld, dit duurt meestal maar een paar seconden.'],
+    template: ['🖼️ Template wordt toegepast…', 'Even geduld, dit duurt meestal maar een paar seconden.'],
+    ai:       ['✨ Achtergrond wordt gegenereerd…', 'Dit duurt meestal 10 tot 30 seconden.'],
+};
+
+function dgSubmitting(form, event) {
+    const method = document.getElementById('dg-background-method')?.value ?? 'ai';
+
+    // Zodra er al een achtergrond staat, bestaan stap 2/3/4 al gewoon in de pagina — dan hoeft
+    // het niet via een volledige pagina-herlaad. Zo kan je gewoon doorwerken (tekst toevoegen,
+    // logo verslepen, ...) terwijl de nieuwe achtergrond op de achtergrond wordt gegenereerd.
+    if (dgBackgroundPath && dgConfig.urls.generate) {
+        event.preventDefault();
+        dgRegenerateBackground(form, method);
+        return;
+    }
+
+    // Eerste keer: er is nog geen achtergrond, dus ook nog geen stap 2/3/4 in de pagina — die
+    // moet de server nog opbouwen, dus hier gewoon de normale pagina-navigatie laten doorgaan.
     const btn = document.getElementById('dg-submit');
     btn.disabled = true;
     btn.textContent = '⏳ Bezig…';
     btn.style.opacity = '.7';
 
-    const method = document.getElementById('dg-background-method')?.value ?? 'ai';
     const overlay = document.getElementById('dg-generating-overlay');
     const title = document.getElementById('dg-generating-title');
     const hint = document.getElementById('dg-generating-hint');
-    if (method === 'upload') {
-        if (title) title.textContent = '📤 Afbeelding wordt verwerkt…';
-        if (hint) hint.textContent = 'Dit duurt meestal maar een paar seconden.';
-    } else if (method === 'color') {
-        if (title) title.textContent = '🎨 Kleur wordt toegepast…';
-        if (hint) hint.textContent = 'Dit duurt meestal maar een paar seconden.';
-    } else {
-        if (title) title.textContent = '✨ Achtergrond wordt gegenereerd…';
-        if (hint) hint.textContent = 'Dit duurt meestal 10 tot 30 seconden. De pagina ververst automatisch zodra het klaar is.';
-    }
+    const [titleText, hintText] = dgGenerateLabels[method] ?? dgGenerateLabels.ai;
+    if (title) title.textContent = titleText;
+    if (hint) hint.textContent = method === 'ai' ? hintText + ' De pagina ververst automatisch zodra het klaar is.' : hintText;
     if (overlay) overlay.classList.add('show');
+
+    // Zonder dit: als je vlak na het toevoegen van een logo/tekst meteen op "Genereer" klikt,
+    // herlaadt de pagina vóórdat de automatische opslag (elke 10s) dat logo naar de server
+    // heeft gestuurd — de nieuwe achtergrond wordt dan opgeslagen zonder het logo, en het
+    // verdwijnt. Fix: bij niet-opgeslagen wijzigingen eerst synchroon opslaan, dán pas submitten.
+    if (dgDirty && dgConfig.urls.saveState) {
+        event.preventDefault();
+        fetch(dgConfig.urls.saveState, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+            },
+            body: JSON.stringify(dgCollectState()),
+        }).finally(() => {
+            dgDirty = false;
+            form.submit();
+        });
+    }
+}
+
+/**
+ * Regenereert de achtergrond via AJAX (geen pagina-herlaad) — gebruikt zodra er al een
+ * achtergrond staat, zodat je ondertussen kan doorwerken. De server-kant herkent dit via de
+ * "Accept: application/json"-header en retourneert dan JSON i.p.v. de hele pagina opnieuw.
+ */
+function dgRegenerateBackground(form, method) {
+    const btn = document.getElementById('dg-submit');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Bezig…';
+
+    const overlay = document.getElementById('dg-generating-overlay');
+    const title = document.getElementById('dg-generating-title');
+    const hint = document.getElementById('dg-generating-hint');
+    const errorEl = document.getElementById('dg-generate-error');
+    if (errorEl) errorEl.style.display = 'none';
+    const [titleText, hintText] = dgGenerateLabels[method] ?? dgGenerateLabels.ai;
+    if (title) title.textContent = titleText;
+    if (hint) hint.textContent = hintText + ' Je kunt gewoon doorwerken.';
+    if (overlay) overlay.classList.add('show');
+
+    fetch(form.action, {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+        },
+        body: new FormData(form),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = original;
+        if (overlay) overlay.classList.remove('show');
+
+        if (data.ok) {
+            dgBackgroundPath = data.path;
+            const img = document.getElementById('dg-design-img');
+            if (img) img.src = data.url;
+            dgPushHistory(data.path, data.url);
+            dgMarkDirty();
+            dgScheduleMaskApply();
+            if (dgConfig.limits && method === 'ai') {
+                dgConfig.limits.backgroundCount++;
+                dgRenderLimitHints();
+            }
+        } else if (data.limit) {
+            dgShowLimitNotice('dg-background-limit-notice');
+        } else if (errorEl) {
+            errorEl.textContent = 'Genereren mislukt: ' + (data.error || 'onbekende fout');
+            errorEl.style.display = 'block';
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = original;
+        if (overlay) overlay.classList.remove('show');
+        if (errorEl) {
+            errorEl.textContent = 'Genereren mislukt (netwerkfout).';
+            errorEl.style.display = 'block';
+        }
+    });
 }
 
 function dgSavePrompt() {
@@ -133,8 +379,23 @@ function dgSavePrompt() {
     });
 }
 
-const DG_MAX_LOGOS = 3;
+const DG_MAX_LOGOS = 8;
 let dgLogos = []; // [{ id, path, url, xPct, yPct, widthPct, aspect, rotateDeg }] — widthPct t.o.v. containerbreedte (== canvasbreedte)
+let dgActiveLogoId = null;
+
+function dgSelectLogo(id) {
+    dgActiveLogoId = id;
+    document.querySelectorAll('.dg-logo-layer').forEach(el => {
+        el.classList.toggle('selected', el.dataset.logoId === id);
+    });
+    dgDeselectText();
+}
+
+function dgDeselectLogo() {
+    if (!dgActiveLogoId) return;
+    dgActiveLogoId = null;
+    document.querySelectorAll('.dg-logo-layer').forEach(el => el.classList.remove('selected'));
+}
 
 function dgCutoutLogo() {
     const fileInput = document.getElementById('logo_upload');
@@ -155,8 +416,17 @@ function dgCutoutLogo() {
     btn.disabled = true;
     btn.textContent = '⏳ Vrijstellen…';
 
+    const overlay = document.getElementById('dg-generating-overlay');
+    const title = document.getElementById('dg-generating-title');
+    const hint = document.getElementById('dg-generating-hint');
+    if (title) title.textContent = '✂️ Element wordt vrijgesteld…';
+    if (hint) hint.textContent = 'Dit duurt meestal 5 tot 15 seconden.';
+    if (overlay) overlay.classList.add('show');
+
     const fd = new FormData();
     fd.append('logo', fileInput.files[0]);
+    const descEl = document.getElementById('dg-cutout-description');
+    if (descEl && descEl.value.trim()) fd.append('description', descEl.value.trim());
 
     fetch(dgConfig.urls.logoCutout, {
         method: 'POST',
@@ -167,6 +437,7 @@ function dgCutoutLogo() {
     .then(data => {
         btn.disabled = false;
         btn.textContent = original;
+        if (overlay) overlay.classList.remove('show');
         if (data.ok) {
             fileInput.value = '';
             dgAddLogoLayer(data.url, data.path, { originalName: originalName });
@@ -185,12 +456,70 @@ function dgCutoutLogo() {
     .catch(() => {
         btn.disabled = false;
         btn.textContent = original;
+        if (overlay) overlay.classList.remove('show');
         errorEl.textContent = 'Vrijstellen mislukt (netwerkfout).';
         errorEl.style.display = 'block';
     });
 }
 
-function dgAddLogoLayer(url, path, savedState) {
+function dgUploadLogoDirect() {
+    const fileInput = document.getElementById('logo_upload');
+    const errorEl = document.getElementById('dg-logo-error');
+    errorEl.style.display = 'none';
+
+    if (dgLogos.length >= DG_MAX_LOGOS) return;
+
+    if (!fileInput.files.length) {
+        errorEl.textContent = 'Kies eerst een logo-afbeelding.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const btn = document.getElementById('dg-logo-upload-btn');
+    const original = btn.textContent;
+    const originalName = fileInput.files[0].name;
+    btn.disabled = true;
+    btn.textContent = '⏳ Toevoegen…';
+
+    const overlay = document.getElementById('dg-generating-overlay');
+    const title = document.getElementById('dg-generating-title');
+    const hint = document.getElementById('dg-generating-hint');
+    if (title) title.textContent = '➕ Logo wordt toegevoegd…';
+    if (hint) hint.textContent = 'Dit duurt meestal maar een paar seconden.';
+    if (overlay) overlay.classList.add('show');
+
+    const fd = new FormData();
+    fd.append('logo', fileInput.files[0]);
+
+    fetch(dgConfig.urls.logoUpload, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content },
+        body: fd,
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = original;
+        if (overlay) overlay.classList.remove('show');
+        if (data.ok) {
+            fileInput.value = '';
+            dgAddLogoLayer(data.url, data.path, { originalName: originalName });
+            dgMarkDirty();
+        } else {
+            errorEl.textContent = 'Toevoegen mislukt: ' + (data.error || 'onbekende fout');
+            errorEl.style.display = 'block';
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.textContent = original;
+        if (overlay) overlay.classList.remove('show');
+        errorEl.textContent = 'Toevoegen mislukt (netwerkfout).';
+        errorEl.style.display = 'block';
+    });
+}
+
+function dgAddLogoLayer(url, path, savedState, autoSelect = true) {
     const bgBody = document.getElementById('dg-result-body');
     if (!bgBody) return;
     if (dgLogos.length >= DG_MAX_LOGOS) return;
@@ -201,6 +530,7 @@ function dgAddLogoLayer(url, path, savedState) {
         const layer = document.createElement('div');
         layer.id = 'dg-logo-layer-' + id;
         layer.className = 'dg-logo-layer';
+        layer.dataset.logoId = id;
 
         const logoImg = document.createElement('img');
         logoImg.src = url;
@@ -237,6 +567,7 @@ function dgAddLogoLayer(url, path, savedState) {
         dgBindLogoDrag(layer, logo);
         dgBindResizeHandle(resizeHandle, logo);
         dgBindRotateHandle(rotateHandle, layer, logo);
+        if (autoSelect) dgSelectLogo(id);
 
         dgRenderLogoList();
         dgUpdateLogoAddState();
@@ -261,6 +592,8 @@ function dgBindLogoDrag(layer, logo) {
     let dragging = false, startX, startY, startXPct, startYPct, rect;
     layer.addEventListener('pointerdown', (e) => {
         if (e.target.classList.contains('dg-logo-handle')) return;
+        e.stopPropagation();
+        dgSelectLogo(logo.id);
         dragging = true;
         rect = layer.parentElement.getBoundingClientRect();
         startX = e.clientX;
@@ -380,9 +713,11 @@ function dgRenderLogoList() {
 function dgUpdateLogoAddState() {
     const atMax = dgLogos.length >= DG_MAX_LOGOS;
     const btn = document.getElementById('dg-logo-cutout-btn');
+    const uploadBtn = document.getElementById('dg-logo-upload-btn');
     const fileInput = document.getElementById('logo_upload');
     const notice = document.getElementById('dg-logo-max-notice');
     if (btn) btn.disabled = atMax;
+    if (uploadBtn) uploadBtn.disabled = atMax;
     if (fileInput) fileInput.disabled = atMax;
     if (notice) notice.style.display = atMax ? 'block' : 'none';
 }
@@ -418,6 +753,9 @@ function dgAddText(savedState) {
         fontSizePct: savedState?.fontSizePct ?? 5,
         xPct: savedState?.xPct ?? 50,
         yPct: savedState?.yPct ?? 50,
+        rotateDeg: savedState?.rotateDeg ?? 0,
+        fontWeight: savedState?.fontWeight ?? 400,
+        letterSpacingEm: savedState?.letterSpacingEm ?? 0,
     };
     dgTexts.push(text);
     dgCreateTextLayer(text);
@@ -433,28 +771,76 @@ function dgCreateTextLayer(text) {
     layer.id = 'dg-text-layer-' + text.id;
     layer.className = 'dg-text-layer';
     layer.dataset.textId = text.id;
+
+    // Tekst-inhoud in een eigen span, zodat de rotate-handle/stem geen deel van de tekst worden.
+    const contentSpan = document.createElement('span');
+    contentSpan.className = 'dg-text-content-span';
+    layer.appendChild(contentSpan);
+
+    const rotateStem = document.createElement('div');
+    rotateStem.className = 'dg-logo-rotate-stem';
+    layer.appendChild(rotateStem);
+
+    const rotateHandle = document.createElement('div');
+    rotateHandle.className = 'dg-logo-handle rotate';
+    layer.appendChild(rotateHandle);
+
     bgBody.appendChild(layer);
 
     dgRenderTextLayer(text);
     dgBindTextDrag(layer, text);
+    dgBindTextRotate(rotateHandle, layer, text);
 }
 
 function dgRenderTextLayer(text) {
     const layer = document.getElementById('dg-text-layer-' + text.id);
     if (!layer) return;
     const containerWidth = layer.parentElement.clientWidth;
-    layer.textContent = text.content;
+    const span = layer.querySelector('.dg-text-content-span');
+    if (span) span.textContent = text.content;
     layer.style.left = text.xPct + '%';
     layer.style.top = text.yPct + '%';
+    layer.style.transform = `translate(-50%, -50%) rotate(${text.rotateDeg || 0}deg)`;
     layer.style.color = text.color;
     layer.style.fontFamily = dgFontFamilyCss(text.fontSlug);
     layer.style.fontSize = (containerWidth * text.fontSizePct / 100) + 'px';
+    layer.style.fontWeight = text.fontWeight || 400;
+    // Letterafstand in em (relatief aan de fontgrootte) → schaalonafhankelijk, matcht de server-render.
+    layer.style.letterSpacing = (text.letterSpacingEm || 0) + 'em';
+    // Niet nep-vetten/verdunnen: als het gekozen gewicht niet als echt TTF-bestand bestaat,
+    // moet de browser (net als de server-render) terugvallen op het dichtstbijzijnde échte
+    // gewicht i.p.v. een gesynthetiseerde variant — zo blijven preview en definitieve PNG gelijk.
+    layer.style.fontSynthesis = 'none';
     layer.classList.toggle('selected', dgActiveTextId === text.id);
+}
+
+// Zelfde snap-rotatie (elke 30°) als bij logo's, maar op een tekstlaag.
+function dgBindTextRotate(handle, layer, text) {
+    let dragging = false;
+    handle.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        dgSelectText(text.id);
+        dragging = true;
+        handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const rect = layer.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+        const rawDeg = angle + 90; // handle rust recht boven het midden (-90°) bij rotateDeg=0
+        text.rotateDeg = Math.round(rawDeg / 30) * 30;
+        dgRenderTextLayer(text);
+    });
+    handle.addEventListener('pointerup', () => { dragging = false; dgMarkDirty(); });
+    handle.addEventListener('pointercancel', () => dragging = false);
 }
 
 function dgBindTextDrag(layer, text) {
     let dragging = false, moved = false, startX, startY, startXPct, startYPct, rect;
     layer.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('dg-logo-handle')) return; // rotate-handle heeft eigen afhandeling
         e.stopPropagation();
         dragging = true;
         moved = false;
@@ -489,6 +875,7 @@ function dgSelectText(id) {
     const text = dgTexts.find(t => t.id === id);
     if (!text) return;
     dgActiveTextId = id;
+    dgDeselectLogo();
 
     document.querySelectorAll('.dg-text-layer').forEach(el => {
         el.classList.toggle('selected', el.dataset.textId === id);
@@ -502,10 +889,26 @@ function dgSelectText(id) {
     const contentEl = document.getElementById('dg-text-content');
     const colorEl = document.getElementById('dg-text-color');
     const sizeEl = document.getElementById('dg-text-size');
+    const weightEl = document.getElementById('dg-text-weight');
+    const spacingEl = document.getElementById('dg-text-spacing');
     if (contentEl) contentEl.value = text.content;
     if (colorEl) colorEl.value = text.color;
     if (sizeEl) sizeEl.value = text.fontSizePct;
+    if (weightEl) weightEl.value = text.fontWeight || 400;
+    if (spacingEl) spacingEl.value = text.letterSpacingEm ?? 0;
+    dgUpdateTextSizeReadout(text.fontSizePct);
+    dgUpdateTextSpacingReadout(text.letterSpacingEm ?? 0);
     dgSyncFontPickerDisplay(text.fontSlug);
+}
+
+function dgDeselectText() {
+    if (!dgActiveTextId) return;
+    dgActiveTextId = null;
+    document.querySelectorAll('.dg-text-layer').forEach(el => el.classList.remove('selected'));
+    const panel = document.getElementById('dg-text-settings');
+    const hint = document.getElementById('dg-text-hint');
+    if (panel) panel.style.display = 'none';
+    if (hint) hint.style.display = 'block';
 }
 
 // ── Custom font-dropdown (native <select>-opties stylen per item werkt onbetrouwbaar in browsers) ──
@@ -541,6 +944,19 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// Klik buiten een logo/tekst-laag (en buiten hun hele stap-paneel, incl. de "toevoegen"-knoppen)
+// deselecteert weer — zodat de resize/rotate-knopjes van een logo en het randje van een tekst
+// niet blijven "hangen". Beschermde zone = de volledige stap-container, niet alleen het
+// instellingenpaneel, anders deselecteert bijv. de "➕ Tekst toevoegen"-knop zichzelf meteen weer.
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.dg-logo-layer') && !e.target.closest('.dg-logo-step')) {
+        dgDeselectLogo();
+    }
+    if (!e.target.closest('.dg-text-layer') && !e.target.closest('.dg-text-step')) {
+        dgDeselectText();
+    }
+});
+
 function dgUpdateActiveText() {
     const text = dgTexts.find(t => t.id === dgActiveTextId);
     if (!text) return;
@@ -548,8 +964,25 @@ function dgUpdateActiveText() {
     text.color = document.getElementById('dg-text-color')?.value || text.color;
     text.fontSlug = document.getElementById('dg-text-font')?.value || text.fontSlug;
     text.fontSizePct = parseFloat(document.getElementById('dg-text-size')?.value) || text.fontSizePct;
+    text.fontWeight = parseInt(document.getElementById('dg-text-weight')?.value) || 400;
+    const spacing = parseFloat(document.getElementById('dg-text-spacing')?.value);
+    text.letterSpacingEm = Number.isFinite(spacing) ? spacing : (text.letterSpacingEm ?? 0);
+    dgUpdateTextSizeReadout(text.fontSizePct);
+    dgUpdateTextSpacingReadout(text.letterSpacingEm);
     dgRenderTextLayer(text);
     dgMarkDirty();
+}
+
+// Toont het huidige grootte-cijfer naast de schuifregelaar.
+function dgUpdateTextSizeReadout(pct) {
+    const el = document.getElementById('dg-text-size-val');
+    if (el) el.textContent = (pct === null || pct === undefined) ? '—' : Number(pct).toFixed(1);
+}
+
+// Toont de huidige letterafstand naast de schuifregelaar.
+function dgUpdateTextSpacingReadout(em) {
+    const el = document.getElementById('dg-text-spacing-val');
+    if (el) el.textContent = (em === null || em === undefined) ? '—' : Number(em).toFixed(2);
 }
 
 function dgCenterActiveText() {
@@ -577,6 +1010,51 @@ function dgRemoveActiveText() {
 let dgBackgroundPath = {!! Js::from($results['path'] ?? null) !!};
 let dgMasks = {!! Js::from($masks) !!};
 let dgSelectedMaskId = null;
+
+// ── Geschiedenis van gegenereerde achtergronden (terugstappen naar een vorig ontwerp) ──
+const DG_MAX_HISTORY = 10;
+let dgBackgroundHistory = []; // [{ path, url }] nieuwste eerst
+
+function dgPushHistory(path, url) {
+    if (!path || !url) return;
+    dgBackgroundHistory = dgBackgroundHistory.filter(h => h.path !== path); // dedupe
+    dgBackgroundHistory.unshift({ path, url });
+    if (dgBackgroundHistory.length > DG_MAX_HISTORY) dgBackgroundHistory = dgBackgroundHistory.slice(0, DG_MAX_HISTORY);
+    dgRenderHistory();
+}
+
+function dgRenderHistory() {
+    const wrap = document.getElementById('dg-history');
+    const strip = document.getElementById('dg-history-strip');
+    if (!wrap || !strip) return;
+
+    // Alleen tonen als er iets valt terug te stappen (meer dan alleen de huidige).
+    if (dgBackgroundHistory.length < 2) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+
+    strip.innerHTML = '';
+    dgBackgroundHistory.forEach(h => {
+        const div = document.createElement('div');
+        div.className = 'dg-history-item' + (h.path === dgBackgroundPath ? ' active' : '');
+        div.title = 'Gebruik dit ontwerp';
+        div.onclick = () => dgSelectHistory(h.path, h.url);
+        const img = document.createElement('img');
+        img.src = h.url;
+        img.loading = 'lazy';
+        div.appendChild(img);
+        strip.appendChild(div);
+    });
+}
+
+function dgSelectHistory(path, url) {
+    if (path === dgBackgroundPath) return;
+    dgBackgroundPath = path;
+    const img = document.getElementById('dg-design-img');
+    if (img) img.src = url;
+    dgRenderHistory();
+    dgMarkDirty();
+    dgScheduleMaskApply();
+}
 
 function dgRenderMaskGallery() {
     const gallery = document.getElementById('dg-mask-gallery');
@@ -612,20 +1090,16 @@ function dgAutoSelectMaskIfNeeded() {
 function dgSelectMask(id) {
     const bgBody = document.getElementById('dg-result-body');
     const img = document.getElementById('dg-design-img');
-    const colorRow = document.getElementById('dg-color-row');
     if (!img) return;
 
     dgSelectedMaskId = id;
     dgRenderMaskGallery();
 
     const mask = dgMasks.find(m => m.id === dgSelectedMaskId);
-    const borderLayer = document.getElementById('dg-svg-border-layer');
 
     if (!mask) {
         img.style.webkitMaskImage = '';
         img.style.maskImage = '';
-        borderLayer.innerHTML = '';
-        colorRow.style.display = 'none';
         return;
     }
 
@@ -640,15 +1114,6 @@ function dgSelectMask(id) {
     // dat zag eruit als "de hele strip wordt 50% transparant".
     img.style.maskMode = 'alpha';
     img.style.webkitMaskMode = 'alpha';
-
-    if (mask.svgContent) {
-        borderLayer.innerHTML = mask.svgContent;
-        colorRow.style.display = 'flex';
-        dgBorderColorChanged();
-    } else {
-        borderLayer.innerHTML = '';
-        colorRow.style.display = 'none';
-    }
 
     dgMarkDirty();
     dgScheduleMaskApply();
@@ -683,34 +1148,6 @@ function dgTogglePreviewMode() {
     }
 }
 
-function dgBorderColorChanged() {
-    const enabled = document.getElementById('dg-border-enabled')?.checked ?? false;
-    const colorInput = document.getElementById('dg-border-color');
-    const borderLayer = document.getElementById('dg-svg-border-layer');
-    if (colorInput) colorInput.style.display = enabled ? '' : 'none';
-    if (borderLayer) borderLayer.style.display = enabled ? '' : 'none';
-
-    const color = colorInput?.value;
-    const svg = borderLayer?.querySelector('svg');
-    if (enabled && svg && color) {
-        // Afspraak: de kleurbare rand gebruikt css-klasse "cls-2" binnen de <style> van de svg
-        const styleEl = svg.querySelector('style');
-        if (styleEl) {
-            styleEl.textContent = styleEl.textContent.replace(/\.cls-2\s*\{[^}]*\}/i, `.cls-2{fill:${color};}`);
-        }
-
-        // Fallback voor svg's met inline fill/stroke-attributen
-        svg.querySelectorAll('[fill]').forEach(el => {
-            if (el.getAttribute('fill').toLowerCase() !== 'none') el.setAttribute('fill', color);
-        });
-        svg.querySelectorAll('[stroke]').forEach(el => {
-            if (el.getAttribute('stroke').toLowerCase() !== 'none') el.setAttribute('stroke', color);
-        });
-    }
-    dgMarkDirty();
-    dgScheduleMaskApply();
-}
-
 let dgMaskApplyTimer = null;
 
 function dgScheduleMaskApply() {
@@ -733,10 +1170,7 @@ function dgApplyMask() {
 
     if (statusEl) statusEl.style.display = 'block';
 
-    const mask = dgMasks.find(m => m.id === dgSelectedMaskId);
-    const borderEnabled = document.getElementById('dg-border-enabled')?.checked ?? false;
     const payload = { background_path: dgBackgroundPath, mask_id: dgSelectedMaskId };
-    if (mask && mask.svgContent && borderEnabled) payload.border_color = document.getElementById('dg-border-color').value;
 
     fetch(dgConfig.urls.masksApply, {
         method: 'POST',
@@ -793,13 +1227,6 @@ function dgRenderMaskList() {
         label.textContent = m.label;
         item.appendChild(label);
 
-        if (m.svgContent) {
-            const tag = document.createElement('span');
-            tag.className = 'svg-tag';
-            tag.textContent = 'svg-rand';
-            item.appendChild(tag);
-        }
-
         if (m.previewPhotosUrl) {
             const tag = document.createElement('span');
             tag.className = 'svg-tag';
@@ -822,7 +1249,6 @@ function dgUploadMaskToLibrary() {
     const labelInput = document.getElementById('modal_mask_label');
     const fileInput = document.getElementById('modal_mask_file');
     const thumbInput = document.getElementById('modal_mask_thumb');
-    const svgInput = document.getElementById('modal_mask_svg');
     const previewPhotosInput = document.getElementById('modal_mask_preview_photos');
     const errorEl = document.getElementById('dg-mask-upload-error');
     errorEl.style.display = 'none';
@@ -842,7 +1268,6 @@ function dgUploadMaskToLibrary() {
     fd.append('label', labelInput.value.trim());
     fd.append('mask', fileInput.files[0]);
     if (thumbInput.files.length) fd.append('thumbnail', thumbInput.files[0]);
-    if (svgInput.files.length) fd.append('svg', svgInput.files[0]);
     if (previewPhotosInput.files.length) fd.append('preview_photos', previewPhotosInput.files[0]);
 
     fetch(dgConfig.urls.masksUpload, {
@@ -857,7 +1282,7 @@ function dgUploadMaskToLibrary() {
         if (data.ok) {
             dgMasks.push({
                 id: data.id, label: data.label, url: data.url, thumbnailUrl: data.thumbnailUrl,
-                svgContent: data.svgContent, previewPhotosUrl: data.previewPhotosUrl,
+                previewPhotosUrl: data.previewPhotosUrl,
             });
             dgRenderMaskList();
             dgRenderMaskGallery();
@@ -865,7 +1290,6 @@ function dgUploadMaskToLibrary() {
             labelInput.value = '';
             fileInput.value = '';
             thumbInput.value = '';
-            svgInput.value = '';
             previewPhotosInput.value = '';
         } else {
             errorEl.textContent = 'Uploaden mislukt: ' + (data.error || 'onbekende fout');
@@ -926,17 +1350,16 @@ function dgCollectState() {
         input: document.getElementById('input')?.value,
         state: {
             backgroundPath: dgBackgroundPath,
+            backgroundHistory: dgBackgroundHistory,
             maskId: dgSelectedMaskId,
-            borderColor: (document.getElementById('dg-border-enabled')?.checked ?? false)
-                ? document.getElementById('dg-border-color')?.value
-                : null,
             logos: dgLogos.map(l => ({
                 path: l.path, xPct: l.xPct, yPct: l.yPct,
                 widthPct: l.widthPct, rotateDeg: l.rotateDeg, originalName: l.originalName,
             })),
             texts: dgTexts.map(t => ({
                 content: t.content, color: t.color, fontSlug: t.fontSlug,
-                fontSizePct: t.fontSizePct, xPct: t.xPct, yPct: t.yPct,
+                fontSizePct: t.fontSizePct, xPct: t.xPct, yPct: t.yPct, rotateDeg: t.rotateDeg,
+                fontWeight: t.fontWeight, letterSpacingEm: t.letterSpacingEm ?? 0,
             })),
             previewMode: document.getElementById('dg-preview-mode-toggle')?.checked ?? false,
             step: dgConfig.mode === 'portal' ? dgWizardStep : undefined,
@@ -971,20 +1394,18 @@ function dgRestoreInitialState() {
     const s = dgConfig.initialState;
     if (!s) return;
 
-    if (s.maskId) dgSelectedMaskId = s.maskId;
-    if (s.borderColor) {
-        const colorInput = document.getElementById('dg-border-color');
-        if (colorInput) colorInput.value = s.borderColor;
-        const enabledEl = document.getElementById('dg-border-enabled');
-        if (enabledEl) enabledEl.checked = true;
+    if (Array.isArray(s.backgroundHistory)) {
+        dgBackgroundHistory = s.backgroundHistory.slice(0, DG_MAX_HISTORY);
     }
+
+    if (s.maskId) dgSelectedMaskId = s.maskId;
 
     const savedLogos = s.logos ?? (s.logo ? [s.logo] : []); // s.logo = oude enkelvoudige vorm, voor lopende sessies van vóór de meerdere-logo's-update
     if (savedLogos.length && document.getElementById('dg-result-body')) {
         savedLogos.slice(0, DG_MAX_LOGOS).forEach(logoState => {
             if (!logoState?.path) return;
             const url = logoState.path.startsWith('http') ? logoState.path : ('/storage/' + logoState.path);
-            dgAddLogoLayer(url, logoState.path, logoState);
+            dgAddLogoLayer(url, logoState.path, logoState, false);
         });
     }
 
@@ -999,6 +1420,9 @@ function dgRestoreInitialState() {
                 fontSizePct: textState.fontSizePct ?? 5,
                 xPct: textState.xPct ?? 50,
                 yPct: textState.yPct ?? 50,
+                rotateDeg: textState.rotateDeg ?? 0,
+                fontWeight: textState.fontWeight ?? 400,
+                letterSpacingEm: textState.letterSpacingEm ?? 0,
             };
             dgTexts.push(text);
             dgCreateTextLayer(text);
@@ -1138,4 +1562,15 @@ dgRestoreInitialState();
 dgAutoSelectMaskIfNeeded();
 dgEventTypeChanged();
 dgWizardInit();
+
+// Geschiedenis initialiseren: seed met de huidige achtergrond als hij er nog niet in staat
+// (eerste generatie op deze pagina, of een herstelde sessie met alleen backgroundPath).
+(function dgInitHistory() {
+    const curPath = dgBackgroundPath;
+    const curImg = document.getElementById('dg-design-img');
+    if (curPath && curImg && !dgBackgroundHistory.some(h => h.path === curPath)) {
+        dgBackgroundHistory.push({ path: curPath, url: curImg.src });
+    }
+    dgRenderHistory();
+})();
 </script>

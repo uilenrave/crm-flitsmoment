@@ -346,6 +346,24 @@
                     </div>
                 </div>
 
+                @if($b->location_contact_phone)
+                @php
+                    $lcLabels = ['ceremoniemeester' => 'Ceremoniemeester', 'eventmanager' => 'Eventmanager', 'eventlocatie' => 'Eventlocatie', 'wij_zelf' => 'Klant zelf', 'anders' => 'Anders'];
+                    $lcLabel  = $lcLabels[$b->location_contact_type] ?? 'Contactpersoon';
+                @endphp
+                <div class="detail-row">
+                    <div class="detail-icon">📇</div>
+                    <div class="detail-text">
+                        <div class="detail-label">Contactpersoon op locatie</div>
+                        <strong>{{ $lcLabel }}</strong>
+                        <br><a href="tel:{{ $b->location_contact_phone }}" style="color:#3b82f6;font-size:.85rem;">{{ $b->location_contact_phone }}</a>
+                        @if($b->location_contact_email)
+                        <br><a href="mailto:{{ $b->location_contact_email }}" style="color:#3b82f6;font-size:.85rem;">{{ $b->location_contact_email }}</a>
+                        @endif
+                    </div>
+                </div>
+                @endif
+
                 @if($b->event_location || $adres)
                 <div class="detail-row">
                     <div class="detail-icon">📍</div>

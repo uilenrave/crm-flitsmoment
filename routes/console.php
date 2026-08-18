@@ -65,6 +65,30 @@ Schedule::call(function () {
             $mail->send('customer_strip_choice_reminder', $booking, $booking->customer_email);
         });
 
+    // ── 5. ~48u voor ophalen (To Go): herinnering met ophaal- + retourtijd → klant ──
+    Booking::withoutGlobalScope(AccountScope::class)
+        ->with('account')
+        ->where('booking_type', 'to_go')
+        ->whereNotIn('status', ['cancelled', 'no_show'])
+        ->whereNotNull('customer_email')
+        ->whereNotNull('customer_pickup_at')
+        ->whereDate('customer_pickup_at', now()->addDays(2)->toDateString())
+        ->each(function (Booking $booking) use ($mail) {
+            $mail->send('customer_to_go_reminder', $booking, $booking->customer_email);
+        });
+
+    // ── 6. ~48u voor bezorging (Full Service): herinnering met bezorg- + ophaaltijd → klant ──
+    Booking::withoutGlobalScope(AccountScope::class)
+        ->with('account')
+        ->where('booking_type', 'full_service')
+        ->whereNotIn('status', ['cancelled', 'no_show'])
+        ->whereNotNull('customer_email')
+        ->whereNotNull('delivery_at')
+        ->whereDate('delivery_at', now()->addDays(2)->toDateString())
+        ->each(function (Booking $booking) use ($mail) {
+            $mail->send('customer_full_service_reminder', $booking, $booking->customer_email);
+        });
+
 })->daily()->at('08:00')->name('dagelijkse-mail-automatisering')->withoutOverlapping();
 
 /**

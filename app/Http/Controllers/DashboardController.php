@@ -25,100 +25,37 @@ class DashboardController extends Controller
         $leadsMetrics     = $this->analyticsService->getLeadsMetrics($accountId, $dateRange);
         $bookingsMetrics  = $this->analyticsService->getBookingsMetrics($accountId, $dateRange);
         $revenueMetrics   = $this->analyticsService->getRevenueMetrics($accountId, $dateRange);
-        $trendData        = Cache::remember(
-            "dashboard:trends:{$accountId}",
+        $yearly           = Cache::remember(
+            "dashboard:yearly:{$accountId}",
             now()->addMinutes(5),
-            fn() => $this->analyticsService->getTrendData($accountId, 12)
+            fn() => $this->analyticsService->getYearlyTrends($accountId)
+        );
+        $outstanding      = Cache::remember(
+            "dashboard:outstanding:{$accountId}",
+            now()->addMinutes(5),
+            fn() => $this->analyticsService->getOutstandingInvoiceStats($accountId)
         );
         $conversionFunnel = $this->analyticsService->getConversionFunnel($accountId);
         $upcomingEvents   = $this->analyticsService->getUpcomingEvents($accountId, 7);
         $recentLeads      = $this->analyticsService->getRecentLeads($accountId, 5);
         $staffHoursStats  = $this->analyticsService->getStaffHoursStats($accountId);
 
-        $y0 = $trendData['current_year'];
-        $y1 = $trendData['prev_year'];
-        $y2 = $trendData['prev2_year'];
-
-        // Prepare data for charts
+        // Bouw één dataset per kalenderjaar; niet-standaard jaren starten verborgen (jaartoggle in de view).
         $bookingsTrendChartData = json_encode([
-            'labels' => $trendData['labels'],
-            'datasets' => [
-                [
-                    'label' => (string) $y0,
-                    'data' => $trendData['bookings'],
-                    'borderColor' => '#f59e0b',
-                    'backgroundColor' => 'rgba(252, 211, 77, 0.08)',
-                    'tension' => 0.4,
-                    'fill' => true,
-                    'borderWidth' => 2,
-                ],
-                [
-                    'label' => (string) $y1,
-                    'data' => $trendData['bookings_prev_year'],
-                    'borderColor' => '#64748b',
-                    'backgroundColor' => 'transparent',
-                    'borderDash' => [5, 4],
-                    'tension' => 0.4,
-                    'fill' => false,
-                    'pointRadius' => 3,
-                    'borderWidth' => 1.5,
-                ],
-                [
-                    'label' => (string) $y2,
-                    'data' => $trendData['bookings_prev2_year'],
-                    'borderColor' => '#cbd5e1',
-                    'backgroundColor' => 'transparent',
-                    'borderDash' => [3, 3],
-                    'tension' => 0.4,
-                    'fill' => false,
-                    'pointRadius' => 2,
-                    'borderWidth' => 1.5,
-                ],
-            ]
+            'labels'   => $yearly['labels'],
+            'datasets' => $this->yearDatasets($yearly, 'bookings'),
         ]);
-
         $revenueTrendChartData = json_encode([
-            'labels' => $trendData['labels'],
-            'datasets' => [
-                [
-                    'label' => (string) $y0,
-                    'data' => $trendData['revenue'],
-                    'borderColor' => '#f59e0b',
-                    'backgroundColor' => 'rgba(252, 211, 77, 0.08)',
-                    'tension' => 0.4,
-                    'fill' => true,
-                    'borderWidth' => 2,
-                ],
-                [
-                    'label' => (string) $y1,
-                    'data' => $trendData['revenue_prev_year'],
-                    'borderColor' => '#64748b',
-                    'backgroundColor' => 'transparent',
-                    'borderDash' => [5, 4],
-                    'tension' => 0.4,
-                    'fill' => false,
-                    'pointRadius' => 3,
-                    'borderWidth' => 1.5,
-                ],
-                [
-                    'label' => (string) $y2,
-                    'data' => $trendData['revenue_prev2_year'],
-                    'borderColor' => '#cbd5e1',
-                    'backgroundColor' => 'transparent',
-                    'borderDash' => [3, 3],
-                    'tension' => 0.4,
-                    'fill' => false,
-                    'pointRadius' => 2,
-                    'borderWidth' => 1.5,
-                ],
-            ]
+            'labels'   => $yearly['labels'],
+            'datasets' => $this->yearDatasets($yearly, 'revenue'),
         ]);
 
         return view('dashboard.index', compact(
             'leadsMetrics',
             'bookingsMetrics',
             'revenueMetrics',
-            'trendData',
+            'yearly',
+            'outstanding',
             'conversionFunnel',
             'upcomingEvents',
             'recentLeads',
@@ -127,6 +64,36 @@ class DashboardController extends Controller
             'revenueTrendChartData',
             'staffHoursStats'
         ));
+    }
+
+    /** Kleur per jaar: huidig jaar amber, overige jaren uit een vast palet (stabiel per positie). */
+    private function yearColor(int $year, int $index, int $currentYear): string
+    {
+        if ($year === $currentYear) return '#f59e0b';
+        $palette = ['#2563eb', '#64748b', '#16a34a', '#db2777', '#0891b2', '#9333ea', '#ca8a04', '#dc2626'];
+        return $palette[$index % count($palette)];
+    }
+
+    /** Chart.js-datasets: één lijn per jaar, standaard-jaren zichtbaar, rest verborgen. */
+    private function yearDatasets(array $yearly, string $seriesKey): array
+    {
+        $datasets = [];
+        foreach ($yearly['years'] as $i => $year) {
+            $isCurrent = $year === $yearly['current_year'];
+            $color = $this->yearColor($year, $i, $yearly['current_year']);
+            $datasets[] = [
+                'label'           => (string) $year,
+                'data'            => array_values($yearly[$seriesKey][$year]),
+                'borderColor'     => $color,
+                'backgroundColor' => $isCurrent ? 'rgba(245,158,11,0.08)' : 'transparent',
+                'fill'            => $isCurrent,
+                'tension'         => 0.4,
+                'borderWidth'     => $isCurrent ? 2.5 : 1.8,
+                'pointRadius'     => 2,
+                'hidden'          => ! in_array($year, $yearly['default_years'], true),
+            ];
+        }
+        return $datasets;
     }
 
     public function trends(Request $request)

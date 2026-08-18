@@ -37,11 +37,6 @@ class DesignMask extends Model
         return Storage::disk('public')->url($this->thumbnail_path ?? $this->path);
     }
 
-    public function getSvgUrlAttribute(): ?string
-    {
-        return $this->svg_path ? Storage::disk('public')->url($this->svg_path) : null;
-    }
-
     public function getPreviewPhotosUrlAttribute(): ?string
     {
         return $this->preview_photos_path ? Storage::disk('public')->url($this->preview_photos_path) : null;
@@ -63,7 +58,6 @@ class DesignMask extends Model
                 'label'            => $m->label,
                 'url'              => $m->url,
                 'thumbnailUrl'     => $m->thumbnail_url,
-                'svgContent'       => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
                 'previewPhotosUrl' => $m->preview_photos_url,
             ])
             ->values();

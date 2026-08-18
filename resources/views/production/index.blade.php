@@ -54,7 +54,7 @@
                 <td>{{ $booking->event_date?->format('d-m-Y') }}</td>
                 <td>
                     <span class="prod-status {{ $booking->strip_status === 'ready' ? 'prod-status-ready' : 'prod-status-other' }}">
-                        {{ $booking->strip_status ?? '—' }}
+                        {{ \App\Models\Booking::stripStatusLabel($booking->strip_status) ?? '—' }}
                     </span>
                 </td>
                 <td>

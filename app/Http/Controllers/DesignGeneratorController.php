@@ -20,66 +20,32 @@ use Illuminate\View\View;
 
 class DesignGeneratorController extends Controller
 {
-    /** Toon het ontwerp-generator formulier (los, niet aan een boeking gekoppeld) */
+    /**
+     * Ontwerpen kan alléén gekoppeld aan een boeking. De generator-ingang toont daarom direct een
+     * overzicht van boekingen om uit te kiezen (geen los/algemeen ontwerp meer).
+     */
     public function index(): View
     {
-        return view('design.index', array_merge($this->baseViewData(), [
-            'results'          => null,
-            'input'            => '',
-            'upcomingBookings' => $this->upcomingBookings(),
-        ]));
+        return view('design.index', [
+            'bookings' => $this->pickableBookings(),
+        ]);
     }
 
-    private function upcomingBookings()
+    /** Boekingen om een ontwerp voor te maken: aankomende bevestigde boekingen, eerstvolgende eerst. */
+    private function pickableBookings()
     {
         return Booking::where('status', 'confirmed')
             ->whereDate('event_date', '>=', now()->toDateString())
             ->orderBy('event_date')
-            ->get(['id', 'booking_number', 'customer_name', 'event_date']);
+            ->get(['id', 'booking_number', 'customer_name', 'event_date', 'strip_status', 'production_file_path']);
     }
 
-    /** Bepaal de achtergrond (AI-generatie, eigen upload of een effen kleur) (standalone) */
-    public function generate(Request $request): View
-    {
-        $service = app(DesignGenerationService::class);
-        $data = $service->validateGenerateRequest($request);
-        $method = $data['background_method'] ?? 'ai';
-        $input = '';
-
-        if ($method === 'upload') {
-            $results = $service->uploadBackground($request->file('background_upload'));
-        } elseif ($method === 'color') {
-            $results = $service->colorBackground($data['background_color']);
-        } else {
-            $refPaths = $service->storeReferenceFiles($request);
-            $results = $service->generateBackground($data['event_type'], $data['input'], $refPaths);
-            $input = $data['input'];
-        }
-
-        return view('design.index', array_merge($this->baseViewData(), [
-            'results'          => $results,
-            'input'            => $input,
-            'eventType'        => $data['event_type'],
-            'upcomingBookings' => $this->upcomingBookings(),
-        ]));
-    }
-
-    /** Stel een geüpload logo vrij als transparante PNG (standalone) */
-    public function cutoutLogo(Request $request): JsonResponse
-    {
-        $data = app(DesignGenerationService::class)->validateLogoRequest($request);
-        $stored = $request->file('logo')->store('design-generator/refs', 'local');
-
-        return response()->json(app(DesignGenerationService::class)->cutoutLogo(Storage::disk('local')->path($stored)));
-    }
-
-    /** Pas een masker (+ optionele gekleurde svg-rand) toe op een gegenereerde achtergrond (standalone preview) */
+    /** Pas een masker toe op een gegenereerde achtergrond (standalone preview) */
     public function applyMask(Request $request): JsonResponse
     {
         $data = $request->validate([
             'background_path' => ['required', 'string'],
             'mask_id'          => ['required', 'integer', 'exists:design_masks,id'],
-            'border_color'     => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
         if (
@@ -93,7 +59,7 @@ class DesignGeneratorController extends Controller
 
         try {
             $binary = app(DesignRenderService::class)
-                ->renderMaskPreview($data['background_path'], $mask, $data['border_color'] ?? null);
+                ->renderMaskPreview($data['background_path'], $mask);
 
             $filename = 'design-generator/out/' . Str::random(24) . '-masked.png';
             Storage::disk('public')->put($filename, $binary);
@@ -112,19 +78,17 @@ class DesignGeneratorController extends Controller
         }
     }
 
-    /** Voeg een zwart-wit maskerafbeelding (+ optionele thumbnail/svg-rand) toe aan de herbruikbare bibliotheek */
+    /** Voeg een zwart-wit maskerafbeelding (+ optionele thumbnail) toe aan de herbruikbare bibliotheek */
     public function uploadMask(Request $request): JsonResponse
     {
         $data = $request->validate([
             'label'          => ['required', 'string', 'max:100'],
             'mask'           => ['required', 'image', 'max:8192'],
             'thumbnail'      => ['nullable', 'image', 'max:8192'],
-            'svg'            => ['nullable', 'file', 'mimes:svg', 'max:2048'],
             'preview_photos' => ['nullable', 'image', 'max:8192'],
         ], [], [
             'mask'           => 'maskerafbeelding',
             'thumbnail'      => 'thumbnail-afbeelding',
-            'svg'            => 'svg-bestand',
             'preview_photos' => 'voorbeeldfoto\'s-afbeelding',
         ]);
 
@@ -141,13 +105,6 @@ class DesignGeneratorController extends Controller
             Storage::disk('public')->put($thumbFilename, file_get_contents($request->file('thumbnail')->getRealPath()));
         }
 
-        $svgFilename = null;
-        if ($request->hasFile('svg')) {
-            $svgContent  = $this->sanitizeSvg(file_get_contents($request->file('svg')->getRealPath()));
-            $svgFilename = 'design-generator/masks/' . Str::random(24) . '.svg';
-            Storage::disk('public')->put($svgFilename, $svgContent);
-        }
-
         $previewPhotosFilename = null;
         if ($request->hasFile('preview_photos')) {
             $previewPhotosFilename = 'design-generator/masks/' . Str::random(24) . '-preview.'
@@ -159,7 +116,6 @@ class DesignGeneratorController extends Controller
             'label'               => $data['label'],
             'path'                => $filename,
             'thumbnail_path'      => $thumbFilename,
-            'svg_path'            => $svgFilename,
             'preview_photos_path' => $previewPhotosFilename,
         ]);
 
@@ -169,7 +125,6 @@ class DesignGeneratorController extends Controller
             'label'            => $mask->label,
             'url'              => $mask->url,
             'thumbnailUrl'     => $mask->thumbnail_url,
-            'svgContent'       => $mask->svg_path ? Storage::disk('public')->get($mask->svg_path) : null,
             'previewPhotosUrl' => $mask->preview_photos_url,
         ]);
     }
@@ -251,8 +206,12 @@ class DesignGeneratorController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Bepaal de achtergrond (AI-generatie, eigen upload of een effen kleur) voor de boeking-gekoppelde sessie */
-    public function bookingGenerate(Request $request, Booking $booking): View
+    /**
+     * Bepaal de achtergrond (AI-generatie, eigen upload of een effen kleur) voor de boeking-gekoppelde sessie.
+     * Redirect na afloop (Post/Redirect/Get) zodat een pagina-herlaad de POST niet opnieuw uitvoert —
+     * anders genereerde een reload op deze url stilletjes een nieuwe AI-achtergrond i.p.v. de opgeslagen te tonen.
+     */
+    public function bookingGenerate(Request $request, Booking $booking): RedirectResponse|JsonResponse
     {
         $service = app(DesignGenerationService::class);
         $data = $service->validateGenerateRequest($request);
@@ -263,9 +222,11 @@ class DesignGeneratorController extends Controller
             $results = $service->uploadBackground($request->file('background_upload'));
         } elseif ($method === 'color') {
             $results = $service->colorBackground($data['background_color']);
+        } elseif ($method === 'template') {
+            $results = $service->templateBackground((int) $data['template_id']);
         } else {
             $refPaths = $service->storeReferenceFiles($request);
-            $results = $service->generateBackground($data['event_type'], $data['input'], $refPaths);
+            $results = $service->generateBackground($data['event_type'], $data['input'], $refPaths, null, $booking->id, 'admin_generator');
             $input = $data['input'];
         }
 
@@ -281,14 +242,17 @@ class DesignGeneratorController extends Controller
             'state'      => $state,
         ]);
 
-        return view('design.booking', array_merge($this->baseViewData(), [
-            'booking'      => $booking,
-            'session'      => $session,
-            'results'      => $results,
-            'input'        => $input,
-            'eventType'    => $data['event_type'],
-            'initialState' => $state,
-        ]));
+        // Regeneratie via AJAX (er staat al een achtergrond) — geen redirect, puur het resultaat,
+        // zodat de client de afbeelding in-place kan verversen zonder de pagina te herladen.
+        if ($request->expectsJson()) {
+            return response()->json($results);
+        }
+
+        if (! $results['ok']) {
+            return redirect()->route('design.booking', $booking)->with('error', $results['error']);
+        }
+
+        return redirect()->route('design.booking', $booking);
     }
 
     /** Stel een logo vrij voor de boeking-gekoppelde sessie (geen limiet — admin) */
@@ -297,7 +261,29 @@ class DesignGeneratorController extends Controller
         $data = app(DesignGenerationService::class)->validateLogoRequest($request);
         $stored = $request->file('logo')->store('design-generator/refs', 'local');
 
-        return response()->json(app(DesignGenerationService::class)->cutoutLogo(Storage::disk('local')->path($stored)));
+        return response()->json(app(DesignGenerationService::class)->cutoutLogo(
+            Storage::disk('local')->path($stored),
+            $booking->account_id,
+            $request->input('description'),
+            'admin_generator',
+            $booking->id,
+        ));
+    }
+
+    /** Plaats een goedgekeurd bibliotheek-element als laag (boeking-gekoppelde sessie — admin) */
+    public function bookingUseElement(Request $request, Booking $booking): JsonResponse
+    {
+        $request->validate(['element_id' => ['required', 'integer']]);
+
+        return response()->json(app(DesignGenerationService::class)->elementFromLibrary((int) $request->input('element_id')));
+    }
+
+    /** Gebruik een geüpload logo direct, zonder AI-vrijstelling (boeking-gekoppelde sessie — admin) */
+    public function bookingUploadLogo(Request $request, Booking $booking): JsonResponse
+    {
+        app(DesignGenerationService::class)->validateLogoRequest($request);
+
+        return response()->json(app(DesignGenerationService::class)->uploadLogoDirect($request->file('logo')));
     }
 
     /** Verstuur het huidige ontwerp naar de klant (mockup + mail, zoals de bestaande handmatige upload) */
@@ -306,7 +292,11 @@ class DesignGeneratorController extends Controller
         $session = $this->session($booking);
 
         try {
-            $binary = app(DesignRenderService::class)->render($session);
+            // includePreviewPhotos: de klant moet altijd de voorbeeldfoto's in de vensters zien
+            // (ongeacht de "Preview modus"-stand in de editor) — anders ogen de foto-vensters
+            // leeg/transparant in de presentatie. Het echte productiebestand (bookingSetProduction)
+            // rendert apart, met genuine transparantie, dus dit raakt de productie-flow niet.
+            $binary = app(DesignRenderService::class)->render($session, includePreviewPhotos: true);
         } catch (\Throwable $e) {
             return back()->with('error', 'Kan nog niet versturen: ' . $e->getMessage());
         }
@@ -330,19 +320,10 @@ class DesignGeneratorController extends Controller
         $session = $this->session($booking);
 
         try {
-            $binary = app(DesignRenderService::class)->render($session);
+            app(DesignRenderService::class)->storeProductionFile($session, $booking);
         } catch (\Throwable $e) {
             return back()->with('error', 'Kan nog niet klaarzetten: ' . $e->getMessage());
         }
-
-        $filename = 'production/' . $booking->booking_number . '_' . Str::random(8) . '.png';
-        Storage::disk('public')->put($filename, $binary);
-
-        $booking->update([
-            'production_file_path' => $filename,
-            'production_file_at'   => now(),
-            'strip_status'         => 'ready',
-        ]);
 
         return redirect()->route('design.booking', $booking)
             ->with('success', 'PNG klaargezet voor productie.');
@@ -357,16 +338,6 @@ class DesignGeneratorController extends Controller
     // Gedeelde kernlogica
     // ──────────────────────────────────────────────────────────────
 
-    /** Basisbeveiliging voor geüploade SVG's: verwijder scripts en on*-event-handlers vóórdat we ze opslaan/inline tonen */
-    private function sanitizeSvg(string $svg): string
-    {
-        $svg = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $svg);
-        $svg = preg_replace('/\son\w+\s*=\s*"[^"]*"/i', '', $svg);
-        $svg = preg_replace("/\son\\w+\\s*=\\s*'[^']*'/i", '', $svg);
-
-        return $svg;
-    }
-
     private function baseViewData(): array
     {
         $promptsByType = [];
@@ -379,7 +350,6 @@ class DesignGeneratorController extends Controller
             'label'            => $m->label,
             'url'              => $m->url,
             'thumbnailUrl'     => $m->thumbnail_url,
-            'svgContent'       => $m->svg_path ? Storage::disk('public')->get($m->svg_path) : null,
             'previewPhotosUrl' => $m->preview_photos_url,
         ])->values();
 
@@ -393,6 +363,8 @@ class DesignGeneratorController extends Controller
             'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
             'masks'          => $masks,
             'googleFonts'    => \App\Services\GoogleFontRegistry::labels(),
+            'templateCategories' => app(DesignGenerationService::class)->templateCategories(),
+            'elementCategories'  => app(DesignGenerationService::class)->elementCategories(),
         ];
     }
 }

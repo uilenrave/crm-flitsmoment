@@ -109,6 +109,20 @@
             .header { padding: 1rem; }
             .container { padding: 1.25rem 1rem 3rem; }
         }
+
+        /* Contactpersoon + wijzigingsverzoek */
+        .pc-label { display:block; font-size:.8rem; font-weight:600; color:#334155; margin-bottom:.3rem; }
+        .pc-input, .pc-select { width:100%; box-sizing:border-box; padding:.6rem .75rem; border:1px solid var(--border); border-radius:.55rem; font-size:.9rem; font-family:inherit; background:#fff; }
+        .pc-input:focus, .pc-select:focus { outline:none; border-color:#93c5fd; box-shadow:0 0 0 3px rgba(59,130,246,.12); }
+        .pc-btn { display:inline-block; background:#2563eb; color:#fff; border:none; padding:.65rem 1.4rem; border-radius:.55rem; font-weight:700; font-size:.9rem; cursor:pointer; }
+        .pc-btn:hover { background:#1d4ed8; }
+        .pc-btn-ghost { background:#fff; color:#334155; border:1px solid var(--border); }
+        .pc-btn-ghost:hover { background:#f8fafc; }
+        .moment-card { border-radius:12px; padding:14px 18px; margin:12px 0; }
+        .moment-card .mc-label { font-weight:700; font-size:.85rem; margin:0 0 4px; }
+        .moment-card .mc-time { font-weight:800; font-size:1.15rem; margin:0; }
+        .moment-note { background:#fef2f2; border-left:4px solid #ef4444; color:#991b1b; padding:.7rem 1rem; border-radius:6px; font-size:.85rem; }
+        .pending-banner { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; padding:.7rem 1rem; border-radius:.5rem; font-size:.88rem; margin-bottom:1rem; }
     </style>
 </head>
 <body>
@@ -130,12 +144,131 @@
     @if(session('error'))
         <div class="alert alert-error">{{ session('error') }}</div>
     @endif
+    @if($errors->any())
+        <div class="alert alert-error">{{ $errors->first() }}</div>
+    @endif
 
     {{-- Begroeting --}}
     <div class="greeting">
         <h1>Hallo {{ explode(' ', $booking->customer_name)[0] }}!</h1>
         <p>Hier vindt u alle details van uw boeking bij {{ $booking->account->name }}.</p>
     </div>
+
+    @php
+        $isToGo = $booking->booking_type === 'to_go';
+        $contactLabels = [
+            'ceremoniemeester' => 'Ceremoniemeester', 'eventmanager' => 'Eventmanager',
+            'eventlocatie' => 'Eventlocatie', 'wij_zelf' => 'Wij zelf', 'anders' => 'Anders',
+        ];
+    @endphp
+
+    {{-- ─── Contactpersoon op locatie (alleen Full Service) ─── --}}
+    @if(! $isToGo)
+    <div class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background:#eff6ff;">📇</div>
+            <span class="section-title">Contactpersoon op locatie</span>
+        </div>
+        <div class="section-body">
+            <p style="font-size:.85rem;color:var(--muted);margin:0 0 1rem;">Wie kunnen we op de dag zelf bereiken op de eventlocatie?</p>
+            <form method="POST" action="{{ route('portal.location-contact', $booking->public_token) }}" style="display:flex;flex-direction:column;gap:.9rem;">
+                @csrf
+                <div>
+                    <label class="pc-label" for="location_contact_type">Wie is de contactpersoon?</label>
+                    <select id="location_contact_type" name="location_contact_type" class="pc-select"
+                            data-phone="{{ $booking->customer_phone }}" data-email="{{ $booking->customer_email }}"
+                            onchange="pcContactTypeChanged(this)">
+                        <option value="">— maak een keuze —</option>
+                        @foreach($contactLabels as $val => $lbl)
+                            <option value="{{ $val }}" @selected($booking->location_contact_type === $val)>{{ $lbl }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="pc-label" for="location_contact_phone">Telefoonnummer <span style="color:#dc2626;">*</span></label>
+                    <input id="location_contact_phone" name="location_contact_phone" class="pc-input" type="tel" required
+                           value="{{ old('location_contact_phone', $booking->location_contact_phone) }}" placeholder="bijv. 06 12345678">
+                </div>
+                <div>
+                    <label class="pc-label" for="location_contact_email">E-mailadres <span style="color:#94a3b8;font-weight:400;">— optioneel</span></label>
+                    <input id="location_contact_email" name="location_contact_email" class="pc-input" type="email"
+                           value="{{ old('location_contact_email', $booking->location_contact_email) }}" placeholder="naam@voorbeeld.nl">
+                </div>
+                <div><button type="submit" class="pc-btn">Opslaan</button></div>
+            </form>
+            @if($booking->location_contact_type)
+                <p style="margin:1rem 0 0;font-size:.82rem;color:#16a34a;">✅ Opgeslagen: <strong>{{ $contactLabels[$booking->location_contact_type] ?? $booking->location_contact_type }}</strong> · {{ $booking->location_contact_phone }}@if($booking->location_contact_email) · {{ $booking->location_contact_email }}@endif</p>
+            @endif
+        </div>
+    </div>
+    @endif
+
+    {{-- ─── Bezorg-/ophaalmoment (beide types) — prominent + wijziging aanvragen ─── --}}
+    <div class="section" style="border:2px solid #fdba74;">
+        <div class="section-header" style="background:#fff7ed;">
+            <div class="section-icon" style="background:#ffedd5;">{{ $isToGo ? '📦' : '🚚' }}</div>
+            <span class="section-title">{{ $isToGo ? 'Ophaal- & retourmoment' : 'Bezorg- & ophaalmoment' }}</span>
+        </div>
+        <div class="section-body">
+            @if($booking->pending_change)
+                <div class="pending-banner">⏳ Je <strong>wijzigingsverzoek is in behandeling</strong>. Zodra we het bevestigen krijg je bericht en zie je hier de nieuwe tijden.</div>
+            @endif
+
+            @php
+                $moments = $isToGo
+                    ? [['📦 Ophalen bij ons', $booking->customer_pickup_at, '#c2410c', '#fff7ed', '#fed7aa'], ['🔄 Terugbrengen bij ons', $booking->customer_return_at, '#c2410c', '#fff7ed', '#fed7aa']]
+                    : [['🚚 Wij bezorgen', $booking->delivery_at, '#1d4ed8', '#eff6ff', '#bfdbfe'], ['📦 Wij halen op', $booking->pickup_at, '#1d4ed8', '#eff6ff', '#bfdbfe']];
+            @endphp
+            @foreach($moments as [$label, $at, $color, $bg, $border])
+                <div class="moment-card" style="background:{{ $bg }};border:1px solid {{ $border }};">
+                    <p class="mc-label" style="color:{{ $color }};">{{ $label }}</p>
+                    <p class="mc-time">{{ $at ? $at->translatedFormat('l j F') . ' · ' . $at->format('H:i') . '–' . $at->copy()->addMinutes(30)->format('H:i') . ' uur' : 'Nog niet ingepland' }}</p>
+                </div>
+            @endforeach
+
+            @unless($booking->pending_change)
+            <button type="button" class="pc-btn pc-btn-ghost" style="margin-top:1rem;" onclick="pcToggleChange()">🕑 Wijziging aanvragen</button>
+            <form id="pc-change-form" method="POST" action="{{ route('portal.request-time-change', $booking->public_token) }}" style="display:none;margin-top:1rem;flex-direction:column;gap:.9rem;">
+                @csrf
+                <p style="font-size:.82rem;color:var(--muted);margin:0;">Vul alleen het moment in dat je wilt wijzigen. We beoordelen je verzoek en bevestigen het per mail.</p>
+                @php
+                    $fields = $isToGo
+                        ? [['customer_pickup_at', 'Nieuw ophaalmoment', $booking->customer_pickup_at], ['customer_return_at', 'Nieuw retourmoment', $booking->customer_return_at]]
+                        : [['delivery_at', 'Nieuw bezorgmoment', $booking->delivery_at], ['pickup_at', 'Nieuw ophaalmoment', $booking->pickup_at]];
+                @endphp
+                @foreach($fields as [$name, $lbl, $cur])
+                    <div>
+                        <label class="pc-label" for="pc-{{ $name }}">{{ $lbl }} @if($cur)<span style="color:#94a3b8;font-weight:400;">— huidig: {{ $cur->format('d-m-Y H:i') }}</span>@endif</label>
+                        <input id="pc-{{ $name }}" name="{{ $name }}" class="pc-input" type="datetime-local">
+                    </div>
+                @endforeach
+                <div>
+                    <label class="pc-label" for="pc-note">Toelichting <span style="color:#94a3b8;font-weight:400;">— optioneel</span></label>
+                    <textarea id="pc-note" name="note" class="pc-input" rows="2" placeholder="bijv. we willen iets later ophalen i.v.m. opbouw"></textarea>
+                </div>
+                <div style="display:flex;gap:.5rem;">
+                    <button type="submit" class="pc-btn">Verzoek versturen</button>
+                    <button type="button" class="pc-btn pc-btn-ghost" onclick="pcToggleChange()">Annuleren</button>
+                </div>
+            </form>
+            @endunless
+        </div>
+    </div>
+
+    <script>
+        function pcContactTypeChanged(sel) {
+            if (sel.value === 'wij_zelf') {
+                var p = document.getElementById('location_contact_phone');
+                var e = document.getElementById('location_contact_email');
+                if (p && sel.dataset.phone) p.value = sel.dataset.phone;
+                if (e && sel.dataset.email) e.value = sel.dataset.email;
+            }
+        }
+        function pcToggleChange() {
+            var f = document.getElementById('pc-change-form');
+            f.style.display = (f.style.display === 'none' || !f.style.display) ? 'flex' : 'none';
+        }
+    </script>
 
     {{-- Bezorg- & ophaalgegevens voortgang --}}
     @php
@@ -160,7 +293,8 @@
         $progressPercent = $booking->intake_completed ? 100 : round(($completedSteps / $totalSteps) * 100);
     @endphp
 
-    @if($booking->show_intake || $booking->intake_completed)
+    {{-- Oude intake-wizard is uitgefaseerd: alleen nog de samenvatting tonen voor boekingen die 'm al hadden ingevuld (dataretentie). --}}
+    @if($booking->intake_completed)
     <div class="section" style="border:2px solid {{ $booking->intake_completed ? '#86efac' : '#fcd34d' }};">
         <div class="section-header" style="background:{{ $booking->intake_completed ? '#f0fdf4' : '#fffbeb' }};">
             <span class="section-title">{{ $sectionTitle }}</span>
@@ -326,8 +460,8 @@
     </style>
     @endif
 
-    {{-- ─── Fotostrip ontwerp: 3 opties met sub-flows ─── --}}
-    @include('portal._strip_options', ['booking' => $booking, 'stripTemplates' => $stripTemplates ?? collect()])
+    {{-- ─── Fotostrip ontwerp: keuze template / AI + status ─── --}}
+    @include('portal._strip_options', ['booking' => $booking])
 
     {{-- ─── Boekingdetails ─── --}}
     <div class="section">
@@ -367,32 +501,8 @@
                     </div>
                 </div>
 
-                @if($booking->booking_type === 'full_service')
-                    @if($booking->delivery_at)
-                    <div class="detail-item">
-                        <label>Bezorging</label>
-                        <div class="value">{{ $booking->delivery_at->translatedFormat('l j F') }} om {{ $booking->delivery_at->format('H:i') }}</div>
-                    </div>
-                    @endif
-                    @if($booking->pickup_at)
-                    <div class="detail-item">
-                        <label>Ophalen (door ons)</label>
-                        <div class="value">{{ $booking->pickup_at->translatedFormat('l j F') }} om {{ $booking->pickup_at->format('H:i') }}</div>
-                    </div>
-                    @endif
-                @else
-                    @if($booking->customer_pickup_at)
-                    <div class="detail-item">
-                        <label>Ophalen bij ons</label>
-                        <div class="value">{{ $booking->customer_pickup_at->translatedFormat('l j F') }} om {{ $booking->customer_pickup_at->format('H:i') }}</div>
-                    </div>
-                    @endif
-                    @if($booking->customer_return_at)
-                    <div class="detail-item">
-                        <label>Terugbrengen</label>
-                        <div class="value">{{ $booking->customer_return_at->translatedFormat('l j F') }} om {{ $booking->customer_return_at->format('H:i') }}</div>
-                    </div>
-                    @endif
+                {{-- Bezorg/ophaaltijden staan prominent bovenaan in het eigen blok; hier alleen nog het ophaaladres voor To Go. --}}
+                @unless($booking->booking_type === 'full_service')
                     <div class="detail-item full">
                         <label>Ophaaladres</label>
                         <div class="value">Ravenswade 132, 3439 LD Nieuwegein</div>
@@ -401,7 +511,7 @@
                             Bekijk op Google Maps
                         </a>
                     </div>
-                @endif
+                @endunless
 
                 <div class="detail-item full">
                     <label>Locatie</label>
@@ -473,14 +583,18 @@
                     <label>Fotostrip status</label>
                     <div class="value">
                         @php
+                            // Klantgerichte labels (afwijkend van de interne admin-labels). Legacy
+                            // 'waiting_input' is samengevoegd met 'awaiting_customer_design'.
+                            $st = $booking->strip_status === 'waiting_input' ? 'awaiting_customer_design' : $booking->strip_status;
                             $strips = [
-                                'waiting_input' => ['label' => '⏳ Input aanleveren',          'class' => 'strip-waiting'],
-                                'designing'     => ['label' => '🎨 Ontwerpen',                 'class' => 'strip-progress'],
-                                'review'        => ['label' => '👀 Wachten op jouw goedkeuring','class' => 'strip-review'],
-                                'accepted'      => ['label' => '✅ Goedgekeurd',               'class' => 'strip-accepted'],
-                                'ready'         => ['label' => '🎉 Ontwerp staat klaar',       'class' => 'strip-done'],
+                                'awaiting_customer_design' => ['label' => '⏳ Nog te ontwerpen',           'class' => 'strip-waiting'],
+                                'customer_self_designing'  => ['label' => '✍️ Jij ontwerpt zelf',          'class' => 'strip-progress'],
+                                'designing'                => ['label' => '🎨 Wij ontwerpen',              'class' => 'strip-progress'],
+                                'review'                   => ['label' => '👀 Wachten op jouw goedkeuring', 'class' => 'strip-review'],
+                                'accepted'                 => ['label' => '✅ Goedgekeurd',                'class' => 'strip-accepted'],
+                                'ready'                    => ['label' => '🎉 Ontwerp staat klaar',        'class' => 'strip-done'],
                             ];
-                            $strip = $strips[$booking->strip_status ?? 'waiting_input'] ?? $strips['waiting_input'];
+                            $strip = $strips[$st] ?? ['label' => '⏳ Nog te kiezen', 'class' => 'strip-waiting'];
                         @endphp
                         <span class="strip-badge {{ $strip['class'] }}">{{ $strip['label'] }}</span>
                     </div>
@@ -519,57 +633,50 @@
         </div>
     </div>
 
-    {{-- ─── Fotostrip input aanleveren ─── --}}
-    {{-- Toon sectie als er al input is ingeleverd (altijd zichtbaar) OF als we nog op input wachten --}}
-    @if($booking->strip_intake_data || $booking->strip_status === 'waiting_input')
+    {{-- ─── Fotostrip input (read-back) ─── --}}
+    {{-- Toon alleen als de klant via het hulp-formulier al wensen/bestanden heeft aangeleverd. --}}
+    @if($booking->strip_intake_data)
     <div class="section">
         <div class="section-header">
             <div class="section-icon" style="background:#fef3c7;">✏️</div>
-            <span class="section-title">Fotostrip input aanleveren</span>
+            <span class="section-title">Jouw aangeleverde input</span>
         </div>
         <div class="section-body">
-            @if($booking->strip_intake_data)
-                {{-- Al eerder ingevuld — toon ingediende content (altijd zichtbaar) --}}
-                <div class="alert alert-success" style="margin-bottom:1.25rem;">
-                    ✅ Je input is ontvangen op {{ \Carbon\Carbon::parse($booking->strip_intake_data['submitted_at'])->format('d M Y \o\m H:i') }}. We zijn bezig met je ontwerp!
-                </div>
-                @if($booking->strip_intake_data['text'])
-                <div style="margin-bottom:1rem;padding:.875rem 1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.5rem;">
-                    <div style="font-size:.75rem;font-weight:700;color:#374151;margin-bottom:.4rem;">Jouw omschrijving:</div>
-                    <p style="margin:0;font-size:.9rem;white-space:pre-line;color:#374151;line-height:1.6;">{{ $booking->strip_intake_data['text'] }}</p>
-                </div>
-                @endif
-                @if(! empty($booking->strip_intake_data['files']))
-                <div style="margin-bottom:1rem;">
-                    <div style="font-size:.75rem;font-weight:700;color:#374151;margin-bottom:.5rem;">Meegestuurde bestanden:</div>
-                    @foreach($booking->strip_intake_data['files'] as $file)
-                    <a href="{{ $file['url'] }}" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .75rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.8rem;color:#1d4ed8;text-decoration:none;margin:.25rem .25rem .25rem 0;">
-                        📎 {{ $file['filename'] }}
-                    </a>
-                    @endforeach
-                </div>
-                @endif
-                {{-- "Input bijwerken" alleen tonen als de status nog wacht op input --}}
-                @if($booking->strip_status === 'waiting_input')
-                <details style="margin-top:1rem;">
-                    <summary style="font-size:.8rem;color:#6b7280;cursor:pointer;">Input bijwerken</summary>
-                    <div style="margin-top:.75rem;">
-                        @include('portal._strip_input_form', ['token' => $booking->public_token])
-                    </div>
-                </details>
-                @endif
-            @else
-                {{-- Nog niets ingevuld en status is waiting_input — toon formulier --}}
-                <p style="margin-bottom:1rem;color:var(--muted);font-size:.9rem;">Vertel ons wat je wilt voor jouw fotostrip! Omschrijf je wensen of voeg referentieafbeeldingen toe.</p>
-                @include('portal._strip_input_form', ['token' => $booking->public_token])
+            <div class="alert alert-success" style="margin-bottom:1.25rem;">
+                ✅ Je input is ontvangen op {{ \Carbon\Carbon::parse($booking->strip_intake_data['submitted_at'])->format('d M Y \o\m H:i') }}. We zijn bezig met je ontwerp!
+            </div>
+            @if($booking->strip_intake_data['text'] ?? null)
+            <div style="margin-bottom:1rem;padding:.875rem 1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.5rem;">
+                <div style="font-size:.75rem;font-weight:700;color:#374151;margin-bottom:.4rem;">Jouw omschrijving:</div>
+                <p style="margin:0;font-size:.9rem;white-space:pre-line;color:#374151;line-height:1.6;">{{ $booking->strip_intake_data['text'] }}</p>
+            </div>
             @endif
+            @if(! empty($booking->strip_intake_data['files']))
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:.75rem;font-weight:700;color:#374151;margin-bottom:.5rem;">Meegestuurde bestanden:</div>
+                @foreach($booking->strip_intake_data['files'] as $file)
+                <a href="{{ $file['url'] }}" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .75rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.8rem;color:#1d4ed8;text-decoration:none;margin:.25rem .25rem .25rem 0;">
+                    📎 {{ $file['filename'] }}
+                </a>
+                @endforeach
+            </div>
+            @endif
+            {{-- Bijwerken kan zolang het ontwerp nog niet ter beoordeling / goedgekeurd / klaar is. --}}
+            @unless(in_array($booking->strip_status, ['review', 'accepted', 'ready']))
+            <details style="margin-top:1rem;">
+                <summary style="font-size:.8rem;color:#6b7280;cursor:pointer;">Input bijwerken</summary>
+                <div style="margin-top:.75rem;">
+                    @include('portal._strip_input_form', ['token' => $booking->public_token])
+                </div>
+            </details>
+            @endunless
         </div>
     </div>
     @endif
 
     {{-- ─── Fotostrip ontwerp beoordelen ─── --}}
     @if($booking->strip_design_url && in_array($booking->strip_status, ['designing', 'review', 'accepted', 'ready']))
-    <div class="section">
+    <div class="section" id="fotostrip-ontwerp">
         <div class="section-header">
             <div class="section-icon" style="background:#f3e8ff;">🎨</div>
             <span class="section-title">Uw fotostrip ontwerp</span>

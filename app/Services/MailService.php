@@ -170,9 +170,23 @@ class MailService
             '{{strip_formaat}}'       => $booking->strip_format ?? '—',
             '{{crm_boeking_link}}'    => route('bookings.show', $booking->id),
             '{{to_go_tijden_sectie}}' => $this->buildToGoTijdenSectie($booking),
+            // Aankomst-vensters van 30 minuten (bijv. "maandag 17 juli, 10:00–10:30 uur").
+            '{{ophaal_window}}'       => $this->formatWindow($booking->customer_pickup_at), // To Go: klant haalt op
+            '{{retour_window}}'       => $this->formatWindow($booking->customer_return_at), // To Go: klant brengt terug
+            '{{bezorg_window}}'       => $this->formatWindow($booking->delivery_at),        // Full Service: wij bezorgen
+            '{{ophaal_fs_window}}'    => $this->formatWindow($booking->pickup_at),          // Full Service: wij halen op
         ];
 
         return str_replace(array_keys($vars), array_values($vars), $text);
+    }
+
+    /** Formatteer een moment als aankomst-venster van 30 minuten, bijv. "maandag 17 juli, 10:00–10:30 uur". */
+    private function formatWindow(?\Carbon\Carbon $at): string
+    {
+        if (! $at) return '';
+        $end = $at->copy()->addMinutes(30);
+
+        return $at->translatedFormat('l j F') . ', ' . $at->format('H:i') . '–' . $end->format('H:i') . ' uur';
     }
 
     private function buildToGoTijdenSectie(Booking $booking): string

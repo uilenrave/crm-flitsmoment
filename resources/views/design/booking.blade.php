@@ -32,6 +32,8 @@
     $urls = [
         'generate'         => route('design.booking.generate', $booking),
         'logoCutout'       => route('design.booking.logo', $booking),
+        'logoUpload'       => route('design.booking.logo.upload', $booking),
+        'elementUse'       => route('design.booking.element', $booking),
         'promptUpdate'     => route('design.prompt.update'),
         'masksUpload'      => route('design.masks.upload'),
         'masksApply'       => route('design.masks.apply'),
@@ -41,9 +43,9 @@
     ];
 @endphp
 
-@include('design._tool', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input', 'googleFonts'))
+@include('design._tool', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'templateCategories', 'elementCategories', 'results', 'input', 'googleFonts'))
 
 @push('scripts')
-@include('design._tool_scripts', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input', 'initialState', 'googleFonts'))
+@include('design._tool_scripts', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'templateCategories', 'elementCategories', 'results', 'input', 'initialState', 'googleFonts'))
 @endpush
 @endsection

@@ -94,6 +94,32 @@
 
     </div>
 
+    @php
+        $currentYear = $yearly['current_year'];
+        $palette = ['#2563eb', '#64748b', '#16a34a', '#db2777', '#0891b2', '#9333ea', '#ca8a04', '#dc2626'];
+        $yearColors = [];
+        foreach ($yearly['years'] as $i => $yr) {
+            $yearColors[$yr] = $yr === $currentYear ? '#f59e0b' : $palette[$i % count($palette)];
+        }
+    @endphp
+
+    {{-- Jaartoggle: bepaalt welke jaren zichtbaar zijn in de grafieken én de openstaand-tabel --}}
+    <style>
+        .year-chip { display:inline-flex;align-items:center;gap:.35rem;font-size:.8rem;font-weight:600;padding:.25rem .7rem;border-radius:9999px;cursor:pointer;border:1px solid #e2e8f0;color:#94a3b8;background:#fff;user-select:none; }
+        .year-chip .year-dot { width:.6rem;height:.6rem;border-radius:50%;background:#cbd5e1; }
+        .year-chip:has(input:checked) { color:var(--yc);border-color:var(--yc);background:color-mix(in srgb, var(--yc) 10%, #fff); }
+        .year-chip:has(input:checked) .year-dot { background:var(--yc); }
+    </style>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-bottom:1rem;">
+        <span style="font-size:.8rem;font-weight:600;color:#64748b;">Jaren vergelijken:</span>
+        @foreach($yearly['years'] as $yr)
+            <label class="year-chip" style="--yc:{{ $yearColors[$yr] }};">
+                <input type="checkbox" class="year-toggle" value="{{ $yr }}" {{ in_array($yr, $yearly['default_years'], true) ? 'checked' : '' }} onchange="applyYearFilter()" style="display:none;">
+                <span class="year-dot"></span>{{ $yr }}
+            </label>
+        @endforeach
+    </div>
+
     {{-- Charts Row --}}
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(400px, 1fr));gap:1.25rem;margin-bottom:2rem;">
 
@@ -102,9 +128,9 @@
             <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:.75rem;margin-bottom:1rem;">
                 <h3 style="font-size:1rem;font-weight:600;margin:0;color:#111827;">Boekingen per maand</h3>
                 <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-left:auto;">
-                    <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:#fef3c7;color:#b45309;">{{ now()->year }}: {{ $trendData['total_bookings_y0'] }}</span>
-                    <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:#f1f5f9;color:#475569;">{{ now()->year - 1 }}: {{ $trendData['total_bookings_y1'] }}</span>
-                    <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:#f8fafc;color:#94a3b8;">{{ now()->year - 2 }}: {{ $trendData['total_bookings_y2'] }}</span>
+                    @foreach($yearly['years'] as $yr)
+                    <span class="chart-year-chip" data-year="{{ $yr }}" style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:{{ $yearColors[$yr] }}1a;color:{{ $yearColors[$yr] }};{{ in_array($yr, $yearly['default_years'], true) ? '' : 'display:none;' }}">{{ $yr }}: {{ $yearly['total_bookings'][$yr] }}</span>
+                    @endforeach
                 </div>
             </div>
             <canvas id="bookingsTrendChart" style="max-height:300px;"></canvas>
@@ -115,14 +141,82 @@
             <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:.75rem;margin-bottom:1rem;">
                 <h3 style="font-size:1rem;font-weight:600;margin:0;color:#111827;">Omzet per maand</h3>
                 <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-left:auto;">
-                    <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:#fef3c7;color:#b45309;">{{ now()->year }}: €<span class="btw-amount" data-amount="{{ $trendData['total_revenue_y0'] }}" data-decimals="0">{{ number_format($trendData['total_revenue_y0'] / 1.21, 0, ',', '.') }}</span></span>
-                    <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:#f1f5f9;color:#475569;">{{ now()->year - 1 }}: €<span class="btw-amount" data-amount="{{ $trendData['total_revenue_y1'] }}" data-decimals="0">{{ number_format($trendData['total_revenue_y1'] / 1.21, 0, ',', '.') }}</span></span>
-                    <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:#f8fafc;color:#94a3b8;">{{ now()->year - 2 }}: €<span class="btw-amount" data-amount="{{ $trendData['total_revenue_y2'] }}" data-decimals="0">{{ number_format($trendData['total_revenue_y2'] / 1.21, 0, ',', '.') }}</span></span>
+                    @foreach($yearly['years'] as $yr)
+                    <span class="chart-year-chip" data-year="{{ $yr }}" style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;background:{{ $yearColors[$yr] }}1a;color:{{ $yearColors[$yr] }};{{ in_array($yr, $yearly['default_years'], true) ? '' : 'display:none;' }}">{{ $yr }}: €<span class="btw-amount" data-amount="{{ $yearly['total_revenue'][$yr] }}" data-decimals="0">{{ number_format($yearly['total_revenue'][$yr] / 1.21, 0, ',', '.') }}</span></span>
+                    @endforeach
                 </div>
             </div>
             <canvas id="revenueTrendChart" style="max-height:300px;"></canvas>
         </div>
 
+    </div>
+
+    {{-- Openstaande betalingen & facturatie --}}
+    @php
+        $oTot = $outstanding['total'];
+        $oCur = $outstanding['by_year'][$currentYear] ?? ['outstanding_amount'=>0,'outstanding_count'=>0];
+        $eur0 = fn($v) => number_format(((float)$v)/1.21, 0, ',', '.');
+        $eur2 = fn($v) => number_format(((float)$v)/1.21, 2, ',', '.');
+    @endphp
+    <div class="card" style="padding:1.5rem;margin-bottom:2rem;">
+        <h3 style="font-size:1rem;font-weight:600;margin:0 0 1rem;color:#111827;">💶 Openstaande betalingen &amp; facturatie</h3>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1.25rem;">
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:.6rem;padding:.9rem 1rem;">
+                <div style="font-size:.72rem;color:#991b1b;font-weight:600;">Totaal openstaand</div>
+                <div style="font-size:1.5rem;font-weight:800;color:#dc2626;line-height:1.2;">€<span class="btw-amount" data-amount="{{ $oTot['outstanding_amount'] }}" data-decimals="2">{{ $eur2($oTot['outstanding_amount']) }}</span></div>
+                <div style="font-size:.72rem;color:#b91c1c;">{{ $oTot['outstanding_count'] }} boekingen</div>
+            </div>
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:.6rem;padding:.9rem 1rem;">
+                <div style="font-size:.72rem;color:#92400e;font-weight:600;">Openstaand {{ $currentYear }}</div>
+                <div style="font-size:1.5rem;font-weight:800;color:#d97706;line-height:1.2;">€<span class="btw-amount" data-amount="{{ $oCur['outstanding_amount'] }}" data-decimals="2">{{ $eur2($oCur['outstanding_amount']) }}</span></div>
+                <div style="font-size:.72rem;color:#b45309;">{{ $oCur['outstanding_count'] }} boekingen</div>
+            </div>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:.6rem;padding:.9rem 1rem;">
+                <div style="font-size:.72rem;color:#991b1b;font-weight:600;">Nog te factureren</div>
+                <div style="font-size:1.35rem;font-weight:800;color:#dc2626;line-height:1.2;">{{ $oTot['to_invoice_count'] }}×</div>
+                <div style="font-size:.72rem;color:#b91c1c;">€<span class="btw-amount" data-amount="{{ $oTot['to_invoice_amount'] }}" data-decimals="0">{{ $eur0($oTot['to_invoice_amount']) }}</span></div>
+            </div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:.6rem;padding:.9rem 1rem;">
+                <div style="font-size:.72rem;color:#166534;font-weight:600;">Gefactureerd / niet nodig</div>
+                <div style="font-size:1.35rem;font-weight:800;color:#16a34a;line-height:1.2;">{{ $oTot['invoiced_count'] }}×</div>
+                <div style="font-size:.72rem;color:#15803d;">€<span class="btw-amount" data-amount="{{ $oTot['invoiced_amount'] }}" data-decimals="0">{{ $eur0($oTot['invoiced_amount']) }}</span></div>
+            </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:.85rem;min-width:520px;">
+            <thead><tr style="text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;">
+                <th style="padding:.5rem;">Jaar</th>
+                <th style="padding:.5rem;text-align:right;">Openstaand</th>
+                <th style="padding:.5rem;text-align:right;"># boekingen</th>
+                <th style="padding:.5rem;text-align:right;">Nog te factureren</th>
+                <th style="padding:.5rem;text-align:right;">Gefactureerd / nvt</th>
+            </tr></thead>
+            <tbody>
+            @foreach($yearly['years'] as $yr)
+                @php $o = $outstanding['by_year'][$yr] ?? null; @endphp
+                <tr class="outstanding-year-row" data-year="{{ $yr }}" style="border-top:1px solid #f1f5f9;{{ in_array($yr, $yearly['default_years'], true) ? '' : 'display:none;' }}">
+                    <td style="padding:.5rem;font-weight:600;"><span style="display:inline-block;width:.55rem;height:.55rem;border-radius:50%;background:{{ $yearColors[$yr] }};margin-right:.4rem;"></span>{{ $yr }}</td>
+                    <td style="padding:.5rem;text-align:right;font-weight:700;color:#dc2626;">€<span class="btw-amount" data-amount="{{ $o['outstanding_amount'] ?? 0 }}" data-decimals="2">{{ $eur2($o['outstanding_amount'] ?? 0) }}</span></td>
+                    <td style="padding:.5rem;text-align:right;">{{ $o['outstanding_count'] ?? 0 }}</td>
+                    <td style="padding:.5rem;text-align:right;">{{ $o['to_invoice_count'] ?? 0 }}× · €<span class="btw-amount" data-amount="{{ $o['to_invoice_amount'] ?? 0 }}" data-decimals="0">{{ $eur0($o['to_invoice_amount'] ?? 0) }}</span></td>
+                    <td style="padding:.5rem;text-align:right;color:#16a34a;">{{ $o['invoiced_count'] ?? 0 }}× · €<span class="btw-amount" data-amount="{{ $o['invoiced_amount'] ?? 0 }}" data-decimals="0">{{ $eur0($o['invoiced_amount'] ?? 0) }}</span></td>
+                </tr>
+            @endforeach
+            </tbody>
+            <tfoot>
+                <tr style="border-top:2px solid #e2e8f0;font-weight:700;">
+                    <td style="padding:.5rem;">Totaal (alle jaren)</td>
+                    <td style="padding:.5rem;text-align:right;color:#dc2626;">€<span class="btw-amount" data-amount="{{ $oTot['outstanding_amount'] }}" data-decimals="2">{{ $eur2($oTot['outstanding_amount']) }}</span></td>
+                    <td style="padding:.5rem;text-align:right;">{{ $oTot['outstanding_count'] }}</td>
+                    <td style="padding:.5rem;text-align:right;">{{ $oTot['to_invoice_count'] }}× · €<span class="btw-amount" data-amount="{{ $oTot['to_invoice_amount'] }}" data-decimals="0">{{ $eur0($oTot['to_invoice_amount']) }}</span></td>
+                    <td style="padding:.5rem;text-align:right;color:#16a34a;">{{ $oTot['invoiced_count'] }}× · €<span class="btw-amount" data-amount="{{ $oTot['invoiced_amount'] }}" data-decimals="0">{{ $eur0($oTot['invoiced_amount']) }}</span></td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
+        <p style="font-size:.72rem;color:#94a3b8;margin-top:.7rem;">Openstaand = restbedrag van niet-betaalde boekingen (excl. geannuleerd/terugbetaald). "Gefactureerd / nvt" = factuur aangemaakt óf gemarkeerd als niet nodig. Per jaar op basis van de eventdatum; rijen volgen de jaartoggle. Bedragen excl./incl. btw volgens de schakelaar bovenaan.</p>
     </div>
 
     {{-- Bottom Row: Upcoming Events & Recent Leads --}}
@@ -307,7 +401,7 @@
 const bookingsChartCanvas = document.getElementById('bookingsTrendChart');
 if (bookingsChartCanvas) {
     const bookingsChartData = {!! $bookingsTrendChartData !!};
-    new Chart(bookingsChartCanvas, {
+    window.__bookingsChart = new Chart(bookingsChartCanvas, {
         type: 'line',
         data: bookingsChartData,
         options: {
@@ -351,6 +445,23 @@ if (revenueChartCanvas) {
                 }
             }
         }
+    });
+}
+window.__revenueChart = revenueChart;
+
+// ── Jaartoggle: toon/verberg jaren in beide grafieken, de chart-chips en de openstaand-tabel ──
+function applyYearFilter() {
+    const checked = new Set([...document.querySelectorAll('.year-toggle:checked')].map(c => c.value));
+    [window.__bookingsChart, window.__revenueChart].forEach(ch => {
+        if (!ch) return;
+        ch.data.datasets.forEach(ds => { ds.hidden = !checked.has(String(ds.label)); });
+        ch.update();
+    });
+    document.querySelectorAll('.chart-year-chip').forEach(el => {
+        el.style.display = checked.has(el.dataset.year) ? '' : 'none';
+    });
+    document.querySelectorAll('.outstanding-year-row').forEach(el => {
+        el.style.display = checked.has(el.dataset.year) ? '' : 'none';
     });
 }
 

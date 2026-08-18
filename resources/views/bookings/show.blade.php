@@ -35,8 +35,6 @@
     $statusKleuren  = ['confirmed'=>$colors['primary-600'],'completed'=>$colors['success-600'],'cancelled'=>$colors['danger-600'],'no_show'=>$colors['warning-600']];
     $betalingLabels = ['unpaid'=>'Niet betaald','partial'=>'Gedeeltelijk betaald','paid'=>'Betaald','cancelled'=>'Geannuleerd','refunded'=>'Terugbetaald'];
     $betalingKleuren= ['unpaid'=>$colors['danger-600'],'partial'=>$colors['warning-600'],'paid'=>$colors['success-600'],'cancelled'=>$colors['gray-500'],'refunded'=>$colors['primary-600']];
-    $stripLabels    = ['waiting'=>'Wachten op input','in_progress'=>'Wordt gemaakt','review'=>'Ter beoordeling','accepted'=>'Geaccepteerd ✓','done'=>'Ingezet bij event'];
-    $stripKleuren   = ['waiting'=>$colors['warning-600'],'in_progress'=>$colors['primary-600'],'review'=>$colors['primary-600'],'accepted'=>$colors['success-600'],'done'=>$colors['success-600']];
     $typeLabels     = ['full_service'=>'🚚 Full Service','to_go'=>'🏠 To Go'];
 @endphp
 
@@ -116,6 +114,18 @@
                 </div>
                 @endif
 
+                @if($booking->customer_email && ($booking->booking_type === 'to_go' ? $booking->customer_pickup_at : $booking->delivery_at))
+                <div style="grid-column:span 2;">
+                    <form method="POST" action="{{ route('bookings.send-times-mail', $booking) }}"
+                          onsubmit="return confirm('Mail met de {{ $booking->booking_type === 'to_go' ? 'ophaal- en retourtijd' : 'bezorg- en ophaaltijd' }} naar {{ $booking->customer_name }} sturen?');">
+                        @csrf
+                        <button type="submit" class="btn btn-secondary" style="font-size:.85rem;">
+                            ✉️ Verstuur mail met {{ $booking->booking_type === 'to_go' ? 'ophaal- en retourtijd' : 'bezorg- en ophaaltijd' }}
+                        </button>
+                    </form>
+                </div>
+                @endif
+
                 <div style="grid-column:span 2;">
                     <label>Locatie</label>
                     <p style="font-size:.875rem;">
@@ -129,8 +139,9 @@
 
                 <div>
                     <label>Fotostrip</label>
-                    <span class="badge" style="background:{{ $stripKleuren[$booking->strip_status ?? 'waiting'] ?? $colors['gray-500'] }}20;color:{{ $stripKleuren[$booking->strip_status ?? 'waiting'] ?? $colors['gray-500'] }};">
-                        {{ $stripLabels[$booking->strip_status ?? 'waiting'] ?? '—' }}
+                    @php $stripCol = \App\Models\Booking::stripStatusColor($booking->strip_status); @endphp
+                    <span class="badge" style="background:{{ $stripCol['bg'] }};color:{{ $stripCol['text'] }};">
+                        {{ \App\Models\Booking::stripStatusLabel($booking->strip_status) ?? '—' }}
                     </span>
                 </div>
                 <div>
@@ -222,7 +233,7 @@
                     <div style="display:flex;align-items:flex-start;gap:.75rem;background:#eff6ff;border:1px solid #93c5fd;border-radius:.5rem;padding:.875rem 1rem;">
                         <span style="font-size:1.3rem;">🎨</span>
                         <div style="flex:1;">
-                            <div style="font-weight:700;font-size:.9rem;color:#1e40af;margin-bottom:.25rem;">Klant ontwerpt zelf via {{ $stripTool === 'canva' ? 'Canva' : 'Photoshop' }}</div>
+                            <div style="font-weight:700;font-size:.9rem;color:#1e40af;margin-bottom:.25rem;">Klant ontwerpt zelf met een template{{ $stripTool ? ' via '.($stripTool === 'canva' ? 'Canva' : 'Photoshop') : '' }}</div>
                             <div style="font-size:.8rem;color:#1e40af;">Wacht op design via <strong>ontwerp@flitsmoment.nl</strong> (onderwerp: <strong>Fotostrip {{ $booking->booking_number }}</strong>). Upload het via de "Fotostrip & galerij"-kaart hieronder zodra het binnen is.</div>
                         </div>
                     </div>
@@ -237,7 +248,7 @@
                                 <span style="font-size:.72rem;background:#fef3c7;color:#92400e;padding:.15rem .55rem;border-radius:9999px;font-weight:600;">{{ $stripTpl->theme_label }}</span>
                                 <span style="font-size:.72rem;background:#dbeafe;color:#1e40af;padding:.15rem .55rem;border-radius:9999px;font-weight:600;">{{ $stripTpl->format_label }}</span>
                             </div>
-                            @if(in_array($booking->strip_status, [null, 'waiting_input']) && empty($booking->strip_intake_data['text'] ?? null))
+                            @if(in_array($booking->strip_status, [null, 'waiting_input', 'awaiting_customer_design']) && empty($booking->strip_intake_data['text'] ?? null))
                                 <div style="margin-top:.6rem;padding:.5rem .7rem;background:#fef3c7;border:1px solid #fcd34d;border-radius:.4rem;font-size:.8rem;color:#92400e;">⏳ Wacht op tekst van klant</div>
                             @elseif($booking->strip_intake_data['text'] ?? null)
                                 <div style="margin-top:.6rem;background:#f9fafb;border:1px solid #e2e8f0;border-radius:.4rem;padding:.5rem .75rem;">

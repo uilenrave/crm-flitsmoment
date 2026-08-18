@@ -203,6 +203,106 @@ class AnalyticsService
     }
 
     /**
+     * Boekingen + omzet per maand, per kalenderjaar — dynamisch over álle jaren met boekingen
+     * (inclusief toekomstige jaren zoals 2027). Voedt de in/uit-schakelbare jaargrafieken.
+     */
+    public function getYearlyTrends($accountId): array
+    {
+        $monthNames = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+
+        $rows = Booking::where('account_id', $accountId)
+            ->where('status', '!=', 'cancelled')
+            ->whereNotNull('event_date')
+            ->selectRaw('YEAR(event_date) AS yr, MONTH(event_date) AS mo, COUNT(*) AS cnt, COALESCE(SUM(total_price),0) AS sum_price')
+            ->groupBy('yr', 'mo')
+            ->get();
+
+        $currentYear = now()->year;
+        $years = $rows->pluck('yr')->map(fn ($y) => (int) $y);
+        // Huidig + vorig jaar altijd tonen (ook zonder boekingen) zodat de standaardvergelijking klopt.
+        $years = $years->push($currentYear)->push($currentYear - 1)->unique()->sort()->values();
+
+        $bookings = []; $revenue = []; $totalBookings = []; $totalRevenue = [];
+        foreach ($years as $yr) {
+            $b = array_fill(0, 12, 0); $r = array_fill(0, 12, 0.0);
+            foreach ($rows->where('yr', $yr) as $row) {
+                $b[$row->mo - 1] = (int) $row->cnt;
+                $r[$row->mo - 1] = round((float) $row->sum_price, 2);
+            }
+            $bookings[$yr] = $b; $revenue[$yr] = $r;
+            $totalBookings[$yr] = array_sum($b); $totalRevenue[$yr] = round(array_sum($r), 2);
+        }
+
+        $defaultYears = array_values(array_filter([$currentYear - 1, $currentYear], fn ($y) => $years->contains($y)));
+        if (empty($defaultYears)) $defaultYears = $years->all();
+
+        return [
+            'labels'         => $monthNames,
+            'years'          => $years->all(),
+            'bookings'       => $bookings,
+            'revenue'        => $revenue,
+            'total_bookings' => $totalBookings,
+            'total_revenue'  => $totalRevenue,
+            'current_year'   => $currentYear,
+            'default_years'  => $defaultYears,
+        ];
+    }
+
+    /**
+     * Openstaande betalingen (niet-betaalde boekingen) + facturatiestatus, per event-jaar + totaal.
+     * "Openstaand" = restbedrag (total_price minus betaalde payments), excl. betaald/geannuleerd/terugbetaald.
+     * Facturatie: al gefactureerd óf "niet nodig" (skip) vs. nog te factureren. Bedrag + aantal.
+     */
+    public function getOutstandingInvoiceStats($accountId): array
+    {
+        $bookings = Booking::where('account_id', $accountId)
+            ->whereNotIn('payment_status', ['paid', 'cancelled', 'refunded'])
+            ->whereNotNull('event_date')
+            ->get(['id', 'event_date', 'total_price', 'payment_status',
+                   'eboekhouden_invoice_id', 'eboekhouden_invoice_number', 'eboekhouden_skip_invoice']);
+
+        $paidById = Payment::where('status', 'paid')
+            ->whereIn('booking_id', $bookings->pluck('id'))
+            ->selectRaw('booking_id, COALESCE(SUM(amount),0) AS paid')
+            ->groupBy('booking_id')
+            ->pluck('paid', 'booking_id');
+
+        $blank = fn () => [
+            'outstanding_amount' => 0.0, 'outstanding_count' => 0,
+            'invoiced_amount'    => 0.0, 'invoiced_count'    => 0,
+            'to_invoice_amount'  => 0.0, 'to_invoice_count'  => 0,
+        ];
+        $byYear = [];
+        $total  = $blank();
+
+        foreach ($bookings as $b) {
+            $due = max(0, (float) $b->total_price - (float) ($paidById[$b->id] ?? 0));
+            if ($due <= 0) continue; // effectief al voldaan
+
+            $yr = (int) Carbon::parse($b->event_date)->year;
+            $byYear[$yr] ??= $blank();
+
+            $invoiced = $b->eboekhouden_invoice_id || $b->eboekhouden_invoice_number || $b->eboekhouden_skip_invoice;
+            $bucket   = $invoiced ? 'invoiced' : 'to_invoice';
+
+            foreach ([&$byYear[$yr], &$total] as &$agg) {
+                $agg['outstanding_amount'] += $due; $agg['outstanding_count']++;
+                $agg["{$bucket}_amount"]   += $due; $agg["{$bucket}_count"]++;
+            }
+            unset($agg);
+        }
+
+        ksort($byYear);
+        $round = function (array $a): array {
+            foreach (['outstanding_amount', 'invoiced_amount', 'to_invoice_amount'] as $k) $a[$k] = round($a[$k], 2);
+            return $a;
+        };
+        $byYear = array_map($round, $byYear);
+
+        return ['by_year' => $byYear, 'total' => $round($total), 'current_year' => now()->year];
+    }
+
+    /**
      * Get conversion funnel data
      */
     public function getConversionFunnel($accountId): array

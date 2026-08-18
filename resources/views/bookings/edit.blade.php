@@ -464,49 +464,32 @@
 
         <hr style="margin:1.25rem 0;border:none;border-top:1px solid #e2e8f0;">
 
-        {{-- ── Fotostrip status, methode en template ── --}}
+        {{-- ── Fotostrip status en methode ── --}}
+        @php $curStripStatus = old('strip_status', $booking->strip_status); @endphp
         <h3 style="font-size:.875rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem;">🎨 Fotostrip workflow</h3>
         <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:.75rem;padding:1rem 1.1rem;margin-bottom:1.25rem;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
                 <div class="form-group" style="margin-bottom:0;">
                     <label>Status</label>
                     <select name="strip_status" class="form-control">
-                        <option value="" @selected(old('strip_status', $booking->strip_status) === null)>— Geen —</option>
-                        <option value="waiting_input"            @selected(old('strip_status', $booking->strip_status)==='waiting_input')>⏳ Wacht op input klant</option>
-                        <option value="awaiting_customer_design" @selected(old('strip_status', $booking->strip_status)==='awaiting_customer_design')>📨 Wacht op design van klant</option>
-                        <option value="designing"                @selected(old('strip_status', $booking->strip_status)==='designing')>🎨 Ontwerpen</option>
-                        <option value="review"                   @selected(old('strip_status', $booking->strip_status)==='review')>👀 Wachten op goedkeuring</option>
-                        <option value="accepted"                 @selected(old('strip_status', $booking->strip_status)==='accepted')>✅ Goedgekeurd</option>
-                        <option value="ready"                    @selected(old('strip_status', $booking->strip_status)==='ready')>🎉 Ontwerp staat klaar</option>
+                        <option value="" @selected($curStripStatus === null)>— Geen —</option>
+                        @foreach(\App\Models\Booking::STRIP_STATUS_LABELS as $val => $lbl)
+                            <option value="{{ $val }}" @selected($curStripStatus === $val)>{{ $lbl }}</option>
+                        @endforeach
+                        {{-- Legacy: als deze boeking nog de oude waarde heeft, blijft die kiesbaar zodat opslaan 'm niet wegvaagt. --}}
+                        @if($curStripStatus === 'waiting_input')
+                            <option value="waiting_input" selected>⏳ Wacht op input klant (verouderd)</option>
+                        @endif
                     </select>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
                     <label>Methode</label>
-                    <select name="strip_design_method" class="form-control" id="strip-method-select" onchange="stripToggleAdminFields()">
+                    <select name="strip_design_method" class="form-control">
                         <option value="" @selected(old('strip_design_method', $booking->strip_design_method) === null)>— Klant heeft niet gekozen —</option>
-                        <option value="self"     @selected(old('strip_design_method', $booking->strip_design_method)==='self')>🎨 Klant ontwerpt zelf</option>
-                        <option value="ai"       @selected(old('strip_design_method', $booking->strip_design_method)==='ai')>✨ Klant ontwerpt met AI-tool</option>
-                        <option value="template" @selected(old('strip_design_method', $booking->strip_design_method)==='template')>📋 Template uit galerij</option>
+                        <option value="self"     @selected(old('strip_design_method', $booking->strip_design_method)==='self')>🎨 Zelf met template</option>
+                        <option value="ai"       @selected(old('strip_design_method', $booking->strip_design_method)==='ai')>✨ AI-tool</option>
                         <option value="custom"   @selected(old('strip_design_method', $booking->strip_design_method)==='custom')>✏️ Wij ontwerpen</option>
-                    </select>
-                </div>
-                <div class="form-group" id="strip-tool-group" style="margin-bottom:0;">
-                    <label>Tool <span style="font-weight:400;color:#94a3b8;">(bij "Zelf ontwerpen")</span></label>
-                    <select name="strip_self_tool" class="form-control">
-                        <option value="" @selected(old('strip_self_tool', $booking->strip_self_tool) === null)>—</option>
-                        <option value="canva"     @selected(old('strip_self_tool', $booking->strip_self_tool)==='canva')>🎨 Canva</option>
-                        <option value="photoshop" @selected(old('strip_self_tool', $booking->strip_self_tool)==='photoshop')>🖌 Photoshop</option>
-                    </select>
-                </div>
-                <div class="form-group" id="strip-template-group" style="margin-bottom:0;">
-                    <label>Template <span style="font-weight:400;color:#94a3b8;">(bij "Template uit galerij")</span></label>
-                    <select name="strip_template_id" class="form-control">
-                        <option value="" @selected(old('strip_template_id', $booking->strip_template_id) === null)>— Geen —</option>
-                        @foreach(\App\Models\StripTemplate::orderBy('number')->get() as $tpl)
-                            <option value="{{ $tpl->id }}" @selected(old('strip_template_id', $booking->strip_template_id) == $tpl->id)>
-                                #{{ $tpl->number }}{{ $tpl->name ? ' — '.$tpl->name : '' }} · {{ $tpl->theme_label }} · {{ $tpl->format_label }}
-                            </option>
-                        @endforeach
+                        <option value="template" @selected(old('strip_design_method', $booking->strip_design_method)==='template')>📋 Template-galerij (verouderd)</option>
                     </select>
                 </div>
             </div>
@@ -514,14 +497,6 @@
                 💡 Deze velden worden normaal door de klant ingevuld via het portaal. Hier kun je ze handmatig overschrijven.
             </div>
         </div>
-        <script>
-            function stripToggleAdminFields() {
-                const m = document.getElementById('strip-method-select').value;
-                document.getElementById('strip-tool-group').style.opacity     = m === 'self'     ? '1' : '.5';
-                document.getElementById('strip-template-group').style.opacity = m === 'template' ? '1' : '.5';
-            }
-            document.addEventListener('DOMContentLoaded', stripToggleAdminFields);
-        </script>
 
         {{-- ── Gallerij & Prijs & status ── --}}
         <h3 style="font-size:.875rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem;">Gallerij, prijs & status</h3>
@@ -654,8 +629,11 @@ function calculateToGoDates(dateStr) {
 
     const pickupEl = document.querySelector('[name="customer_pickup_at"]');
     const returnEl = document.querySelector('[name="customer_return_at"]');
-    if (pickupEl?._flatpickr) pickupEl._flatpickr.setDate(fmt(pickup), true);
-    if (returnEl?._flatpickr) returnEl._flatpickr.setDate(fmt(ret), true);
+    // Alleen suggereren in LEGE velden — nooit een reeds ingevuld (opgeslagen of handmatig
+    // aangepast) ophaal/retourmoment overschrijven. Voorkomt dat tijden bij het bewerken van
+    // een boeking stilletjes resetten naar de standaardsuggestie.
+    if (pickupEl?._flatpickr && !pickupEl.value) pickupEl._flatpickr.setDate(fmt(pickup), true);
+    if (returnEl?._flatpickr && !returnEl.value) returnEl._flatpickr.setDate(fmt(ret), true);
 }
 
 document.querySelectorAll('.fp-date').forEach(el => {

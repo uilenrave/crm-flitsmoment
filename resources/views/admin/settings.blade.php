@@ -18,6 +18,25 @@
         {{ $account->name }}
     </h2>
 
+    {{-- AI-verbruik (credits) ─────────────────────────────── --}}
+    @php($usage = $aiUsage[$account->id] ?? ['gemini' => ['total'=>0,'month'=>0], 'openai' => ['total'=>0,'month'=>0]])
+    <div style="margin-bottom:1.5rem;padding:1.25rem;background:#faf5ff;border:1px solid #e9d5ff;border-radius:.5rem;">
+        <h3 style="font-size:.75rem;font-weight:600;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin:0 0 .75rem;">🤖 AI-verbruik ontwerp-generator</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem;">
+            <div style="background:#fff;border:1px solid #e9d5ff;border-radius:.5rem;padding:.85rem 1rem;">
+                <div style="font-size:.8rem;font-weight:600;color:#334155;">🎨 Achtergronden <span style="color:#94a3b8;font-weight:400;">— Gemini</span></div>
+                <div style="font-size:1.5rem;font-weight:800;color:#7c3aed;line-height:1.2;margin-top:.2rem;">{{ $usage['gemini']['total'] }}</div>
+                <div style="font-size:.75rem;color:#64748b;">totaal · <strong>{{ $usage['gemini']['month'] }}</strong> deze maand</div>
+            </div>
+            <div style="background:#fff;border:1px solid #e9d5ff;border-radius:.5rem;padding:.85rem 1rem;">
+                <div style="font-size:.8rem;font-weight:600;color:#334155;">✂️ Logo's vrijstellen <span style="color:#94a3b8;font-weight:400;">— GPT</span></div>
+                <div style="font-size:1.5rem;font-weight:800;color:#7c3aed;line-height:1.2;margin-top:.2rem;">{{ $usage['openai']['total'] }}</div>
+                <div style="font-size:.75rem;color:#64748b;">totaal · <strong>{{ $usage['openai']['month'] }}</strong> deze maand</div>
+            </div>
+        </div>
+        <p style="font-size:.72rem;color:#94a3b8;margin:.7rem 0 0;">Elke telling = één AI-generatie (≈ 1 credit). Achtergronden via Gemini, logo-vrijstellingen via GPT/OpenAI.</p>
+    </div>
+
     {{-- iCal agenda koppeling ────────────────────────────── --}}
     <div style="margin-bottom:1.5rem;padding:1.25rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:.5rem;">
         <h3 style="font-size:.75rem;font-weight:600;color:#0369a1;text-transform:uppercase;letter-spacing:.04em;margin:0 0 .75rem;">📅 Agenda-koppeling (iCal / ICS)</h3>

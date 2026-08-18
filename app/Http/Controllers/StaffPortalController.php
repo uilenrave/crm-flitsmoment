@@ -14,11 +14,24 @@ use Illuminate\View\View;
 
 class StaffPortalController extends Controller
 {
-    public function show(Request $request, string $token): View
+    /**
+     * Zoek de medewerker bij het portaal-token. Inactieve medewerkers worden geblokkeerd (403):
+     * ze mogen via hun oude link geen planning/beschikbaarheid/uren meer zien of muteren.
+     */
+    private function resolveStaff(string $token): Staff
     {
         $staff = Staff::withoutGlobalScopes()
             ->where('public_token', $token)
             ->firstOrFail();
+
+        abort_if(! $staff->is_active, 403, 'Deze medewerkerspagina is niet meer actief. Neem contact op als dit onverwacht is.');
+
+        return $staff;
+    }
+
+    public function show(Request $request, string $token): View
+    {
+        $staff = $this->resolveStaff($token);
 
         $now = Carbon::now()->startOfDay();
         $tab = $request->input('tab', 'aankomend');
@@ -182,9 +195,7 @@ class StaffPortalController extends Controller
     /** Gedeelde afhandeling voor aanmelden (yes) en afwijzen (no) */
     private function recordResponse(Request $request, string $token, string $response): RedirectResponse
     {
-        $staff = Staff::withoutGlobalScopes()
-            ->where('public_token', $token)
-            ->firstOrFail();
+        $staff = $this->resolveStaff($token);
 
         $validated = $request->validate([
             'booking_id' => ['required', 'integer'],
@@ -236,9 +247,7 @@ class StaffPortalController extends Controller
     /** Medewerker maakt zijn antwoord (aangemeld of afgewezen) ongedaan */
     public function withdraw(Request $request, string $token): RedirectResponse
     {
-        $staff = Staff::withoutGlobalScopes()
-            ->where('public_token', $token)
-            ->firstOrFail();
+        $staff = $this->resolveStaff($token);
 
         $validated = $request->validate([
             'booking_id' => ['required', 'integer'],
@@ -290,9 +299,7 @@ class StaffPortalController extends Controller
 
     public function submitHours(Request $request, string $token): RedirectResponse
     {
-        $staff = Staff::withoutGlobalScopes()
-            ->where('public_token', $token)
-            ->firstOrFail();
+        $staff = $this->resolveStaff($token);
 
         $validated = $request->validate([
             'booking_id' => ['required', 'integer'],
@@ -379,9 +386,7 @@ class StaffPortalController extends Controller
     /** Markeer een booking-rit (booking_id + role) als gecombineerd met een andere rit. */
     public function markCombined(Request $request, string $token): RedirectResponse
     {
-        $staff = Staff::withoutGlobalScopes()
-            ->where('public_token', $token)
-            ->firstOrFail();
+        $staff = $this->resolveStaff($token);
 
         $validated = $request->validate([
             'booking_id'    => ['required', 'integer'],
@@ -468,9 +473,7 @@ class StaffPortalController extends Controller
     /** Medewerker draait combinatie-markering terug — booking gaat weer naar "nog niet ingediend". */
     public function unmarkCombined(Request $request, string $token, int $hoursId): RedirectResponse
     {
-        $staff = Staff::withoutGlobalScopes()
-            ->where('public_token', $token)
-            ->firstOrFail();
+        $staff = $this->resolveStaff($token);
 
         $staffHours = StaffHours::withoutGlobalScopes()->findOrFail($hoursId);
 

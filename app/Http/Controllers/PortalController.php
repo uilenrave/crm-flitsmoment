@@ -8,7 +8,6 @@ use App\Models\DesignMask;
 use App\Models\DesignPromptSetting;
 use App\Models\DesignSession;
 use App\Models\Payment;
-use App\Models\StripTemplate;
 use App\Models\CanvaTemplate;
 use App\Scopes\AccountScope;
 use App\Services\DesignGenerationService;
@@ -35,15 +34,7 @@ class PortalController extends Controller
             ->with(['items.asset', 'payments', 'account', 'deliveryStaff', 'pickupStaff', 'stripTemplate'])
             ->firstOrFail();
 
-        // Actieve templates voor dit account (voor de galerij van Optie 2)
-        $stripTemplates = StripTemplate::withoutGlobalScope(AccountScope::class)
-            ->where('account_id', $booking->account_id)
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->orderBy('number')
-            ->get();
-
-        // Canva-templates voor het Zelf-ontwerpen / Canva sub-pad
+        // Canva-templates voor het template-pad (Canva-galerij op de template-hub)
         $canvaTemplates = CanvaTemplate::withoutGlobalScope(AccountScope::class)
             ->where('account_id', $booking->account_id)
             ->where('is_active', true)
@@ -51,7 +42,7 @@ class PortalController extends Controller
             ->orderBy('id')
             ->get();
 
-        return view('portal.booking', compact('booking', 'stripTemplates', 'canvaTemplates'));
+        return view('portal.booking', compact('booking', 'canvaTemplates'));
     }
 
     /** Klant downloadt factuur PDF via e-boekhouden */
@@ -78,15 +69,13 @@ class PortalController extends Controller
         return redirect()->away($pdfUrl);
     }
 
-    /** Display the strip design to customer in portal */
-    public function stripDesignView(string $token): View
+    /**
+     * Legacy-route: het ontwerp + de beoordeling staan nu inline op de portalpagina zelf.
+     * Redirect oude links/bladwijzers naar het ontwerp-onderdeel op de hoofdpagina.
+     */
+    public function stripDesignView(string $token): RedirectResponse
     {
-        $booking = Booking::withoutGlobalScope(AccountScope::class)
-            ->where('public_token', $token)
-            ->with('account')
-            ->firstOrFail();
-
-        return view('portal.strip-design', compact('booking'));
+        return redirect(route('portal.show', $token) . '#fotostrip-ontwerp');
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -113,7 +102,9 @@ class PortalController extends Controller
         $state   = $session->state ?? [];
         $results = null;
 
-        if (! empty($state['backgroundPath']) && Storage::disk('public')->exists($state['backgroundPath'])) {
+        if (session('limitReached')) {
+            $results = ['ok' => false, 'limit' => true];
+        } elseif (! empty($state['backgroundPath']) && Storage::disk('public')->exists($state['backgroundPath'])) {
             $results = [
                 'ok'      => true,
                 'url'     => Storage::disk('public')->url($state['backgroundPath']),
@@ -128,7 +119,7 @@ class PortalController extends Controller
             'input'        => $session->input ?? '',
             'eventType'    => $session->event_type ?? array_key_first(DesignPromptSetting::EVENT_TYPES),
             'initialState' => $state,
-            'justGenerated' => false,
+            'justGenerated' => session('justGenerated', false),
         ]));
     }
 
@@ -156,8 +147,12 @@ class PortalController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Bepaal de achtergrond — AI-generatie is geblokkeerd na DesignSession::MAX_BACKGROUND_GENERATIONS pogingen; upload/kleur tellen niet mee */
-    public function designToolGenerate(Request $request, string $token): View
+    /**
+     * Bepaal de achtergrond — AI-generatie is geblokkeerd na DesignSession::MAX_BACKGROUND_GENERATIONS pogingen; upload/kleur tellen niet mee.
+     * Redirect na afloop (Post/Redirect/Get) zodat een pagina-herlaad de POST niet opnieuw uitvoert —
+     * anders genereerde een reload op deze url stilletjes een nieuwe AI-achtergrond i.p.v. de opgeslagen te tonen.
+     */
+    public function designToolGenerate(Request $request, string $token): RedirectResponse|JsonResponse
     {
         $booking = $this->designToolBooking($token);
         abort_if(! $booking, 404);
@@ -167,14 +162,11 @@ class PortalController extends Controller
         $method  = $request->input('background_method', 'ai');
 
         if ($method === 'ai' && $session->backgroundLimitReached()) {
-            return view('portal.design-tool', array_merge($this->designToolViewData($booking, $session), [
-                'booking'       => $booking,
-                'results'       => ['ok' => false, 'limit' => true],
-                'input'         => $request->input('input', $session->input ?? ''),
-                'eventType'     => $request->input('event_type', $session->event_type),
-                'initialState'  => $session->state ?? [],
-                'justGenerated' => false,
-            ]));
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'limit' => true]);
+            }
+
+            return redirect()->route('portal.design-tool', $token)->with('limitReached', true);
         }
 
         $data  = $service->validateGenerateRequest($request);
@@ -184,9 +176,11 @@ class PortalController extends Controller
             $results = $service->uploadBackground($request->file('background_upload'));
         } elseif ($method === 'color') {
             $results = $service->colorBackground($data['background_color']);
+        } elseif ($method === 'template') {
+            $results = $service->templateBackground((int) $data['template_id']);
         } else {
             $refPaths = $service->storeReferenceFiles($request);
-            $results  = $service->generateBackground($data['event_type'], $data['input'], $refPaths, $booking->account_id);
+            $results  = $service->generateBackground($data['event_type'], $data['input'], $refPaths, $booking->account_id, $booking->id, 'customer_portal');
             $input    = $data['input'];
         }
 
@@ -202,14 +196,17 @@ class PortalController extends Controller
             'background_generations' => $method === 'ai' ? ($session->background_generations ?? 0) + 1 : ($session->background_generations ?? 0),
         ]);
 
-        return view('portal.design-tool', array_merge($this->designToolViewData($booking, $session->fresh()), [
-            'booking'       => $booking,
-            'results'       => $results,
-            'input'         => $input,
-            'eventType'     => $data['event_type'],
-            'initialState'  => $state,
-            'justGenerated' => true,
-        ]));
+        // Regeneratie via AJAX (er staat al een achtergrond) — geen redirect, puur het resultaat,
+        // zodat de client de afbeelding in-place kan verversen zonder de pagina te herladen.
+        if ($request->expectsJson()) {
+            return response()->json($results);
+        }
+
+        if (! $results['ok']) {
+            return redirect()->route('portal.design-tool', $token)->with('error', $results['error']);
+        }
+
+        return redirect()->route('portal.design-tool', $token)->with('justGenerated', true);
     }
 
     /** Stel een logo vrij — geblokkeerd na DesignSession::MAX_LOGO_CUTOUTS pogingen */
@@ -229,13 +226,40 @@ class PortalController extends Controller
         $service->validateLogoRequest($request);
         $stored = $request->file('logo')->store('design-generator/refs', 'local');
 
-        $result = $service->cutoutLogo(Storage::disk('local')->path($stored));
+        $result = $service->cutoutLogo(Storage::disk('local')->path($stored), $booking->account_id, $request->input('description'), 'customer_portal', $booking->id);
         $session->increment('logo_cutouts');
 
         return response()->json($result);
     }
 
-    /** Pas een masker (+ optionele gekleurde svg-rand) toe — zelfde logica als de admin-tool, expliciet account-gescoped */
+    /** Gebruik een geüpload logo direct, zonder AI-vrijstelling — telt niet mee voor de vrijstel-limiet */
+    public function designToolUploadLogo(Request $request, string $token): JsonResponse
+    {
+        $booking = $this->designToolBooking($token);
+        if (! $booking) {
+            return response()->json(['ok' => false, 'error' => 'Boeking niet gevonden.'], 404);
+        }
+
+        $service = app(DesignGenerationService::class);
+        $service->validateLogoRequest($request);
+
+        return response()->json($service->uploadLogoDirect($request->file('logo')));
+    }
+
+    /** Plaats een goedgekeurd bibliotheek-element als laag — geen AI-call, telt niet mee voor de vrijstel-limiet */
+    public function designToolUseElement(Request $request, string $token): JsonResponse
+    {
+        $booking = $this->designToolBooking($token);
+        if (! $booking) {
+            return response()->json(['ok' => false, 'error' => 'Boeking niet gevonden.'], 404);
+        }
+
+        $request->validate(['element_id' => ['required', 'integer']]);
+
+        return response()->json(app(DesignGenerationService::class)->elementFromLibrary((int) $request->input('element_id')));
+    }
+
+    /** Pas een masker toe — zelfde logica als de admin-tool, expliciet account-gescoped */
     public function designToolApplyMask(Request $request, string $token): JsonResponse
     {
         $booking = $this->designToolBooking($token);
@@ -246,7 +270,6 @@ class PortalController extends Controller
         $data = $request->validate([
             'background_path' => ['required', 'string'],
             'mask_id'          => ['required', 'integer'],
-            'border_color'     => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
         if (
@@ -267,7 +290,7 @@ class PortalController extends Controller
 
         try {
             $binary = app(DesignRenderService::class)
-                ->renderMaskPreview($data['background_path'], $mask, $data['border_color'] ?? null);
+                ->renderMaskPreview($data['background_path'], $mask);
 
             $filename = 'design-generator/out/' . Str::random(24) . '-masked.png';
             Storage::disk('public')->put($filename, $binary);
@@ -295,6 +318,9 @@ class PortalController extends Controller
 
         $session->update(['finished_at' => now()]);
         $booking->update(['strip_status' => 'accepted']);
+
+        // AI-ontwerp geaccepteerd → automatisch het productie-PNG (met masker) klaarzetten.
+        app(DesignRenderService::class)->publishBookingToProduction($booking);
 
         if ($booking->account->email) {
             $link = route('design.booking', $booking);
@@ -352,10 +378,14 @@ class PortalController extends Controller
             'logoEventTypes' => DesignPromptSetting::LOGO_EVENT_TYPES,
             'masks'          => DesignMask::listForAccount($booking->account_id),
             'googleFonts'    => \App\Services\GoogleFontRegistry::labels(),
+            'templateCategories' => app(DesignGenerationService::class)->templateCategories(),
+            'elementCategories'  => app(DesignGenerationService::class)->elementCategories(),
             'session'        => $session,
             'urls'           => [
                 'generate'         => route('portal.design-tool.generate', $token),
                 'logoCutout'       => route('portal.design-tool.logo', $token),
+                'logoUpload'       => route('portal.design-tool.logo.upload', $token),
+                'elementUse'       => route('portal.design-tool.element', $token),
                 'promptUpdate'     => null,
                 'masksUpload'      => null,
                 'masksApply'       => route('portal.design-tool.mask', $token),
@@ -373,41 +403,12 @@ class PortalController extends Controller
         ];
     }
 
-    /** Stap 1: klant kiest een hoofdmethode. Sub-keuzes volgen in vervolgstappen. */
-    public function setStripMethod(Request $request, string $token): RedirectResponse
-    {
-        $booking = Booking::withoutGlobalScope(AccountScope::class)
-            ->where('public_token', $token)
-            ->with('account')
-            ->firstOrFail();
-
-        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
-            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
-        }
-
-        $validated = $request->validate([
-            'method' => ['required', 'in:self,template,custom'],
-        ]);
-
-        $booking->update([
-            'strip_design_method' => $validated['method'],
-            'strip_self_tool'     => null,
-            'strip_template_id'   => null,
-            'strip_status'        => null,
-            'strip_intake_data'   => null,
-        ]);
-
-        // Voor 'custom': mail wordt verstuurd zodra klant brief indient (bestaande admin_strip_input_received).
-        // Voor 'template': mail wordt verstuurd zodra klant template kiest.
-        // Voor 'self': mail wordt verstuurd zodra klant tool kiest (Canva/Photoshop).
-
-        return redirect()->route('portal.show', $token);
-    }
-
     /**
-     * Stap 1 (nieuw): klant kiest direct één van de 3 paden — photoshop/canva (self met tool
-     * in één stap) of ai (eigen wizard-pagina). "Door ons laten ontwerpen" is geen hoofdoptie
-     * meer, maar blijft bereikbaar via het hulp-formulier onder elk pad (submitStripInput).
+     * Stap 1: klant kiest één van de 2 paden — 'template' (kant-en-klare Canva/Photoshop-
+     * templates, klant maakt zelf) of 'ai' (eigen wizard-pagina). "Door ons laten ontwerpen"
+     * is geen hoofdoptie meer maar blijft bereikbaar via het hulp-formulier onder elk pad
+     * (submitStripInput). De legacy waarden 'photoshop'/'canva' worden nog stil geaccepteerd
+     * (klant met een oude portalpagina open in een tab) en gedragen zich als 'template'.
      */
     public function chooseDesignPath(Request $request, string $token): RedirectResponse
     {
@@ -421,7 +422,7 @@ class PortalController extends Controller
         }
 
         $validated = $request->validate([
-            'path' => ['required', 'in:photoshop,canva,ai'],
+            'path' => ['required', 'in:template,ai,photoshop,canva'],
         ]);
 
         if ($validated['path'] === 'ai') {
@@ -429,96 +430,26 @@ class PortalController extends Controller
                 'strip_design_method' => 'ai',
                 'strip_self_tool'     => null,
                 'strip_template_id'   => null,
-                'strip_status'        => null,
+                'strip_status'        => 'customer_self_designing',
             ]);
 
             return redirect()->route('portal.design-tool', $token);
         }
 
+        // template / photoshop / canva → klant ontwerpt zelf met een template (geen tool-keuze meer).
         $booking->update([
             'strip_design_method' => 'self',
-            'strip_self_tool'     => $validated['path'],
-            'strip_template_id'   => null,
-            'strip_status'        => 'awaiting_customer_design',
-        ]);
-
-        if ($booking->account->email) {
-            app(MailService::class)->send('admin_strip_method_self', $booking, $booking->account->email);
-        }
-
-        return redirect()->route('portal.show', $token)
-            ->with('success', '✅ Genoteerd! Stuur je afgewerkte ontwerp naar ontwerp@flitsmoment.nl.');
-    }
-
-    /** Stap 2a (Self): klant kiest tool — pas hier wordt admin op de hoogte gebracht. */
-    public function setStripSelfTool(Request $request, string $token): RedirectResponse
-    {
-        $booking = Booking::withoutGlobalScope(AccountScope::class)
-            ->where('public_token', $token)
-            ->with('account')
-            ->firstOrFail();
-
-        if ($booking->strip_design_method !== 'self') {
-            return back()->with('error', 'Eerst een ontwerpmethode kiezen.');
-        }
-        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
-            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
-        }
-
-        $validated = $request->validate([
-            'tool' => ['required', 'in:canva,photoshop'],
-        ]);
-
-        $booking->update([
-            'strip_self_tool' => $validated['tool'],
-            'strip_status'    => 'awaiting_customer_design',
-        ]);
-
-        if ($booking->account->email) {
-            app(MailService::class)->send('admin_strip_method_self', $booking, $booking->account->email);
-        }
-
-        return redirect()->route('portal.show', $token)
-            ->with('success', '✅ Genoteerd! Stuur je afgewerkte ontwerp naar ontwerp@flitsmoment.nl.');
-    }
-
-    /** Klant kiest een template uit de galerij. */
-    public function selectStripTemplate(Request $request, string $token): RedirectResponse
-    {
-        $booking = Booking::withoutGlobalScope(AccountScope::class)
-            ->where('public_token', $token)
-            ->with('account')
-            ->firstOrFail();
-
-        if (in_array($booking->strip_status, ['accepted', 'ready'])) {
-            return back()->with('error', 'Het ontwerp is al goedgekeurd — wijzigen kan niet meer.');
-        }
-
-        $request->validate([
-            'template_id' => ['required', 'integer', 'exists:strip_templates,id'],
-        ]);
-
-        // Verifieer dat het template van hetzelfde account én actief is
-        $template = StripTemplate::withoutGlobalScope(AccountScope::class)
-            ->where('id', $request->template_id)
-            ->where('account_id', $booking->account_id)
-            ->where('is_active', true)
-            ->firstOrFail();
-
-        $booking->update([
-            'strip_design_method' => 'template',
             'strip_self_tool'     => null,
-            'strip_template_id'   => $template->id,
-            'strip_status'        => 'waiting_input',
+            'strip_template_id'   => null,
+            'strip_status'        => 'customer_self_designing',
         ]);
 
-        // Notify admin
         if ($booking->account->email) {
-            app(MailService::class)->send('admin_strip_method_template', $booking, $booking->account->email);
+            app(MailService::class)->send('admin_strip_method_self', $booking, $booking->account->email);
         }
 
         return redirect()->route('portal.show', $token)
-            ->with('success', "✅ Template #{$template->number} gekozen — lever nu de tekst aan die op de strip moet komen.");
+            ->with('success', '✅ Genoteerd! Stuur je afgewerkte ontwerp naar ontwerp@flitsmoment.nl.');
     }
 
     /** Klant wil terug naar het keuzemenu. Alleen toegestaan als status ∉ {accepted, ready}. */
@@ -541,7 +472,7 @@ class PortalController extends Controller
         ]);
 
         return redirect()->route('portal.show', $token)
-            ->with('success', 'Je keuze is gereset. Kies opnieuw uit de 3 opties.');
+            ->with('success', 'Je keuze is gereset. Kies opnieuw uit de opties.');
     }
 
     /** Klant levert input aan voor het fotostrip ontwerp */
@@ -607,49 +538,6 @@ class PortalController extends Controller
             ->with('success', '✅ Bedankt! We gaan aan de slag met jouw fotostrip ontwerp.');
     }
 
-    /** Customer submits feedback on strip design */
-    public function submitStripFeedback(Request $request, string $token): RedirectResponse
-    {
-        $booking = Booking::withoutGlobalScope(AccountScope::class)
-            ->where('public_token', $token)
-            ->with('account')
-            ->firstOrFail();
-
-        $request->validate([
-            'feedback' => ['required', 'string', 'max:2000']
-        ]);
-
-        // Auto-increment strip_version
-        $newVersion = ($booking->strip_version ?? 1) + 1;
-        $now = now();
-
-        // Voeg toe aan commentaarhistorie
-        $comments = $booking->strip_comments ?? [];
-        $comments[] = [
-            'text'       => $request->feedback,
-            'design_url' => $booking->strip_design_url,
-            'created_at' => $now->toIso8601String(),
-        ];
-
-        $booking->update([
-            'strip_notes'       => $request->feedback,
-            'strip_feedback'    => $request->feedback,
-            'strip_feedback_at' => $now,
-            'strip_version'     => $newVersion,
-            'strip_comments'    => $comments,
-            'strip_status'      => 'designing',
-        ]);
-
-        // Stuur direct de admin mail
-        $mail = app(MailService::class);
-        if ($booking->account->email) {
-            $mail->send('admin_strip_comment', $booking, $booking->account->email);
-        }
-
-        return redirect()->route('portal.strip-design', $token)
-            ->with('success', '✅ Bedankt voor je feedback! We passen het ontwerp aan.');
-    }
-
     /** Klant beoordeelt het fotostrip ontwerp (accepteren of feedback) */
     public function stripReview(Request $request, string $token): RedirectResponse
     {
@@ -663,6 +551,9 @@ class PortalController extends Controller
 
         if ($action === 'accept') {
             $booking->update(['strip_status' => 'accepted']);
+
+            // AI-ontwerp geaccepteerd → automatisch het productie-PNG (met masker) klaarzetten.
+            app(DesignRenderService::class)->publishBookingToProduction($booking);
 
             if ($booking->customer_email) {
                 $mail->send('customer_strip_accepted', $booking, $booking->customer_email);
@@ -760,6 +651,167 @@ class PortalController extends Controller
 
         return redirect()->route('portal.show', $token)
             ->with('success', '⏰ Je verzoek voor ' . $requestedTime . ' uur is ontvangen. We bevestigen dit zo snel mogelijk.');
+    }
+
+    /** Contactpersoon op locatie opslaan (Full Service). */
+    public function saveLocationContact(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)->with('account')->firstOrFail();
+
+        $types = ['ceremoniemeester', 'eventmanager', 'eventlocatie', 'wij_zelf', 'anders'];
+        $data = $request->validate([
+            'location_contact_type'  => ['required', 'in:' . implode(',', $types)],
+            'location_contact_phone' => ['required', 'string', 'max:40'],
+            'location_contact_email' => ['nullable', 'email', 'max:150'],
+        ], [
+            'location_contact_phone.required' => 'Vul een telefoonnummer in voor de contactpersoon.',
+        ]);
+
+        $booking->update([
+            'location_contact_type'  => $data['location_contact_type'],
+            'location_contact_phone' => $data['location_contact_phone'],
+            'location_contact_email' => $data['location_contact_email'] ?? null,
+        ]);
+
+        // Korte notificatie naar de admin zodat je de info binnen hebt.
+        if ($booking->account->email) {
+            $labels = [
+                'ceremoniemeester' => 'Ceremoniemeester', 'eventmanager' => 'Eventmanager',
+                'eventlocatie' => 'Eventlocatie', 'wij_zelf' => 'Wij zelf (klant)', 'anders' => 'Anders',
+            ];
+            $rol   = $labels[$data['location_contact_type']] ?? $data['location_contact_type'];
+            $extra = $data['location_contact_email'] ? ' · ' . e($data['location_contact_email']) : '';
+            $crm   = route('bookings.show', $booking->id);
+            app(MailService::class)->sendRaw(
+                $booking->account->email,
+                "📇 Contactpersoon op locatie — {$booking->customer_name} ({$booking->booking_number})",
+                "<p><strong>" . e($booking->customer_name) . "</strong> heeft de contactpersoon op locatie ingevuld voor boeking <strong>{$booking->booking_number}</strong>:</p>"
+                . "<p style='font-size:15px;'><strong>" . e($rol) . "</strong><br>📞 " . e($data['location_contact_phone']) . $extra . "</p>"
+                . "<p><a href='{$crm}' style='display:inline-block;background:#2563eb;color:#fff;padding:.5rem 1rem;border-radius:.4rem;text-decoration:none;font-weight:600;'>Openen in CRM →</a></p>"
+            );
+        }
+
+        return redirect()->route('portal.show', $token)->with('success', '✅ Contactpersoon op locatie opgeslagen.');
+    }
+
+    /** Klant vraagt een wijziging aan van het bezorg/ophaalmoment (concrete nieuwe tijd). */
+    public function requestTimeChange(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)->with('account')->firstOrFail();
+
+        $keys = $booking->booking_type === 'to_go'
+            ? ['customer_pickup_at', 'customer_return_at']
+            : ['delivery_at', 'pickup_at'];
+
+        $data = $request->validate(array_merge(
+            array_fill_keys($keys, ['nullable', 'date']),
+            ['note' => ['nullable', 'string', 'max:1000']],
+        ));
+
+        $change = [];
+        foreach ($keys as $k) {
+            if (! empty($data[$k])) {
+                $change[$k] = \Carbon\Carbon::parse($data[$k])->format('Y-m-d H:i:s');
+            }
+        }
+        if (empty($change)) {
+            return redirect()->route('portal.show', $token)->with('error', 'Kies minstens één nieuw tijdstip.');
+        }
+        $change['note']         = $data['note'] ?? null;
+        $change['requested_at'] = now()->toIso8601String();
+
+        $changeToken = \Illuminate\Support\Str::random(48);
+        $booking->update(['pending_change' => $change, 'pending_change_token' => $changeToken]);
+
+        if ($booking->account->email) {
+            $this->sendTimeChangeRequestMail($booking, $change, $changeToken);
+        }
+
+        return redirect()->route('portal.show', $token)
+            ->with('success', '⏰ Je wijzigingsverzoek is verstuurd. We bevestigen het zo snel mogelijk.');
+    }
+
+    /** Admin-mail bij een wijzigingsverzoek: huidig → voorgesteld, 1-klik goedkeuren, andere momenten die dag. */
+    private function sendTimeChangeRequestMail(Booking $booking, array $change, string $changeToken): void
+    {
+        $isToGo = $booking->booking_type === 'to_go';
+        $map = $isToGo
+            ? ['customer_pickup_at' => '📦 Ophalen (klant)', 'customer_return_at' => '🔄 Terugbrengen']
+            : ['delivery_at' => '🚚 Bezorgen', 'pickup_at' => '📦 Ophalen (door ons)'];
+
+        $rows = '';
+        $dates = [];
+        foreach ($map as $col => $label) {
+            if (empty($change[$col])) continue;
+            $proposedAt = \Carbon\Carbon::parse($change[$col]);
+            $dates[] = $proposedAt->format('Y-m-d');
+            $current  = $booking->$col ? $booking->$col->translatedFormat('l j F H:i') : '—';
+            $proposed = $proposedAt->translatedFormat('l j F H:i');
+            $rows .= "<tr><td style='padding:.3rem 1rem .3rem 0;color:#6b7280;'>{$label}</td>"
+                   . "<td style='padding:.3rem 0;color:#9ca3af;text-decoration:line-through;'>{$current}</td>"
+                   . "<td style='padding:.3rem 0 .3rem 1rem;font-weight:700;color:#ea580c;'>&rarr; {$proposed}</td></tr>";
+        }
+
+        $noteHtml = ! empty($change['note'])
+            ? "<blockquote style='background:#f9fafb;border-left:4px solid #f59e0b;padding:.6rem 1rem;margin:1rem 0;'>" . nl2br(e($change['note'])) . "</blockquote>"
+            : '';
+
+        $approveUrl = route('booking.change.approve', $changeToken);
+        $othersHtml = $this->otherMomentsHtml($booking, array_values(array_unique($dates)));
+
+        $subject = "⏰ Wijzigingsverzoek bezorg/ophaal — {$booking->customer_name} ({$booking->booking_number})";
+        $body = "
+            <p><strong>" . e($booking->customer_name) . "</strong> vraagt een wijziging aan voor boeking <strong>{$booking->booking_number}</strong>:</p>
+            <table style='border-collapse:collapse;margin:1rem 0;font-size:15px;'>{$rows}</table>
+            {$noteHtml}
+            <p style='margin:1.25rem 0;'><a href='{$approveUrl}' style='display:inline-block;background:#16a34a;color:#fff;padding:.7rem 1.4rem;border-radius:.5rem;text-decoration:none;font-weight:700;font-size:16px;'>✅ Goedkeuren &amp; toepassen</a></p>
+            {$othersHtml}
+            <p style='font-size:13px;color:#9ca3af;'>Klik je op goedkeuren, dan passen we meteen de nieuwe tijden toe en krijgt de klant automatisch een bevestigingsmail.</p>
+        ";
+
+        app(MailService::class)->sendRaw($booking->account->email, $subject, $body);
+    }
+
+    /** HTML-lijst met andere bezorg/ophaalmomenten van dit account op de opgegeven dag(en). */
+    private function otherMomentsHtml(Booking $booking, array $dates): string
+    {
+        if (empty($dates)) return '';
+
+        $others = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('account_id', $booking->account_id)
+            ->where('id', '!=', $booking->id)
+            ->whereIn('status', ['confirmed', 'completed'])
+            ->where(function ($q) use ($dates) {
+                foreach (['delivery_at', 'pickup_at', 'customer_pickup_at', 'customer_return_at'] as $col) {
+                    foreach ($dates as $d) {
+                        $q->orWhereDate($col, $d);
+                    }
+                }
+            })
+            ->get(['booking_number', 'customer_name', 'booking_type', 'delivery_at', 'pickup_at', 'customer_pickup_at', 'customer_return_at']);
+
+        $items = [];
+        foreach ($others as $o) {
+            $moments = $o->booking_type === 'to_go'
+                ? ['📦 ophalen' => $o->customer_pickup_at, '🔄 retour' => $o->customer_return_at]
+                : ['🚚 bezorgen' => $o->delivery_at, '📦 ophalen' => $o->pickup_at];
+            foreach ($moments as $lbl => $dt) {
+                if (! $dt || $dt->format('H:i') === '00:00') continue;               // 00:00 = datum-placeholder
+                if (! in_array($dt->format('Y-m-d'), $dates, true)) continue;
+                $items[] = ['at' => $dt, 'html' => $dt->translatedFormat('D j M H:i') . " — {$lbl} · " . e($o->customer_name) . " ({$o->booking_number})"];
+            }
+        }
+
+        if (empty($items)) {
+            return "<p style='font-size:13px;color:#9ca3af;margin-top:1.25rem;'>📅 Geen andere bezorg/ophaalmomenten gepland op deze dag(en).</p>";
+        }
+
+        usort($items, fn ($a, $b) => $a['at'] <=> $b['at']);
+        $list = implode('', array_map(fn ($i) => "<li style='margin:.2rem 0;'>{$i['html']}</li>", $items));
+
+        return "<p style='font-weight:600;margin-top:1.25rem;'>📅 Andere momenten op deze dag(en):</p><ul style='font-size:14px;color:#374151;padding-left:1.1rem;'>{$list}</ul>";
     }
 
     /** Start een Mollie betaling */

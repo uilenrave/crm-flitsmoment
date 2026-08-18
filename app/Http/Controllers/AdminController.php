@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
+use App\Models\AiUsageEvent;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -113,7 +114,51 @@ class AdminController extends Controller
             ? Account::orderBy('name')->get()
             : collect([auth()->user()->account]);
 
-        return view('admin.settings', compact('accounts'));
+        $aiUsage = $this->aiUsageByAccount($accounts->pluck('id'));
+
+        return view('admin.settings', compact('accounts', 'aiUsage'));
+    }
+
+    /**
+     * AI-verbruik per account: aantal generaties per provider, totaal én deze maand.
+     * Vorm: [account_id => ['gemini' => ['total'=>x,'month'=>y], 'openai' => [...]]].
+     */
+    private function aiUsageByAccount($accountIds): array
+    {
+        $monthStart = now()->startOfMonth();
+
+        $usage = [];
+        foreach ($accountIds as $id) {
+            $usage[$id] = [
+                'gemini' => ['total' => 0, 'month' => 0],
+                'openai' => ['total' => 0, 'month' => 0],
+            ];
+        }
+
+        $pivot = function ($rows, string $bucket) use (&$usage) {
+            foreach ($rows as $row) {
+                $provider = $row->provider === AiUsageEvent::PROVIDER_OPENAI ? 'openai' : 'gemini';
+                if (isset($usage[$row->account_id])) {
+                    $usage[$row->account_id][$provider][$bucket] = (int) $row->c;
+                }
+            }
+        };
+
+        $pivot(
+            AiUsageEvent::whereIn('account_id', $accountIds)
+                ->selectRaw('account_id, provider, count(*) as c')
+                ->groupBy('account_id', 'provider')->get(),
+            'total'
+        );
+        $pivot(
+            AiUsageEvent::whereIn('account_id', $accountIds)
+                ->where('created_at', '>=', $monthStart)
+                ->selectRaw('account_id, provider, count(*) as c')
+                ->groupBy('account_id', 'provider')->get(),
+            'month'
+        );
+
+        return $usage;
     }
 
     public function updateSettings(Request $request, Account $account): RedirectResponse

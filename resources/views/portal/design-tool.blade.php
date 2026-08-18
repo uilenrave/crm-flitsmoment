@@ -22,10 +22,10 @@
     @endif
     @endsection
 
-    @include('design._tool', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input', 'googleFonts'))
+    @include('design._tool', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'templateCategories', 'elementCategories', 'results', 'input', 'googleFonts'))
 </div>
 
 @push('scripts')
-@include('design._tool_scripts', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'results', 'input', 'initialState', 'limits', 'justGenerated', 'googleFonts'))
+@include('design._tool_scripts', compact('dgMode', 'urls', 'eventTypes', 'eventType', 'promptLabel', 'promptKey', 'promptDefault', 'promptsByType', 'logoEventTypes', 'masks', 'templateCategories', 'elementCategories', 'results', 'input', 'initialState', 'limits', 'justGenerated', 'googleFonts'))
 @endpush
 @endsection

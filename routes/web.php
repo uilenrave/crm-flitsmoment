@@ -54,23 +54,26 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::post('/boeking/{token}/ontwerp-tool/state', [PortalController::class, 'designToolSaveState'])->name('portal.design-tool.state');
     Route::post('/boeking/{token}/ontwerp-tool/genereer', [PortalController::class, 'designToolGenerate'])->name('portal.design-tool.generate');
     Route::post('/boeking/{token}/ontwerp-tool/logo', [PortalController::class, 'designToolCutoutLogo'])->name('portal.design-tool.logo');
+    Route::post('/boeking/{token}/ontwerp-tool/logo/upload', [PortalController::class, 'designToolUploadLogo'])->name('portal.design-tool.logo.upload');
+    Route::post('/boeking/{token}/ontwerp-tool/element', [PortalController::class, 'designToolUseElement'])->name('portal.design-tool.element');
     Route::post('/boeking/{token}/ontwerp-tool/masker', [PortalController::class, 'designToolApplyMask'])->name('portal.design-tool.mask');
     Route::post('/boeking/{token}/ontwerp-tool/klaar', [PortalController::class, 'designToolFinish'])->name('portal.design-tool.finish');
-    Route::post('/boeking/{token}/ontwerp-feedback', [PortalController::class, 'submitStripFeedback'])->name('portal.strip-feedback');
     Route::post('/boeking/{token}/strip-review', [PortalController::class, 'stripReview'])->name('portal.strip-review');
     Route::post('/boeking/{token}/strip-input', [PortalController::class, 'submitStripInput'])->name('portal.strip-input');
-    Route::post('/boeking/{token}/strip-method', [PortalController::class, 'setStripMethod'])->name('portal.strip-method');
     Route::post('/boeking/{token}/strip-choose-path', [PortalController::class, 'chooseDesignPath'])->name('portal.strip-choose-path');
-    Route::post('/boeking/{token}/strip-self-tool', [PortalController::class, 'setStripSelfTool'])->name('portal.strip-self-tool');
-    Route::post('/boeking/{token}/strip-template', [PortalController::class, 'selectStripTemplate'])->name('portal.strip-template-select');
     Route::post('/boeking/{token}/strip-reset', [PortalController::class, 'resetStripChoice'])->name('portal.strip-reset');
     Route::post('/boeking/{token}/return-time', [PortalController::class, 'requestReturnTime'])->name('portal.return-time');
+    Route::post('/boeking/{token}/contactpersoon', [PortalController::class, 'saveLocationContact'])->name('portal.location-contact');
+    Route::post('/boeking/{token}/wijziging-aanvragen', [PortalController::class, 'requestTimeChange'])->name('portal.request-time-change');
     Route::get('/boeking/{token}/factuur', [PortalController::class, 'factuurDownload'])->name('portal.factuur-download');
 
     // Intake flow (klant vult in na bevestiging)
     Route::get('/boeking/{token}/intake', [IntakeController::class, 'show'])->name('portal.intake');
     Route::post('/boeking/{token}/intake/{step}', [IntakeController::class, 'saveStep'])->name('portal.intake.save');
     Route::post('/boeking/{token}/approve-pickup', [IntakeController::class, 'approvePickup'])->name('portal.intake.approve-pickup');
+
+    // Publieke 1-klik goedkeuring van een bezorg/ophaal-wijziging (uit admin-mail)
+    Route::get('/boeking-wijziging/{token}', [\App\Http\Controllers\BookingChangeController::class, 'approve'])->name('booking.change.approve');
 
     // Publieke offertepagina
     Route::get('/offerte/{token}', [OfferPublicController::class, 'show'])->name('offer.show');
@@ -104,6 +107,8 @@ Route::middleware('auth')->group(function () {
     Route::get('bellijst', [LeadController::class, 'callList'])->name('leads.call-list');
     Route::resource('leads', LeadController::class);
     Route::post('leads/{lead}/notitie', [LeadController::class, 'addNote'])->name('leads.add-note');
+    Route::get('leads/{lead}/contact-log', [LeadController::class, 'contactLog'])->name('leads.contact-log');
+    Route::post('leads/{lead}/contact', [LeadController::class, 'logContact'])->name('leads.log-contact');
     Route::post('leads/{lead}/afwijzen', [LeadController::class, 'afwijzen'])->name('leads.afwijzen');
     Route::post('leads/{lead}/akkoord', [LeadController::class, 'akkoord'])->name('leads.akkoord');
     Route::patch('leads/{lead}/follow-up', [LeadController::class, 'updateFollowUp'])->name('leads.follow-up');
@@ -135,6 +140,7 @@ Route::middleware('auth')->group(function () {
     Route::post('bookings/{booking}/resend-confirmation', [BookingController::class, 'resendConfirmation'])->name('bookings.resend-confirmation');
     Route::post('bookings/{booking}/resend-gallery-mail', [BookingController::class, 'resendGalleryMail'])->name('bookings.resend-gallery-mail');
     Route::post('bookings/{booking}/return-time-request', [BookingController::class, 'handleReturnTimeRequest'])->name('bookings.return-time-request');
+    Route::post('bookings/{booking}/verstuur-tijden-mail', [BookingController::class, 'sendTimesMail'])->name('bookings.send-times-mail');
     Route::post('bookings/{booking}/strip-design', [BookingController::class, 'uploadStripDesign'])->name('bookings.strip-design');
     Route::delete('bookings/{booking}/strip-design', [BookingController::class, 'deleteStripDesign'])->name('bookings.strip-design-delete');
     Route::delete('bookings/{booking}/delivery-image', [BookingController::class, 'deleteDeliveryImage'])->name('bookings.delivery-image-delete');
@@ -154,11 +160,31 @@ Route::middleware('auth')->group(function () {
          ->parameters(['canva-templates' => 'canvaTemplate'])
          ->except(['show']);
 
-    // AI Ontwerp-generator (fotostrips genereren)
+    // Fotostrip-templatebibliotheek (goedkeuringswachtrij + beheer)
+    Route::get('design-templates', [\App\Http\Controllers\DesignTemplateController::class, 'index'])->name('design-templates.index');
+    Route::post('design-templates/upload', [\App\Http\Controllers\DesignTemplateController::class, 'upload'])->name('design-templates.upload');
+    Route::post('design-templates/{designTemplate}/approve', [\App\Http\Controllers\DesignTemplateController::class, 'approve'])->name('design-templates.approve');
+    Route::post('design-templates/{designTemplate}/reject', [\App\Http\Controllers\DesignTemplateController::class, 'reject'])->name('design-templates.reject');
+    Route::post('design-templates/{designTemplate}/recategorize', [\App\Http\Controllers\DesignTemplateController::class, 'recategorize'])->name('design-templates.recategorize');
+    Route::delete('design-templates/{designTemplate}', [\App\Http\Controllers\DesignTemplateController::class, 'destroy'])->name('design-templates.destroy');
+    Route::post('design-template-categories', [\App\Http\Controllers\DesignTemplateController::class, 'storeCategory'])->name('design-templates.categories.store');
+    Route::patch('design-template-categories/{category}', [\App\Http\Controllers\DesignTemplateController::class, 'updateCategory'])->name('design-templates.categories.update');
+    Route::delete('design-template-categories/{category}', [\App\Http\Controllers\DesignTemplateController::class, 'destroyCategory'])->name('design-templates.categories.destroy');
+
+    // Elementenbibliotheek (vrijgestelde elementen) — parallel aan de templatebibliotheek
+    Route::post('design-elements/upload', [\App\Http\Controllers\DesignElementController::class, 'upload'])->name('design-elements.upload');
+    Route::post('design-elements/{designElement}/approve', [\App\Http\Controllers\DesignElementController::class, 'approve'])->name('design-elements.approve');
+    Route::post('design-elements/{designElement}/reject', [\App\Http\Controllers\DesignElementController::class, 'reject'])->name('design-elements.reject');
+    Route::post('design-elements/{designElement}/recategorize', [\App\Http\Controllers\DesignElementController::class, 'recategorize'])->name('design-elements.recategorize');
+    Route::delete('design-elements/{designElement}', [\App\Http\Controllers\DesignElementController::class, 'destroy'])->name('design-elements.destroy');
+    Route::post('design-element-categories', [\App\Http\Controllers\DesignElementController::class, 'storeCategory'])->name('design-elements.categories.store');
+    Route::patch('design-element-categories/{category}', [\App\Http\Controllers\DesignElementController::class, 'updateCategory'])->name('design-elements.categories.update');
+    Route::delete('design-element-categories/{category}', [\App\Http\Controllers\DesignElementController::class, 'destroyCategory'])->name('design-elements.categories.destroy');
+
+    // AI Ontwerp-generator (fotostrips genereren) — ingang toont een boekingoverzicht;
+    // ontwerpen kan uitsluitend gekoppeld aan een boeking (design.booking.*).
     Route::get('ontwerp-generator', [\App\Http\Controllers\DesignGeneratorController::class, 'index'])->name('design.index');
-    Route::post('ontwerp-generator', [\App\Http\Controllers\DesignGeneratorController::class, 'generate'])->name('design.generate');
     Route::post('ontwerp-generator/prompt', [\App\Http\Controllers\DesignGeneratorController::class, 'updatePrompt'])->name('design.prompt.update');
-    Route::post('ontwerp-generator/logo', [\App\Http\Controllers\DesignGeneratorController::class, 'cutoutLogo'])->name('design.logo.cutout');
     Route::post('ontwerp-generator/masks', [\App\Http\Controllers\DesignGeneratorController::class, 'uploadMask'])->name('design.masks.upload');
     Route::post('ontwerp-generator/masks/apply', [\App\Http\Controllers\DesignGeneratorController::class, 'applyMask'])->name('design.masks.apply');
     Route::delete('ontwerp-generator/masks/{mask}', [\App\Http\Controllers\DesignGeneratorController::class, 'destroyMask'])->name('design.masks.destroy');
@@ -168,6 +194,8 @@ Route::middleware('auth')->group(function () {
     Route::post('ontwerp-generator/boeking/{booking}/state', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSaveState'])->name('design.booking.state');
     Route::post('ontwerp-generator/boeking/{booking}/genereer', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingGenerate'])->name('design.booking.generate');
     Route::post('ontwerp-generator/boeking/{booking}/logo', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingCutoutLogo'])->name('design.booking.logo');
+    Route::post('ontwerp-generator/boeking/{booking}/logo/upload', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingUploadLogo'])->name('design.booking.logo.upload');
+    Route::post('ontwerp-generator/boeking/{booking}/element', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingUseElement'])->name('design.booking.element');
     Route::post('ontwerp-generator/boeking/{booking}/stuur', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSendToCustomer'])->name('design.booking.send');
     Route::post('ontwerp-generator/boeking/{booking}/productie', [\App\Http\Controllers\DesignGeneratorController::class, 'bookingSetProduction'])->name('design.booking.production');
 

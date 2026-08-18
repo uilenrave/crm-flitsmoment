@@ -315,11 +315,9 @@
             <div class="form-group">
                 <label>Fotostrip status</label>
                 <select name="strip_status">
-                    <option value="waiting_input" @selected(old('strip_status','waiting_input')==='waiting_input')>⏳ Input aanleveren</option>
-                    <option value="designing"     @selected(old('strip_status')==='designing')>🎨 Ontwerpen</option>
-                    <option value="review"        @selected(old('strip_status')==='review')>👀 Wachten op goedkeuring</option>
-                    <option value="accepted"      @selected(old('strip_status')==='accepted')>✅ Goedgekeurd</option>
-                    <option value="ready"         @selected(old('strip_status')==='ready')>🎉 Ontwerp staat klaar</option>
+                    @foreach(\App\Models\Booking::STRIP_STATUS_LABELS as $val => $lbl)
+                        <option value="{{ $val }}" @selected(old('strip_status','awaiting_customer_design')===$val)>{{ $lbl }}</option>
+                    @endforeach
                 </select>
             </div>
         </div>

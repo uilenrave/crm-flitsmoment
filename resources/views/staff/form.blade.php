@@ -72,6 +72,8 @@
 
         <div class="form-group" style="display:flex;align-items:center;gap:.75rem;">
             <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.9rem;font-weight:500;">
+                {{-- Verborgen 0-waarde zodat een uitgevinkte checkbox óók verstuurd wordt (anders blijft de medewerker altijd actief). --}}
+                <input type="hidden" name="is_active" value="0">
                 <input type="checkbox" name="is_active" value="1"
                        {{ old('is_active', $person->exists ? $person->is_active : true) ? 'checked' : '' }}
                        style="width:1rem;height:1rem;accent-color:#7c3aed;">

@@ -11,15 +11,12 @@ use Illuminate\View\View;
 
 class IntakeController extends Controller
 {
-    public function show(string $token): View|\Illuminate\Http\RedirectResponse
+    public function show(string $token): \Illuminate\Http\RedirectResponse
     {
-        $booking = $this->findBooking($token);
-
-        if ($booking->intake_completed) {
-            return redirect()->route('portal.show', $token);
-        }
-
-        return view('portal.intake', compact('booking'));
+        // Oude intake-wizard is uitgefaseerd: bezorg/ophaalmomenten worden nu door de admin ingepland
+        // en in het portaal getoond (met de mogelijkheid een wijziging aan te vragen). Altijd doorsturen.
+        $this->findBooking($token); // 404 als het token niet bestaat
+        return redirect()->route('portal.show', $token);
     }
 
     public function saveStep(Request $request, string $token, int $step): JsonResponse

@@ -2,7 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\AiUsageEvent;
+use App\Models\DesignElement;
+use App\Models\DesignElementCategory;
 use App\Models\DesignPromptSetting;
+use App\Models\DesignTemplate;
+use App\Models\DesignTemplateCategory;
 use App\Services\ImageGeneration\ImageGenerationManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -26,17 +31,19 @@ class DesignGenerationService
         $method = $request->input('background_method', 'ai');
 
         return $request->validate([
-            'background_method' => ['nullable', Rule::in(['ai', 'upload', 'color'])],
+            'background_method' => ['nullable', Rule::in(['ai', 'upload', 'color', 'template'])],
             'event_type'        => ['required', Rule::in(array_keys(DesignPromptSetting::EVENT_TYPES))],
             'input'             => [Rule::requiredIf($method === 'ai'), 'nullable', 'string', 'max:2000'],
             'references'        => ['nullable', 'array', 'max:6'],
             'references.*'      => ['image', 'max:8192'], // 8 MB
             'background_upload' => [Rule::requiredIf($method === 'upload'), 'nullable', 'image', 'max:15360'], // 15 MB
             'background_color'  => [Rule::requiredIf($method === 'color'), 'nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'template_id'       => [Rule::requiredIf($method === 'template'), 'nullable', 'integer', Rule::exists('design_templates', 'id')->where('status', 'approved')],
         ], [], [
             'references.*'      => 'referentieafbeelding',
             'background_upload' => 'afbeelding',
             'background_color'  => 'kleur',
+            'template_id'       => 'template',
         ]);
     }
 
@@ -62,8 +69,14 @@ class DesignGenerationService
      * Genereer + cover-crop een achtergrondafbeelding via Gemini. Retourneert het standaard results-array.
      * $accountId: verplicht vanuit een niet-auth-context (portaal/token) — zie DesignPromptSetting::currentPrompt().
      */
-    public function generateBackground(string $eventType, string $input, array $refPaths, ?int $accountId = null): array
-    {
+    public function generateBackground(
+        string $eventType,
+        string $input,
+        array $refPaths,
+        ?int $accountId = null,
+        ?int $sourceBookingId = null,
+        string $source = 'admin_generator'
+    ): array {
         $template = DesignPromptSetting::currentPrompt('background', $eventType, $accountId);
         $prompt = str_contains($template, '{beschrijving}')
             ? str_replace('{beschrijving}', $input, $template)
@@ -77,6 +90,13 @@ class DesignGenerationService
 
             $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
             Storage::disk('public')->put($filename, $binary);
+
+            // Elke geslaagde AI-generatie belandt als 'pending' in de templatebibliotheek-wachtrij,
+            // zodat de admin 'm later kan goedkeuren i.p.v. dat credits eenmalig verloren gaan.
+            $this->captureCandidateTemplate($binary, $source, $accountId, $sourceBookingId);
+
+            // Verbruik vastleggen per account (Gemini-achtergrond) voor het instellingen-overzicht.
+            AiUsageEvent::record($accountId ?? auth()->user()?->account_id, AiUsageEvent::PROVIDER_GEMINI, 'background');
 
             return [
                 'ok'      => true,
@@ -92,6 +112,45 @@ class DesignGenerationService
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Schrijf een eigen kopie van een gegenereerde achtergrond naar design-templates/ en maak een
+     * pending DesignTemplate aan. Eigen kopie (los van de sessie-werkkopie in out/) zodat de kandidaat
+     * niet verdwijnt als de sessie wordt opgeschoond. Faalt stil: een capture-fout mag nooit de
+     * generatie zelf breken.
+     */
+    private function captureCandidateTemplate(string $binary, string $source, ?int $accountId, ?int $sourceBookingId): void
+    {
+        try {
+            $path = 'design-templates/' . Str::random(24) . '.jpg';
+            Storage::disk('public')->put($path, $binary);
+
+            DesignTemplate::create([
+                'category_id'       => null,
+                'status'            => 'pending',
+                'image_path'        => $path,
+                'source'            => $source,
+                'source_account_id' => $accountId ?? auth()->user()?->account_id,
+                'source_booking_id' => $sourceBookingId,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Kandidaat-template vastleggen mislukt: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Sla een door de admin geüploade template op: cover-crop naar het canvasformaat (zodat hij
+     * dezelfde 2:6-verhouding heeft als gegenereerde templates) en schrijf naar design-templates/.
+     * Retourneert het opgeslagen pad.
+     */
+    public function storeTemplateUpload(\Illuminate\Http\UploadedFile $file): string
+    {
+        $binary = $this->coverCropToCanvas(file_get_contents($file->getRealPath()), self::CANVAS_WIDTH, self::CANVAS_HEIGHT);
+        $path = 'design-templates/' . Str::random(24) . '.jpg';
+        Storage::disk('public')->put($path, $binary);
+
+        return $path;
     }
 
     /** Gebruik een geüploade afbeelding rechtstreeks als achtergrond (cover-crop naar canvasformaat). */
@@ -112,6 +171,69 @@ class DesignGenerationService
             ];
         } catch (\Throwable $e) {
             Log::error('Achtergrond-upload mislukt: ' . $e->getMessage());
+
+            return [
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Categorieën + goedgekeurde templates uit de database (gedeelde bibliotheek). Alleen categorieën
+     * met minstens één goedgekeurde template worden getoond. Returnvorm: [{slug,label,items:[{id,url,label}]}].
+     */
+    public function templateCategories(): array
+    {
+        $cats = DesignTemplateCategory::with(['templates' => function ($q) {
+            $q->where('status', 'approved')->orderBy('sort_order')->orderBy('id');
+        }])->orderBy('sort_order')->orderBy('label')->get();
+
+        $categories = [];
+        foreach ($cats as $cat) {
+            if ($cat->templates->isEmpty()) {
+                continue;
+            }
+
+            $categories[] = [
+                'slug'  => $cat->slug,
+                'label' => $cat->label,
+                'items' => $cat->templates->map(fn (DesignTemplate $t) => [
+                    'id'    => $t->id,
+                    'url'   => $t->url,
+                    'label' => $t->label ?? '',
+                ])->values()->all(),
+            ];
+        }
+
+        return $categories;
+    }
+
+    /** Gebruik een goedgekeurde template als achtergrond (cover-crop is al gedaan toen de template werd gemaakt). */
+    public function templateBackground(int $templateId): array
+    {
+        $template = DesignTemplate::where('id', $templateId)->where('status', 'approved')->first();
+
+        if (! $template || ! Storage::disk('public')->exists($template->image_path)) {
+            return ['ok' => false, 'error' => 'Template niet gevonden.'];
+        }
+
+        try {
+            $binary = Storage::disk('public')->get($template->image_path);
+
+            $filename = 'design-generator/out/' . Str::random(24) . '.jpg';
+            Storage::disk('public')->put($filename, $binary);
+
+            $template->increment('usage_count');
+
+            return [
+                'ok'      => true,
+                'url'     => Storage::disk('public')->url($filename),
+                'path'    => $filename,
+                'seconds' => 0,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Template-achtergrond mislukt: ' . $e->getMessage());
 
             return [
                 'ok'    => false,
@@ -147,12 +269,145 @@ class DesignGenerationService
         }
     }
 
-    /** Stel een logo vrij als transparante PNG (via GPT/OpenAI — Gemini kan geen echte transparantie). */
-    public function cutoutLogo(string $localPath): array
+    // ──────────────────────────────────────────────────────────────
+    // Elementenbibliotheek (vrijgestelde elementen) — parallel aan de templatebibliotheek
+    // ──────────────────────────────────────────────────────────────
+
+    /** Leg een vrijgesteld element vast als 'pending' kandidaat (eigen kopie, transparantie behouden). */
+    private function captureCandidateElement(string $binary, string $extension, string $source, ?int $accountId, ?int $sourceBookingId): void
     {
-        $prompt = 'Cut out only the logo from this image. Remove the background completely so it becomes '
-            . 'fully transparent (alpha channel = 0), keep the logo itself unchanged — do not redraw, '
-            . 'recolor, restyle, or add effects. No shadow, no border, no added background color. '
+        try {
+            $path = 'design-elements/' . Str::random(24) . '.' . ($extension ?: 'png');
+            Storage::disk('public')->put($path, $binary);
+
+            DesignElement::create([
+                'category_id'       => null,
+                'status'            => 'pending',
+                'image_path'        => $path,
+                'source'            => $source,
+                'source_account_id' => $accountId ?? auth()->user()?->account_id,
+                'source_booking_id' => $sourceBookingId,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Kandidaat-element vastleggen mislukt: ' . $e->getMessage());
+        }
+    }
+
+    /** Sla een door de admin geüpload element op zoals het is (transparantie behouden, geen crop). */
+    public function storeElementUpload(\Illuminate\Http\UploadedFile $file): string
+    {
+        $ext  = strtolower($file->getClientOriginalExtension()) ?: 'png';
+        $path = 'design-elements/' . Str::random(24) . '.' . $ext;
+        Storage::disk('public')->put($path, file_get_contents($file->getRealPath()));
+
+        return $path;
+    }
+
+    /**
+     * Categorieën + goedgekeurde elementen uit de database (gedeelde bibliotheek). Alleen categorieën
+     * met minstens één goedgekeurd element. Returnvorm: [{slug,label,items:[{id,url,label}]}].
+     */
+    public function elementCategories(): array
+    {
+        $cats = DesignElementCategory::with(['elements' => function ($q) {
+            $q->where('status', 'approved')->orderBy('sort_order')->orderBy('id');
+        }])->orderBy('sort_order')->orderBy('label')->get();
+
+        $categories = [];
+        foreach ($cats as $cat) {
+            if ($cat->elements->isEmpty()) {
+                continue;
+            }
+
+            $categories[] = [
+                'slug'  => $cat->slug,
+                'label' => $cat->label,
+                'items' => $cat->elements->map(fn (DesignElement $e) => [
+                    'id'    => $e->id,
+                    'url'   => $e->url,
+                    'label' => $e->label ?? '',
+                ])->values()->all(),
+            ];
+        }
+
+        return $categories;
+    }
+
+    /**
+     * Gebruik een goedgekeurd element uit de bibliotheek: kopieer naar een eigen werkbestand (zodat het
+     * ontwerp niet breekt als het bibliotheek-element later wordt verwijderd) en tel het gebruik.
+     */
+    public function elementFromLibrary(int $elementId): array
+    {
+        $element = DesignElement::where('id', $elementId)->where('status', 'approved')->first();
+
+        if (! $element || ! Storage::disk('public')->exists($element->image_path)) {
+            return ['ok' => false, 'error' => 'Element niet gevonden.'];
+        }
+
+        try {
+            $ext    = pathinfo($element->image_path, PATHINFO_EXTENSION) ?: 'png';
+            $binary = Storage::disk('public')->get($element->image_path);
+
+            $filename = 'design-generator/logos/' . Str::random(24) . '.' . $ext;
+            Storage::disk('public')->put($filename, $binary);
+
+            $element->increment('usage_count');
+
+            return [
+                'ok'   => true,
+                'url'  => Storage::disk('public')->url($filename),
+                'path' => $filename,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Bibliotheek-element gebruiken mislukt: ' . $e->getMessage());
+
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /** Gebruik een geüpload logo direct, zonder AI-vrijstelling (bijv. als het al een transparante achtergrond heeft of de eigen achtergrond mag behouden). */
+    public function uploadLogoDirect(\Illuminate\Http\UploadedFile $file): array
+    {
+        try {
+            $filename = 'design-generator/logos/' . Str::random(24) . '.' . $file->getClientOriginalExtension();
+            Storage::disk('public')->put($filename, file_get_contents($file->getRealPath()));
+
+            return [
+                'ok'   => true,
+                'url'  => Storage::disk('public')->url($filename),
+                'path' => $filename,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Logo direct toevoegen mislukt: ' . $e->getMessage());
+
+            return [
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Stel een element (logo, illustratie, …) vrij als transparante PNG (via GPT/OpenAI — Gemini kan
+     * geen echte transparantie). $description: optionele omschrijving van WÁT vrijgesteld moet worden,
+     * zodat de AI het hele bedoelde element pakt i.p.v. iets binnenin te selecteren.
+     * $accountId: het account dat de vrijstelling veroorzaakt, voor het verbruiksoverzicht.
+     */
+    public function cutoutLogo(
+        string $localPath,
+        ?int $accountId = null,
+        ?string $description = null,
+        string $source = 'admin_generator',
+        ?int $sourceBookingId = null
+    ): array {
+        $subject = trim((string) $description);
+        $subject = $subject !== '' ? mb_substr($subject, 0, 200) : 'the main subject';
+
+        $prompt = "Cut out the {$subject} from this image as ONE single, whole element. "
+            . 'Remove the entire background completely so it becomes fully transparent (alpha channel = 0). '
+            . "Keep the {$subject} exactly as-is and complete — do not redraw, recolor, restyle, crop, or add effects, "
+            . 'and do not select only a portion of it. No shadow, no border, no added background color. '
             . 'The output must have a genuinely transparent background.';
 
         try {
@@ -161,6 +416,13 @@ class DesignGenerationService
 
             $filename = 'design-generator/logos/' . Str::random(24) . '.' . $image->extension();
             Storage::disk('public')->put($filename, $image->binary);
+
+            // Verbruik vastleggen per account (GPT/OpenAI logo-vrijstelling) voor het instellingen-overzicht.
+            AiUsageEvent::record($accountId ?? auth()->user()?->account_id, AiUsageEvent::PROVIDER_OPENAI, 'logo_cutout');
+
+            // Elk vrijgesteld element belandt als 'pending' in de elementenbibliotheek-wachtrij,
+            // zodat het na goedkeuring herbruikt kan worden i.p.v. dat de credit eenmalig verloren gaat.
+            $this->captureCandidateElement($image->binary, $image->extension(), $source, $accountId, $sourceBookingId);
 
             return [
                 'ok'   => true,

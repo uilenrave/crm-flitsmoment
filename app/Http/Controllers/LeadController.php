@@ -19,7 +19,7 @@ class LeadController extends Controller
     {
         $tab = $request->get('tab', 'actief'); // 'actief' of 'archief'
 
-        $query = Lead::with(['status', 'assignedTo']);
+        $query = Lead::with(['status', 'assignedTo', 'latestContact.user']);
 
         if ($tab === 'archief') {
             $query->whereNotNull('archived_at');
@@ -38,11 +38,17 @@ class LeadController extends Controller
             });
         }
 
-        // Sortering via klikbare kolomkoppen (whitelist tegen SQL-injectie)
+        // Sortering via klikbare kolomkoppen (whitelist tegen SQL-injectie).
+        // Standaard op event datum, eerstvolgende event eerst; leads zónder event datum onderaan.
         $sortable = ['lead_number', 'name', 'email', 'event_date', 'follow_up_at', 'created_at', 'archived_at', 'conversion_chance'];
-        $sort = in_array($request->get('sort'), $sortable, true) ? $request->get('sort') : 'created_at';
-        $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
-        $query->orderBy($sort, $dir);
+        $sort = in_array($request->get('sort'), $sortable, true) ? $request->get('sort') : 'event_date';
+        $dir  = in_array($request->get('dir'), ['asc', 'desc'], true) ? $request->get('dir') : 'asc';
+
+        if ($sort === 'event_date') {
+            $query->orderByRaw('event_date IS NULL ASC')->orderBy('event_date', $dir);
+        } else {
+            $query->orderBy($sort, $dir);
+        }
 
         $leads     = $query->paginate(20)->withQueryString();
         $statussen = LeadStatus::where('is_active', true)->orderBy('sort_order')->get();
@@ -212,6 +218,57 @@ class LeadController extends Controller
         ]);
 
         return back()->with('success', 'Notitie toegevoegd.');
+    }
+
+    /** Label + icoon per contactmoment-type (voor loggen én weergave in het overzicht). */
+    private const CONTACT_META = [
+        'call_no_answer' => ['label' => 'Gebeld — geen gehoor', 'short' => 'Geen gehoor', 'icon' => '📞'],
+        'call_answered'  => ['label' => 'Gebeld — gesproken',   'short' => 'Gesproken',   'icon' => '📞'],
+        'email'          => ['label' => 'Gemaild',              'short' => 'Gemaild',     'icon' => '✉️'],
+        'contact_other'  => ['label' => 'Overig contact',       'short' => 'Contact',     'icon' => '💬'],
+    ];
+
+    /** Log een contactmoment vanuit het leadoverzicht (bellen/mailen), optioneel met notitie. */
+    public function logContact(Request $request, Lead $lead): JsonResponse
+    {
+        $data = $request->validate([
+            'contact_type' => ['required', 'in:' . implode(',', array_keys(self::CONTACT_META))],
+            'note'         => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $activity = LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => auth()->id(),
+            'activity_type' => $data['contact_type'],
+            'title'         => self::CONTACT_META[$data['contact_type']]['label'],
+            'description'   => $data['note'] ?: null,
+        ]);
+
+        return response()->json(['ok' => true, 'activity' => $this->contactPayload($activity->load('user'))]);
+    }
+
+    /** Contactgeschiedenis van één lead (voor de modal in het overzicht). */
+    public function contactLog(Lead $lead): JsonResponse
+    {
+        $items = $lead->contactActivities()->with('user')->limit(50)->get()
+            ->map(fn (LeadActivity $a) => $this->contactPayload($a));
+
+        return response()->json(['items' => $items]);
+    }
+
+    private function contactPayload(LeadActivity $a): array
+    {
+        $meta = self::CONTACT_META[$a->activity_type] ?? ['label' => $a->title, 'short' => $a->title, 'icon' => '💬'];
+
+        return [
+            'icon'      => $meta['icon'],
+            'label'     => $meta['label'],
+            'short'     => $meta['short'],
+            'note'      => $a->description,
+            'ago'       => $a->created_at->diffForHumans(),
+            'exact'     => $a->created_at->format('d-m-Y H:i'),
+            'user'      => $a->user?->name,
+        ];
     }
 
     public function updateFollowUp(Request $request, Lead $lead): RedirectResponse
