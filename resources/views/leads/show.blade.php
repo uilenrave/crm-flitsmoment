@@ -57,7 +57,9 @@
                 <div>
                     <label>Type boeking</label>
                     <p style="font-size:.875rem;">
-                        @if($lead->booking_type === 'full_service') 🎯 Full Service
+                        @if($lead->product_label)
+                            <span class="badge" style="background:#ede9fe;color:#7c3aed;">{{ $lead->product_label }}</span>
+                        @elseif($lead->booking_type === 'full_service') 🎯 Full Service
                         @elseif($lead->booking_type === 'to_go') 🧳 To Go
                         @else —
                         @endif

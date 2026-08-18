@@ -15,6 +15,34 @@
 .kans-select.saving { opacity: .5; pointer-events: none; }
 .fu-badge { cursor: pointer; }
 .fu-badge:hover { opacity: .8; }
+
+/* Laatste-contact chip onder de naam */
+.lead-lastcontact { margin-top: .2rem; font-size: .72rem; color: #64748b; }
+.lead-lastcontact:empty { display: none; }
+.lead-ico-btn.ico-contact { color: #0369a1; }
+
+/* Contact-log modal */
+.lc-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 1000; align-items: flex-start; justify-content: center; padding: 5vh 1rem; }
+.lc-overlay.open { display: flex; }
+.lc-modal { background: #fff; border-radius: .9rem; width: 100%; max-width: 460px; box-shadow: 0 20px 50px rgba(0,0,0,.25); overflow: hidden; max-height: 88vh; display: flex; flex-direction: column; }
+.lc-head { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid #f1f5f9; }
+.lc-head h3 { margin: 0; font-size: 1rem; font-weight: 700; color: #1e293b; }
+.lc-close { background: none; border: none; font-size: 1.4rem; line-height: 1; color: #94a3b8; cursor: pointer; }
+.lc-body { padding: 1.1rem 1.25rem; overflow-y: auto; }
+.lc-quick { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .7rem; }
+.lc-qbtn { flex: 1 1 auto; min-width: 120px; padding: .55rem .6rem; border: 1px solid #e2e8f0; border-radius: .55rem; background: #f8fafc; font-size: .82rem; font-weight: 600; color: #334155; cursor: pointer; }
+.lc-qbtn:hover { background: #eef2f7; border-color: #cbd5e1; }
+.lc-qbtn:disabled { opacity: .5; cursor: default; }
+.lc-note { width: 100%; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: .55rem; padding: .55rem .7rem; font-size: .85rem; resize: vertical; min-height: 52px; margin-bottom: 1rem; font-family: inherit; }
+.lc-hint { font-size: .72rem; color: #94a3b8; margin: 0 0 .5rem; }
+.lc-history { display: flex; flex-direction: column; gap: .5rem; border-top: 1px solid #f1f5f9; padding-top: .8rem; }
+.lc-item { display: flex; gap: .6rem; font-size: .82rem; }
+.lc-item .lc-ico { flex: 0 0 auto; }
+.lc-item .lc-main { min-width: 0; }
+.lc-item .lc-label { font-weight: 700; color: #1e293b; }
+.lc-item .lc-meta { color: #94a3b8; font-size: .72rem; }
+.lc-item .lc-note { color: #475569; white-space: pre-wrap; word-break: break-word; }
+.lc-empty { color: #94a3b8; font-size: .82rem; text-align: center; padding: .6rem; }
 .fu-form { display: none; align-items: center; gap: .3rem; flex-wrap: nowrap; }
 .fu-form input[type=date] {
     padding: .25rem .4rem;
@@ -89,9 +117,19 @@
     </form>
 
     @php
+        // Icoon + label per contactmoment-type (spiegelt LeadController::CONTACT_META)
+        $contactMeta = [
+            'call_no_answer' => ['icon' => '📞', 'label' => 'Geen gehoor'],
+            'call_answered'  => ['icon' => '📞', 'label' => 'Gesproken'],
+            'email'          => ['icon' => '✉️', 'label' => 'Gemaild'],
+            'contact_other'  => ['icon' => '💬', 'label' => 'Contact'],
+        ];
+    @endphp
+
+    @php
         // Klikbare sorteerkop: pijltje toont actieve kolom + richting, klik wisselt richting
-        $sortCol = request('sort', 'created_at');
-        $sortDir = request('dir', 'desc') === 'asc' ? 'asc' : 'desc';
+        $sortCol = request('sort', 'event_date');
+        $sortDir = request('dir', 'asc') === 'desc' ? 'desc' : 'asc';
         $sortLink = function ($col, $label) use ($sortCol, $sortDir) {
             $active  = $sortCol === $col;
             $nextDir = ($active && $sortDir === 'asc') ? 'desc' : 'asc';
@@ -135,6 +173,15 @@
                     <td data-label="Nummer" style="font-size:.8rem;color:#64748b;">{{ $lead->lead_number }}</td>
                     <td data-label="Naam">
                         <strong>{{ $lead->name }}</strong>
+                        @if($lead->product_label)
+                            <br><span class="badge" style="background:#ede9fe;color:#7c3aed;">{{ $lead->product_label }}</span>
+                        @endif
+                        <div id="lastcontact-{{ $lead->id }}" class="lead-lastcontact">
+                            @if($lead->latestContact)
+                                @php($m = $contactMeta[$lead->latestContact->activity_type] ?? ['icon' => '💬', 'label' => 'Contact'])
+                                <span title="Laatste contact: {{ $lead->latestContact->created_at->format('d-m-Y H:i') }}">{{ $m['icon'] }} {{ $m['label'] }} · {{ $lead->latestContact->created_at->diffForHumans(['short' => true]) }}</span>
+                            @endif
+                        </div>
                     </td>
                     <td data-label="E-mail">{{ $lead->email ?? '—' }}</td>
                     <td data-label="Eventdatum">{{ $lead->event_date?->format('d M Y') ?? '—' }}</td>
@@ -199,6 +246,15 @@
                     @endif
                     <td class="no-label">
                         <div class="lead-actions">
+                            {{-- Contact loggen (bellen/mailen) vanuit het overzicht --}}
+                            <button type="button" class="lead-ico-btn ico-contact" title="Contact loggen"
+                                    onclick="leadContactOpen(this)"
+                                    data-name="{{ addslashes($lead->name) }}"
+                                    data-list-url="{{ route('leads.contact-log', $lead) }}"
+                                    data-log-url="{{ route('leads.log-contact', $lead) }}"
+                                    data-chip="lastcontact-{{ $lead->id }}">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                            </button>
                             @if($tab !== 'archief')
                                 {{-- Akkoord (gewonnen) --}}
                                 <form method="POST" action="{{ route('leads.akkoord', $lead) }}">
@@ -247,8 +303,96 @@
     {{ $leads->links() }}
 </div>
 
+{{-- Contact-log modal (herbruikt voor elke lead) --}}
+<div id="lc-overlay" class="lc-overlay" onclick="if(event.target===this)leadContactClose()">
+    <div class="lc-modal">
+        <div class="lc-head">
+            <h3>📞 Contact — <span id="lc-name"></span></h3>
+            <button type="button" class="lc-close" onclick="leadContactClose()">&times;</button>
+        </div>
+        <div class="lc-body">
+            <p class="lc-hint">Kies wat er gebeurde. Een notitie (optioneel) helpt je de volgende keer inhaken.</p>
+            <textarea id="lc-note" class="lc-note" placeholder="Notitie — bijv. 'gebeld, spreekt vrijdag met partner, terugbellen maandag'"></textarea>
+            <div class="lc-quick">
+                <button type="button" class="lc-qbtn" data-type="call_no_answer" onclick="leadContactLog('call_no_answer')">📞 Geen gehoor</button>
+                <button type="button" class="lc-qbtn" data-type="call_answered" onclick="leadContactLog('call_answered')">📞 Gesproken</button>
+                <button type="button" class="lc-qbtn" data-type="email" onclick="leadContactLog('email')">✉️ Gemaild</button>
+                <button type="button" class="lc-qbtn" data-type="contact_other" onclick="leadContactLog('contact_other')">💬 Overig</button>
+            </div>
+            <div id="lc-history" class="lc-history"></div>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
+// ── Contactmoment loggen + geschiedenis, vanuit het overzicht ──
+const LC_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+let lcLead = null; // { listUrl, logUrl, chip }
+
+function leadContactOpen(btn) {
+    lcLead = { listUrl: btn.dataset.listUrl, logUrl: btn.dataset.logUrl, chip: btn.dataset.chip };
+    document.getElementById('lc-name').textContent = btn.dataset.name;
+    document.getElementById('lc-note').value = '';
+    const hist = document.getElementById('lc-history');
+    hist.innerHTML = '<div class="lc-empty">Laden…</div>';
+    document.getElementById('lc-overlay').classList.add('open');
+    fetch(lcLead.listUrl, { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(d => lcRenderHistory(d.items || []))
+        .catch(() => { hist.innerHTML = '<div class="lc-empty">Kon geschiedenis niet laden.</div>'; });
+}
+
+function leadContactClose() {
+    document.getElementById('lc-overlay').classList.remove('open');
+    lcLead = null;
+}
+
+function lcRenderHistory(items) {
+    const hist = document.getElementById('lc-history');
+    hist.innerHTML = items.length ? items.map(lcItemHtml).join('') : '<div class="lc-empty">Nog geen contactmomenten gelogd.</div>';
+}
+
+function lcItemHtml(a) {
+    const note = a.note ? '<div class="lc-note">' + lcEsc(a.note) + '</div>' : '';
+    const who = a.user ? ' · ' + lcEsc(a.user) : '';
+    return '<div class="lc-item"><div class="lc-ico">' + a.icon + '</div><div class="lc-main">'
+        + '<div class="lc-label">' + lcEsc(a.label) + '</div>'
+        + '<div class="lc-meta" title="' + lcEsc(a.exact) + '">' + lcEsc(a.ago) + who + '</div>'
+        + note + '</div></div>';
+}
+
+function leadContactLog(type) {
+    if (!lcLead) return;
+    const note = document.getElementById('lc-note').value.trim();
+    const btns = document.querySelectorAll('.lc-qbtn');
+    btns.forEach(b => b.disabled = true);
+    const fd = new FormData();
+    fd.append('contact_type', type);
+    if (note) fd.append('note', note);
+    fetch(lcLead.logUrl, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': LC_CSRF, 'Accept': 'application/json' },
+        body: fd,
+    })
+    .then(r => r.json())
+    .then(d => {
+        btns.forEach(b => b.disabled = false);
+        if (!d.ok) return;
+        const a = d.activity;
+        document.getElementById('lc-note').value = '';
+        const hist = document.getElementById('lc-history');
+        if (hist.querySelector('.lc-empty')) hist.innerHTML = '';
+        hist.insertAdjacentHTML('afterbegin', lcItemHtml(a));
+        const chip = lcLead.chip && document.getElementById(lcLead.chip);
+        if (chip) chip.innerHTML = '<span title="Laatste contact: ' + lcEsc(a.exact) + '">' + a.icon + ' ' + lcEsc(a.short) + ' · zojuist</span>';
+    })
+    .catch(() => btns.forEach(b => b.disabled = false));
+}
+
+function lcEsc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('lc-overlay').classList.contains('open')) leadContactClose(); });
+
 function fuEdit(id) {
     document.querySelector('#fu-cell-' + id + ' .fu-badge').style.display = 'none';
     var form = document.getElementById('fu-form-' + id);

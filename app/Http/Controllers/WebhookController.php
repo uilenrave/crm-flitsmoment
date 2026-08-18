@@ -73,6 +73,9 @@ class WebhookController extends Controller
             }
         }
 
+        // ── Product label (niet-photobooth producten: koffiebar, polaroid, …) ──
+        $productLabel = $this->productLabel($data['product'] ?? null);
+
         // ── Type event (matcht op naam in event_types tabel) ──────────────────
         $rawType   = $data['type_event'] ?? $data['evenement'] ?? $data['event_type'] ?? null;
         $eventType = $rawType ? EventType::withoutGlobalScope(AccountScope::class)
@@ -103,12 +106,28 @@ class WebhookController extends Controller
             'source_id'        => $source?->id,
             'event_type_id'    => $eventType?->id,
             'booking_type'     => $bookingType,
+            'product_label'    => $productLabel,
         ]);
 
         return response('OK', 200);
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────────
+
+    /** Vertaalt het website "product"-veld naar een leesbaar CRM-label (null = gewone photobooth-lead) */
+    private function productLabel(?string $product): ?string
+    {
+        return match ($product) {
+            'koffiebar'        => 'Koffiebar',
+            'polaroid'         => 'Polaroid Camera',
+            'anwb-praatpaal'   => 'ANWB Praatpaal',
+            'audio-gastenboek' => 'Audio Gastenboek',
+            'ai-photobooth'    => 'AI Photobooth',
+            'beauty-filter'    => 'Beauty Filter Booth',
+            'video-gastenboek' => 'Video Gastenboek',
+            default            => null,
+        };
+    }
 
     private function accountByToken(string $token): ?Account
     {

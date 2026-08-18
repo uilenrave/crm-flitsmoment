@@ -7,14 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Lead extends Model
 {
+    /** activity_type-waarden die een contactmoment met de lead vertegenwoordigen. */
+    public const CONTACT_TYPES = ['call_no_answer', 'call_answered', 'email', 'contact_other'];
+
     protected $fillable = [
         'account_id', 'lead_number', 'name', 'email', 'phone',
         'event_date', 'event_start_time', 'event_end_time',
         'event_location', 'event_address', 'event_postcode', 'event_city', 'notes',
-        'status_id', 'source_id', 'event_type_id', 'booking_type', 'assigned_to',
+        'status_id', 'source_id', 'event_type_id', 'booking_type', 'product_label', 'assigned_to',
         'archived_at', 'archive_reason',
         'total_price', 'follow_up_at', 'conversion_chance',
     ];
@@ -114,6 +118,20 @@ class Lead extends Model
     public function activities(): HasMany
     {
         return $this->hasMany(LeadActivity::class)->withoutGlobalScope(AccountScope::class)->latest();
+    }
+
+    /** Alle contactmomenten (bellen/mailen), nieuwste eerst. */
+    public function contactActivities(): HasMany
+    {
+        return $this->hasMany(LeadActivity::class)->withoutGlobalScope(AccountScope::class)
+            ->whereIn('activity_type', self::CONTACT_TYPES)->latest();
+    }
+
+    /** Laatste contactmoment — voor de "laatste contact"-chip in het overzicht (eager-loadbaar). */
+    public function latestContact(): HasOne
+    {
+        return $this->hasOne(LeadActivity::class)->withoutGlobalScope(AccountScope::class)
+            ->whereIn('activity_type', self::CONTACT_TYPES)->latestOfMany();
     }
 
     public function offers(): HasMany
