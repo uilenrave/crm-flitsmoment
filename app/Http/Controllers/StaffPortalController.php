@@ -37,7 +37,7 @@ class StaffPortalController extends Controller
         $tab = $request->input('tab', 'aankomend');
 
         // ── Aankomende ritten ─────────────────────────────────────────────
-        $deliveryBookings = $staff->deliveryBookings()
+        $deliveryBookings = Booking::query()->where(fn ($q) => $q->where("delivery_staff_id", $staff->id)->orWhere("delivery_staff_id_2", $staff->id))
             ->withoutGlobalScopes()
             ->with(['items.asset'])
             ->whereIn('status', ['confirmed', 'completed'])
@@ -52,7 +52,7 @@ class StaffPortalController extends Controller
             ->orderBy('event_date')
             ->get();
 
-        $pickupBookings = $staff->pickupBookings()
+        $pickupBookings = Booking::query()->where(fn ($q) => $q->where("pickup_staff_id", $staff->id)->orWhere("pickup_staff_id_2", $staff->id))
             ->withoutGlobalScopes()
             ->with(['items.asset'])
             ->whereIn('status', ['confirmed', 'completed'])
@@ -69,7 +69,7 @@ class StaffPortalController extends Controller
             ->get();
 
         // ── Archief: afgesloten ritten ────────────────────────────────────
-        $pastDeliveryBookings = $staff->deliveryBookings()
+        $pastDeliveryBookings = Booking::query()->where(fn ($q) => $q->where("delivery_staff_id", $staff->id)->orWhere("delivery_staff_id_2", $staff->id))
             ->withoutGlobalScopes()
             ->with(['items.asset'])
             ->whereIn('status', ['confirmed', 'completed'])
@@ -83,7 +83,7 @@ class StaffPortalController extends Controller
             ->orderByDesc('event_date')
             ->get();
 
-        $pastPickupBookings = $staff->pickupBookings()
+        $pastPickupBookings = Booking::query()->where(fn ($q) => $q->where("pickup_staff_id", $staff->id)->orWhere("pickup_staff_id_2", $staff->id))
             ->withoutGlobalScopes()
             ->with(['items.asset'])
             ->whereIn('status', ['confirmed', 'completed'])
@@ -171,13 +171,91 @@ class StaffPortalController extends Controller
             ->get()
             ->mapWithKeys(fn ($s) => [$s->booking_id . '|' . $s->role => $s->response]);
 
+        // ── Shifts van deze medewerker (nieuw: uren per shift) ────────────
+        $staffShifts = \App\Models\Shift::where('account_id', $staff->account_id)
+            ->where(fn ($q) => $q->where('staff_id', $staff->id)->orWhere('staff_id_2', $staff->id))
+            ->with(['jobs.booking', 'staff', 'staff2'])
+            ->orderBy('shift_date')
+            ->get();
+
+        $upcomingShifts = $staffShifts->filter(fn ($s) => $s->shift_date->gte($now))
+            ->sortBy('shift_date')->values();
+        $pastShifts = $staffShifts->filter(fn ($s) => $s->shift_date->lt($now))
+            ->sortByDesc('shift_date')->values();
+
+        // Bestaande uren per shift (voor prefill + status)
+        $shiftHours = StaffHours::withoutGlobalScopes()
+            ->where('staff_id', $staff->id)
+            ->whereNotNull('shift_id')
+            ->whereIn('shift_id', $staffShifts->pluck('id'))
+            ->get()
+            ->keyBy('shift_id');
+
         return view('staff.portal', compact(
             'staff', 'tab',
             'deliveryBookings', 'pickupBookings',
             'pastDeliveryBookings', 'pastPickupBookings',
             'existingHours', 'allStaffRitten',
-            'availableRitten', 'myResponses'
+            'availableRitten', 'myResponses',
+            'upcomingShifts', 'pastShifts', 'shiftHours'
         ));
+    }
+
+    /** Uren indienen voor een hele shift (vervangt uren per losse rit). */
+    public function submitShiftHours(Request $request, string $token): RedirectResponse
+    {
+        $staff = $this->resolveStaff($token);
+
+        $validated = $request->validate([
+            'shift_id' => ['required', 'integer'],
+            'hours'    => ['required', 'numeric', 'min:0.25', 'max:24'],
+            'km'       => ['nullable', 'numeric', 'min:0', 'max:9999'],
+        ]);
+
+        // Shift moet van deze medewerker zijn (1e of 2e persoon)
+        $shift = \App\Models\Shift::where('account_id', $staff->account_id)
+            ->where('id', $validated['shift_id'])
+            ->where(fn ($q) => $q->where('staff_id', $staff->id)->orWhere('staff_id_2', $staff->id))
+            ->firstOrFail();
+
+        $entry = StaffHours::withoutGlobalScopes()->updateOrCreate(
+            ['staff_id' => $staff->id, 'shift_id' => $shift->id],
+            [
+                'account_id'     => $staff->account_id,
+                'booking_id'     => null,
+                'role'           => null,
+                'hours'          => $validated['hours'],
+                'km'             => isset($validated['km']) && $validated['km'] > 0 ? $validated['km'] : null,
+                'staff_note'     => null,
+                'status'         => 'pending',
+                'hours_approved' => null,
+                'approved_at'    => null,
+                'submitted_at'   => now(),
+            ]
+        );
+
+        // Beheerder mailen (zelfde patroon als per-rit, maar per shift)
+        try {
+            $account = $shift->account;
+            if ($account?->email) {
+                $datum = $shift->shift_date->translatedFormat('l j F Y');
+                $klussen = $shift->jobs->map(fn ($j) => $j->label() . ($j->booking ? ' ' . $j->booking->customer_name : ''))->implode(', ');
+                $htmlBody = '
+                <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+                    <h2 style="margin:0 0 8px;font-size:18px;">⏱ Uren ingediend (shift)</h2>
+                    <p style="color:#64748b;margin:0 0 20px;">'.$staff->name.' heeft <strong>'.number_format((float) $validated['hours'], 2, ',', '').' uur</strong> ingediend voor de shift van <strong>'.$datum.'</strong>.</p>
+                    <p style="color:#334155;margin:0 0 20px;font-size:14px;">Klussen: '.$klussen.'</p>
+                    <a href="'.route('staff-hours.show', $entry->id).'" style="display:inline-block;background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Uren goedkeuren →</a>
+                </div>';
+                app(MailService::class)->sendRaw($account->email, '⏱ Uren ingediend (shift) — '.$staff->name, $htmlBody);
+            }
+        } catch (\Exception $e) {
+            \Log::error('StaffPortal shift-uren mail fout: '.$e->getMessage());
+        }
+
+        $isPast = $shift->shift_date->isPast();
+        return redirect(route('staff.portal', $token) . ($isPast ? '?tab=archief' : ''))
+            ->with('hours_success', 'Uren voor de shift ingediend! Je beheerder ontvangt een melding.');
     }
 
     /** Medewerker meldt zich aan voor een open rit ("ik kan deze") */
@@ -312,8 +390,10 @@ class StaffPortalController extends Controller
         $booking = \App\Models\Booking::withoutGlobalScopes()
             ->where('id', $validated['booking_id'])
             ->where(function ($q) use ($staff) {
-                $q->where('delivery_staff_id', $staff->id)
-                  ->orWhere('pickup_staff_id', $staff->id);
+                $q->where("delivery_staff_id", $staff->id)
+                  ->orWhere("pickup_staff_id", $staff->id)
+                  ->orWhere("delivery_staff_id_2", $staff->id)
+                  ->orWhere("pickup_staff_id_2", $staff->id);
             })
             ->firstOrFail();
 
@@ -408,8 +488,10 @@ class StaffPortalController extends Controller
         $booking = \App\Models\Booking::withoutGlobalScopes()
             ->where('id', $validated['booking_id'])
             ->where(function ($q) use ($staff) {
-                $q->where('delivery_staff_id', $staff->id)
-                  ->orWhere('pickup_staff_id', $staff->id);
+                $q->where("delivery_staff_id", $staff->id)
+                  ->orWhere("pickup_staff_id", $staff->id)
+                  ->orWhere("delivery_staff_id_2", $staff->id)
+                  ->orWhere("pickup_staff_id_2", $staff->id);
             })
             ->firstOrFail();
 
@@ -418,10 +500,10 @@ class StaffPortalController extends Controller
             ->where('id', $combinedBookingId)
             ->where(function ($q) use ($staff, $combinedRole) {
                 if ($combinedRole === 'pickup') {
-                    $q->where('pickup_staff_id', $staff->id);
+                    $q->where("pickup_staff_id", $staff->id)->orWhere("pickup_staff_id_2", $staff->id);
                 } else {
                     // delivery + handover (To Go) gaan beide via delivery_staff_id
-                    $q->where('delivery_staff_id', $staff->id);
+                    $q->where("delivery_staff_id", $staff->id)->orWhere("delivery_staff_id_2", $staff->id);
                 }
             })
             ->firstOrFail();

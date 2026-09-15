@@ -37,7 +37,36 @@
         .header-logo { font-size: 1.1rem; font-weight: 700; color: var(--text); }
         .header-badge { font-size: .8rem; color: var(--muted); }
 
-        .container { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+        .portal-wrap { max-width: 1180px; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 1.75rem; align-items: start; }
+        .main-col { min-width: 0; }
+        @media (max-width: 900px) { .portal-wrap { grid-template-columns: 1fr; gap: 1.25rem; padding: 1.25rem 1rem 3rem; } }
+
+        /* Verticale checklist-menu */
+        .checklist { position: sticky; top: 1.25rem; background: #fff; border: 1px solid var(--border); border-radius: 1rem; padding: 1.25rem 1.1rem; box-shadow: 0 4px 20px rgba(15,23,42,.07); }
+        @media (max-width: 900px) { .checklist { position: static; } }
+        .cl-head { margin: 0 0 1.1rem; padding: 0 .35rem; }
+        .cl-head h2 { font-size: 1.2rem; font-weight: 800; margin: 0 0 .25rem; letter-spacing: -.01em; }
+        .cl-head p { font-size: .84rem; margin: 0; font-weight: 700; }
+        .cl-head p.has-open { color: #c2410c; }
+        .cl-head p.all-done { color: #16a34a; }
+        .cl-item { display: flex; align-items: center; gap: .85rem; padding: .85rem .75rem; border-radius: .8rem; text-decoration: none; color: var(--text); border: 1.5px solid transparent; margin-bottom: .5rem; transition: background .12s, border-color .12s, transform .12s; }
+        .cl-item:last-child { margin-bottom: 0; }
+        .cl-item:hover { background: #f8fafc; transform: translateX(2px); }
+        .cl-mark { width: 2.5rem; height: 2.5rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; font-weight: 800; line-height: 1; }
+        .cl-body { flex: 1; min-width: 0; }
+        .cl-label { font-weight: 700; font-size: 1.02rem; line-height: 1.15; }
+        .cl-status { font-size: .82rem; font-weight: 600; margin-top: .15rem; }
+        .cl-arrow { color: #cbd5e1; font-size: 1.3rem; flex-shrink: 0; line-height: 1; }
+        .cl-item.is-action { background: #fff7ed; border-color: #fdba74; animation: clpulse 2.2s ease-in-out infinite; }
+        .cl-item.is-action .cl-mark { background: #ef4444; color: #fff; }
+        .cl-item.is-action .cl-status { color: #c2410c; }
+        @keyframes clpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 5px rgba(239,68,68,.12); } }
+        .cl-item.is-done .cl-mark { background: #dcfce7; color: #16a34a; }
+        .cl-item.is-done .cl-status { color: #16a34a; }
+        .cl-item.is-todo .cl-mark { background: #dbeafe; color: #2563eb; }
+        .cl-item.is-todo .cl-status { color: #2563eb; }
+        .cl-item.is-info .cl-mark { background: #f1f5f9; color: #475569; }
+        .cl-item.is-info .cl-status { color: #94a3b8; }
 
         .greeting { margin-bottom: 2rem; }
         .greeting h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: .25rem; }
@@ -123,6 +152,8 @@
         .moment-card .mc-time { font-weight:800; font-size:1.15rem; margin:0; }
         .moment-note { background:#fef2f2; border-left:4px solid #ef4444; color:#991b1b; padding:.7rem 1rem; border-radius:6px; font-size:.85rem; }
         .pending-banner { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; padding:.7rem 1rem; border-radius:.5rem; font-size:.88rem; margin-bottom:1rem; }
+        html { scroll-behavior: smooth; }
+        [id] { scroll-margin-top: 90px; }
     </style>
 </head>
 <body>
@@ -132,7 +163,59 @@
     <div class="header-badge">Boeking {{ $booking->booking_number }}</div>
 </header>
 
-<div class="container">
+@php
+    $stripDone = in_array($booking->strip_status, ['accepted', 'ready']);
+    $hasUpsells = $availableUpsells->isNotEmpty() || $booking->items->where('via_upsell', true)->isNotEmpty();
+    // Volgorde gelijk aan de content op de pagina: Boekingdetails → Contactpersoon → Fotostrip → Extra's → Betaling
+    $checkItems = [];
+    $checkItems[] = ['href' => '#boekingdetails', 'icon' => '📋', 'label' => 'Boekingdetails', 'state' => 'info', 'status' => 'Bekijk je gegevens'];
+    if ($booking->booking_type === 'full_service') {
+        $checkItems[] = $notify['contact']
+            ? ['href' => '#contactpersoon', 'icon' => '📇', 'label' => 'Contactpersoon', 'state' => 'action', 'status' => 'Nog invullen']
+            : ['href' => '#contactpersoon', 'icon' => '📇', 'label' => 'Contactpersoon', 'state' => 'done', 'status' => 'Ingevuld'];
+    }
+    if ($notify['fotostrip']) {
+        $checkItems[] = ['href' => '#fotostrip-ontwerp', 'icon' => '🎨', 'label' => 'Fotostrip', 'state' => 'action', 'status' => 'Klaar om goed te keuren'];
+    } elseif ($stripDone) {
+        $checkItems[] = ['href' => '#fotostrip-ontwerp', 'icon' => '🎨', 'label' => 'Fotostrip', 'state' => 'done', 'status' => 'Goedgekeurd'];
+    } else {
+        $checkItems[] = ['href' => '#fotostrip-ontwerp', 'icon' => '🎨', 'label' => 'Fotostrip', 'state' => 'todo', 'status' => 'In ontwerp'];
+    }
+    if ($hasUpsells) {
+        $checkItems[] = ['href' => '#upsells', 'icon' => '✨', 'label' => "Extra's toevoegen", 'state' => 'info', 'status' => 'Bekijk de opties'];
+    }
+    if (! $booking->hide_prices) {
+        $checkItems[] = $notify['betaling']
+            ? ['href' => '#betaling', 'icon' => '💶', 'label' => 'Betaling', 'state' => 'action', 'status' => 'Nog te voldoen']
+            : ['href' => '#betaling', 'icon' => '💶', 'label' => 'Betaling', 'state' => 'done', 'status' => 'Voldaan'];
+    }
+    $openCount = collect($checkItems)->where('state', 'action')->count();
+@endphp
+
+<div class="portal-wrap">
+
+    <aside class="checklist">
+        <div class="cl-head">
+            <h2>Jouw checklist</h2>
+            @if($openCount > 0)
+                <p class="has-open">{{ $openCount }} {{ $openCount === 1 ? 'onderdeel heeft' : 'onderdelen hebben' }} je aandacht</p>
+            @else
+                <p class="all-done">Alles is up-to-date ✨</p>
+            @endif
+        </div>
+        @foreach($checkItems as $ci)
+            <a href="{{ $ci['href'] }}" class="cl-item is-{{ $ci['state'] }}">
+                <span class="cl-mark">{{ $ci['state'] === 'done' ? '✓' : ($ci['state'] === 'action' ? '!' : $ci['icon']) }}</span>
+                <span class="cl-body">
+                    <span class="cl-label">{{ $ci['label'] }}</span>
+                    <span class="cl-status">{{ $ci['status'] }}</span>
+                </span>
+                <span class="cl-arrow">&rsaquo;</span>
+            </a>
+        @endforeach
+    </aside>
+
+    <main class="main-col">
 
     {{-- Alerts --}}
     @if(session('success'))
@@ -162,12 +245,159 @@
         ];
     @endphp
 
+    {{-- ─── Boekingdetails ─── --}}
+    <div class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background:#eff6ff;">📋</div>
+            <span class="section-title" id="boekingdetails">Boekingdetails</span>
+        </div>
+        <div class="section-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <label>Boekingsnummer</label>
+                    <div class="value" style="font-family:monospace;font-weight:600;">{{ $booking->booking_number }}</div>
+                </div>
+                <div class="detail-item">
+                    <label>Type boeking</label>
+                    <div class="value">
+                        <span class="type-badge">
+                            {{ $booking->booking_type === 'full_service' ? '🚚 Full Service' : '🏠 To Go' }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="detail-item">
+                    <label>{{ $booking->is_multi_day && $booking->event_end_date ? 'Eventperiode' : 'Eventdatum' }}</label>
+                    <div class="value">
+                        @if($booking->is_multi_day && $booking->event_end_date)
+                            {{ $booking->event_date->translatedFormat('l j F') }} – {{ $booking->event_end_date->translatedFormat('l j F Y') }}
+                            <span style="font-size:.8rem;color:var(--muted);">({{ $booking->duration_formatted }})</span>
+                        @else
+                            {{ $booking->event_date->translatedFormat('l j F Y') }}
+                        @endif
+                    </div>
+                </div>
+                <div class="detail-item">
+                    <label>Tijdstip</label>
+                    <div class="value">
+                        @if($booking->event_start_time && $booking->event_end_time)
+                            {{ \Carbon\Carbon::parse($booking->event_start_time)->format('H:i') }} – {{ \Carbon\Carbon::parse($booking->event_end_time)->format('H:i') }}
+                        @elseif($booking->event_start_time)
+                            Vanaf {{ \Carbon\Carbon::parse($booking->event_start_time)->format('H:i') }}
+                        @else
+                            —
+                        @endif
+                    </div>
+                </div>
+
+                {{-- Bezorg/ophaaltijden staan prominent bovenaan in het eigen blok; hier alleen nog het ophaaladres voor To Go. --}}
+                @unless($booking->booking_type === 'full_service')
+                    <div class="detail-item full">
+                        <label>Ophaaladres</label>
+                        <div class="value">Ravenswade 132, 3439 LD Nieuwegein</div>
+                        <a href="https://maps.google.com/?q=Ravenswade+132+3439+LD+Nieuwegein" target="_blank" class="map-link">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            Bekijk op Google Maps
+                        </a>
+                    </div>
+                @endunless
+
+                <div class="detail-item full">
+                    <label>Locatie</label>
+                    <div class="value">{{ $booking->event_location ?: '—' }}</div>
+                    @php
+                        $adres = collect([$booking->event_address, $booking->event_postcode, $booking->event_city])
+                            ->filter()->implode(', ');
+                    @endphp
+                    @if($adres)
+                        <div style="font-size:.875rem;color:var(--muted);margin-top:.2rem;">{{ $adres }}</div>
+                        <a href="https://maps.google.com/?q={{ urlencode($adres) }}" target="_blank" class="map-link">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            Bekijk op Google Maps
+                        </a>
+                    @endif
+                </div>
+
+                {{-- Toegewezen medewerkers (alleen tonen als minstens één persoon ingepland is) --}}
+                @if($booking->deliveryStaff || $booking->pickupStaff)
+                @php $isToGo = $booking->booking_type === 'to_go'; @endphp
+                <div class="detail-item full">
+                    <label>Wie staat er voor je klaar?</label>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-top:.4rem;">
+                        @if($booking->deliveryStaff)
+                            @php $s = $booking->deliveryStaff; @endphp
+                            <div style="display:flex;align-items:center;gap:.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:.75rem;">
+                                <div style="width:52px;height:52px;border-radius:50%;background:#e2e8f0;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    @if($s->photo_path)
+                                        <img src="{{ $s->photo_url }}" alt="{{ $s->name }}" style="width:100%;height:100%;object-fit:cover;">
+                                    @else
+                                        <span style="font-size:1.4rem;color:#94a3b8;">👤</span>
+                                    @endif
+                                </div>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;">
+                                        {{ $isToGo ? '📦 Bij afhalen' : '🚚 Bezorging' }}
+                                    </div>
+                                    <div style="font-size:.95rem;color:#1e293b;line-height:1.35;margin-top:.15rem;">
+                                        {{ $isToGo ? 'Je haalt de photobooth op bij ' : 'De photobooth wordt bezorgd door ' }}<strong>{{ $s->name }}</strong>@if($booking->deliveryStaff2) en <strong>{{ $booking->deliveryStaff2->name }}</strong>@endif
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                        @if($booking->pickupStaff)
+                            @php $s = $booking->pickupStaff; @endphp
+                            <div style="display:flex;align-items:center;gap:.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:.75rem;">
+                                <div style="width:52px;height:52px;border-radius:50%;background:#e2e8f0;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    @if($s->photo_path)
+                                        <img src="{{ $s->photo_url }}" alt="{{ $s->name }}" style="width:100%;height:100%;object-fit:cover;">
+                                    @else
+                                        <span style="font-size:1.4rem;color:#94a3b8;">👤</span>
+                                    @endif
+                                </div>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;">
+                                        {{ $isToGo ? '↩️ Bij terugbrengen' : '↩️ Ophalen' }}
+                                    </div>
+                                    <div style="font-size:.95rem;color:#1e293b;line-height:1.35;margin-top:.15rem;">
+                                        {{ $isToGo ? 'Je brengt de photobooth terug bij ' : 'De photobooth wordt opgehaald door ' }}<strong>{{ $s->name }}</strong>@if($booking->pickupStaff2) en <strong>{{ $booking->pickupStaff2->name }}</strong>@endif
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+                @endif
+
+                <div class="detail-item full">
+                    <label>Fotostrip status</label>
+                    <div class="value">
+                        @php
+                            // Klantgerichte labels (afwijkend van de interne admin-labels). Legacy
+                            // 'waiting_input' is samengevoegd met 'awaiting_customer_design'.
+                            $st = $booking->strip_status === 'waiting_input' ? 'awaiting_customer_design' : $booking->strip_status;
+                            $strips = [
+                                'awaiting_customer_design' => ['label' => '⏳ Nog te ontwerpen',           'class' => 'strip-waiting'],
+                                'customer_self_designing'  => ['label' => '✍️ Jij ontwerpt zelf',          'class' => 'strip-progress'],
+                                'designing'                => ['label' => '🎨 Wij ontwerpen',              'class' => 'strip-progress'],
+                                'review'                   => ['label' => '👀 Wachten op jouw goedkeuring', 'class' => 'strip-review'],
+                                'accepted'                 => ['label' => '✅ Goedgekeurd',                'class' => 'strip-accepted'],
+                                'ready'                    => ['label' => '🎉 Ontwerp staat klaar',        'class' => 'strip-done'],
+                            ];
+                            $strip = $strips[$st] ?? ['label' => '⏳ Nog te kiezen', 'class' => 'strip-waiting'];
+                        @endphp
+                        <span class="strip-badge {{ $strip['class'] }}">{{ $strip['label'] }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- ─── Contactpersoon op locatie (alleen Full Service) ─── --}}
     @if(! $isToGo)
     <div class="section">
         <div class="section-header">
             <div class="section-icon" style="background:#eff6ff;">📇</div>
-            <span class="section-title">Contactpersoon op locatie</span>
+            <span class="section-title" id="contactpersoon">Contactpersoon op locatie</span>
         </div>
         <div class="section-body">
             <p style="font-size:.85rem;color:var(--muted);margin:0 0 1rem;">Wie kunnen we op de dag zelf bereiken op de eventlocatie?</p>
@@ -460,178 +690,9 @@
     </style>
     @endif
 
-    {{-- ─── Fotostrip ontwerp: keuze template / AI + status ─── --}}
+    {{-- ─── Fotostrip: kiezen hoe je het ontwerp wilt maken (+ beoordelen als er een voorstel is) ─── --}}
+    <div id="fotostrip-ontwerp"></div>
     @include('portal._strip_options', ['booking' => $booking])
-
-    {{-- ─── Boekingdetails ─── --}}
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon" style="background:#eff6ff;">📋</div>
-            <span class="section-title">Boekingdetails</span>
-        </div>
-        <div class="section-body">
-            <div class="detail-grid">
-                <div class="detail-item">
-                    <label>Boekingsnummer</label>
-                    <div class="value" style="font-family:monospace;font-weight:600;">{{ $booking->booking_number }}</div>
-                </div>
-                <div class="detail-item">
-                    <label>Type boeking</label>
-                    <div class="value">
-                        <span class="type-badge">
-                            {{ $booking->booking_type === 'full_service' ? '🚚 Full Service' : '🏠 To Go' }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="detail-item">
-                    <label>Eventdatum</label>
-                    <div class="value">{{ $booking->event_date->translatedFormat('l j F Y') }}</div>
-                </div>
-                <div class="detail-item">
-                    <label>Tijdstip</label>
-                    <div class="value">
-                        @if($booking->event_start_time && $booking->event_end_time)
-                            {{ \Carbon\Carbon::parse($booking->event_start_time)->format('H:i') }} – {{ \Carbon\Carbon::parse($booking->event_end_time)->format('H:i') }}
-                        @elseif($booking->event_start_time)
-                            Vanaf {{ \Carbon\Carbon::parse($booking->event_start_time)->format('H:i') }}
-                        @else
-                            —
-                        @endif
-                    </div>
-                </div>
-
-                {{-- Bezorg/ophaaltijden staan prominent bovenaan in het eigen blok; hier alleen nog het ophaaladres voor To Go. --}}
-                @unless($booking->booking_type === 'full_service')
-                    <div class="detail-item full">
-                        <label>Ophaaladres</label>
-                        <div class="value">Ravenswade 132, 3439 LD Nieuwegein</div>
-                        <a href="https://maps.google.com/?q=Ravenswade+132+3439+LD+Nieuwegein" target="_blank" class="map-link">
-                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                            Bekijk op Google Maps
-                        </a>
-                    </div>
-                @endunless
-
-                <div class="detail-item full">
-                    <label>Locatie</label>
-                    <div class="value">{{ $booking->event_location ?: '—' }}</div>
-                    @php
-                        $adres = collect([$booking->event_address, $booking->event_postcode, $booking->event_city])
-                            ->filter()->implode(', ');
-                    @endphp
-                    @if($adres)
-                        <div style="font-size:.875rem;color:var(--muted);margin-top:.2rem;">{{ $adres }}</div>
-                        <a href="https://maps.google.com/?q={{ urlencode($adres) }}" target="_blank" class="map-link">
-                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                            Bekijk op Google Maps
-                        </a>
-                    @endif
-                </div>
-
-                {{-- Toegewezen medewerkers (alleen tonen als minstens één persoon ingepland is) --}}
-                @if($booking->deliveryStaff || $booking->pickupStaff)
-                @php $isToGo = $booking->booking_type === 'to_go'; @endphp
-                <div class="detail-item full">
-                    <label>Wie staat er voor je klaar?</label>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-top:.4rem;">
-                        @if($booking->deliveryStaff)
-                            @php $s = $booking->deliveryStaff; @endphp
-                            <div style="display:flex;align-items:center;gap:.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:.75rem;">
-                                <div style="width:52px;height:52px;border-radius:50%;background:#e2e8f0;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                    @if($s->photo_path)
-                                        <img src="{{ $s->photo_url }}" alt="{{ $s->name }}" style="width:100%;height:100%;object-fit:cover;">
-                                    @else
-                                        <span style="font-size:1.4rem;color:#94a3b8;">👤</span>
-                                    @endif
-                                </div>
-                                <div style="flex:1;min-width:0;">
-                                    <div style="font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;">
-                                        {{ $isToGo ? '📦 Bij afhalen' : '🚚 Bezorging' }}
-                                    </div>
-                                    <div style="font-size:.95rem;color:#1e293b;line-height:1.35;margin-top:.15rem;">
-                                        {{ $isToGo ? 'Je haalt de photobooth op bij ' : 'De photobooth wordt bezorgd door ' }}<strong>{{ $s->name }}</strong>
-                                    </div>
-                                </div>
-                            </div>
-                        @endif
-                        @if($booking->pickupStaff)
-                            @php $s = $booking->pickupStaff; @endphp
-                            <div style="display:flex;align-items:center;gap:.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:.75rem;">
-                                <div style="width:52px;height:52px;border-radius:50%;background:#e2e8f0;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                    @if($s->photo_path)
-                                        <img src="{{ $s->photo_url }}" alt="{{ $s->name }}" style="width:100%;height:100%;object-fit:cover;">
-                                    @else
-                                        <span style="font-size:1.4rem;color:#94a3b8;">👤</span>
-                                    @endif
-                                </div>
-                                <div style="flex:1;min-width:0;">
-                                    <div style="font-size:.72rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;">
-                                        {{ $isToGo ? '↩️ Bij terugbrengen' : '↩️ Ophalen' }}
-                                    </div>
-                                    <div style="font-size:.95rem;color:#1e293b;line-height:1.35;margin-top:.15rem;">
-                                        {{ $isToGo ? 'Je brengt de photobooth terug bij ' : 'De photobooth wordt opgehaald door ' }}<strong>{{ $s->name }}</strong>
-                                    </div>
-                                </div>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-                @endif
-
-                <div class="detail-item full">
-                    <label>Fotostrip status</label>
-                    <div class="value">
-                        @php
-                            // Klantgerichte labels (afwijkend van de interne admin-labels). Legacy
-                            // 'waiting_input' is samengevoegd met 'awaiting_customer_design'.
-                            $st = $booking->strip_status === 'waiting_input' ? 'awaiting_customer_design' : $booking->strip_status;
-                            $strips = [
-                                'awaiting_customer_design' => ['label' => '⏳ Nog te ontwerpen',           'class' => 'strip-waiting'],
-                                'customer_self_designing'  => ['label' => '✍️ Jij ontwerpt zelf',          'class' => 'strip-progress'],
-                                'designing'                => ['label' => '🎨 Wij ontwerpen',              'class' => 'strip-progress'],
-                                'review'                   => ['label' => '👀 Wachten op jouw goedkeuring', 'class' => 'strip-review'],
-                                'accepted'                 => ['label' => '✅ Goedgekeurd',                'class' => 'strip-accepted'],
-                                'ready'                    => ['label' => '🎉 Ontwerp staat klaar',        'class' => 'strip-done'],
-                            ];
-                            $strip = $strips[$st] ?? ['label' => '⏳ Nog te kiezen', 'class' => 'strip-waiting'];
-                        @endphp
-                        <span class="strip-badge {{ $strip['class'] }}">{{ $strip['label'] }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ─── Klantgegevens ─── --}}
-    <div class="section">
-        <div class="section-header">
-            <div class="section-icon" style="background:#f0fdf4;">👤</div>
-            <span class="section-title">Uw gegevens</span>
-        </div>
-        <div class="section-body">
-            <div class="detail-grid">
-                <div class="detail-item">
-                    <label>Naam</label>
-                    <div class="value">{{ $booking->customer_name }}</div>
-                </div>
-                <div class="detail-item">
-                    <label>E-mailadres</label>
-                    <div class="value">{{ $booking->customer_email ?: '—' }}</div>
-                </div>
-                <div class="detail-item">
-                    <label>Telefoonnummer</label>
-                    <div class="value">{{ $booking->customer_phone ?: '—' }}</div>
-                    @if($booking->whatsapp_number)
-                        <a href="https://wa.me/{{ ltrim($booking->whatsapp_number, '+') }}" target="_blank" class="whatsapp-link">
-                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                            WhatsApp
-                        </a>
-                    @endif
-                </div>
-            </div>
-        </div>
-    </div>
 
     {{-- ─── Fotostrip input (read-back) ─── --}}
     {{-- Toon alleen als de klant via het hulp-formulier al wensen/bestanden heeft aangeleverd. --}}
@@ -676,7 +737,7 @@
 
     {{-- ─── Fotostrip ontwerp beoordelen ─── --}}
     @if($booking->strip_design_url && in_array($booking->strip_status, ['designing', 'review', 'accepted', 'ready']))
-    <div class="section" id="fotostrip-ontwerp">
+    <div class="section">
         <div class="section-header">
             <div class="section-icon" style="background:#f3e8ff;">🎨</div>
             <span class="section-title">Uw fotostrip ontwerp</span>
@@ -772,6 +833,36 @@
         </div>
     </div>
     @endif
+
+    {{-- ─── Klantgegevens ─── --}}
+    <div class="section">
+        <div class="section-header">
+            <div class="section-icon" style="background:#f0fdf4;">👤</div>
+            <span class="section-title">Uw gegevens</span>
+        </div>
+        <div class="section-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <label>Naam</label>
+                    <div class="value">{{ $booking->customer_name }}</div>
+                </div>
+                <div class="detail-item">
+                    <label>E-mailadres</label>
+                    <div class="value">{{ $booking->customer_email ?: '—' }}</div>
+                </div>
+                <div class="detail-item">
+                    <label>Telefoonnummer</label>
+                    <div class="value">{{ $booking->customer_phone ?: '—' }}</div>
+                    @if($booking->whatsapp_number)
+                        <a href="https://wa.me/{{ ltrim($booking->whatsapp_number, '+') }}" target="_blank" class="whatsapp-link">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                            WhatsApp
+                        </a>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </div>
 
     {{-- ─── Galerij link ─── --}}
     @if($booking->gallery_url)
@@ -886,6 +977,57 @@
 
     @endunless
 
+    {{-- ─── Extra's / upsells ─── --}}
+    @php $addedUpsells = $booking->items->where('via_upsell', true); @endphp
+    @if($availableUpsells->isNotEmpty() || $addedUpsells->isNotEmpty())
+    <div class="section" id="upsells">
+        <div class="section-header">
+            <div class="section-icon" style="background:#fef3c7;">✨</div>
+            <span class="section-title">Extra's toevoegen</span>
+        </div>
+        <div class="section-body">
+            @if($addedUpsells->isNotEmpty())
+            <div style="margin-bottom:1rem;">
+                <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#16a34a;margin-bottom:.5rem;">✓ Toegevoegd aan je boeking</div>
+                @foreach($addedUpsells as $item)
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:.5rem;padding:.6rem .8rem;margin-bottom:.4rem;">
+                    <div><strong>{{ $item->name_snapshot }}</strong> &middot; <span style="color:#15803d;font-weight:700;">€ {{ number_format($item->price_snapshot, 2, ',', '.') }}</span></div>
+                    @if($booking->amount_due > 0)
+                    <form method="POST" action="{{ route('portal.upsell.remove', $booking->public_token) }}">
+                        @csrf
+                        <input type="hidden" name="item_id" value="{{ $item->id }}">
+                        <button type="submit" style="background:none;border:none;color:#dc2626;font-size:.8rem;font-weight:600;cursor:pointer;">✕ verwijderen</button>
+                    </form>
+                    @endif
+                </div>
+                @endforeach
+            </div>
+            @endif
+
+            @if($availableUpsells->isNotEmpty())
+            <div style="font-size:.85rem;color:var(--muted);margin-bottom:.75rem;">Maak je dag compleet &mdash; voeg eenvoudig een extra toe voor een speciaal actietarief. Alleen getoond als het beschikbaar is voor jouw datum.</div>
+            <div style="display:grid;gap:.6rem;">
+                @foreach($availableUpsells as $asset)
+                <div style="display:flex;align-items:center;gap:.75rem;border:1px solid var(--border);border-radius:.6rem;padding:.75rem .9rem;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;">{{ $asset->name }}</div>
+                        @if($asset->description)<div style="font-size:.82rem;color:var(--muted);line-height:1.4;">{{ $asset->description }}</div>@endif
+                        <div style="margin-top:.25rem;"><span style="font-weight:800;color:var(--primary);font-size:1.05rem;">€ {{ number_format($asset->upsell_price, 2, ',', '.') }}</span> <span style="font-size:.72rem;color:#16a34a;font-weight:700;background:#dcfce7;padding:.1rem .4rem;border-radius:999px;">actietarief</span></div>
+                    </div>
+                    <form method="POST" action="{{ route('portal.upsell.add', $booking->public_token) }}">
+                        @csrf
+                        <input type="hidden" name="asset_id" value="{{ $asset->id }}">
+                        <button type="submit" class="pc-btn" style="white-space:nowrap;">+ Toevoegen</button>
+                    </form>
+                </div>
+                @endforeach
+            </div>
+            @endif
+        </div>
+    </div>
+    @endif
+
+    <div id="betaling"></div>
     {{-- ─── Betaling ─── --}}
     @unless($booking->hide_prices)
     @if($openstaand > 0)
@@ -940,6 +1082,7 @@
     @endif
     @endunless
 
+    </main>
 </div>
 
 {{-- Confirm modal (WKWebView ondersteunt geen native confirm()) --}}

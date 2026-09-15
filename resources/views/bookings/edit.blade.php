@@ -295,6 +295,33 @@
                 </select>
             </div>
         </div>
+        {{-- 2e persoon (optioneel) — voor de sporadische keren dat je met z'n tweeën gaat --}}
+        <div class="form-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label style="font-weight:400;color:#64748b;">+ 2e persoon (optioneel)</label>
+                <select name="delivery_staff_id_2" class="form-control">
+                    <option value="">— Niemand —</option>
+                    @foreach($staffMembers as $person)
+                    <option value="{{ $person->id }}"
+                        {{ old('delivery_staff_id_2', $booking->delivery_staff_id_2) == $person->id ? 'selected' : '' }}>
+                        {{ $person->name }}
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label style="font-weight:400;color:#64748b;">+ 2e persoon (optioneel)</label>
+                <select name="pickup_staff_id_2" class="form-control">
+                    <option value="">— Niemand —</option>
+                    @foreach($staffMembers as $person)
+                    <option value="{{ $person->id }}"
+                        {{ old('pickup_staff_id_2', $booking->pickup_staff_id_2) == $person->id ? 'selected' : '' }}>
+                        {{ $person->name }}
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+        </div>
         @endif
 
         <hr style="margin:1.25rem 0;border:none;border-top:1px solid #e2e8f0;">
@@ -468,7 +495,7 @@
         @php $curStripStatus = old('strip_status', $booking->strip_status); @endphp
         <h3 style="font-size:.875rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem;">🎨 Fotostrip workflow</h3>
         <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:.75rem;padding:1rem 1.1rem;margin-bottom:1.25rem;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+            <div class="form-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
                 <div class="form-group" style="margin-bottom:0;">
                     <label>Status</label>
                     <select name="strip_status" class="form-control">
@@ -543,10 +570,10 @@
 <div class="day-logistics-stack">
     @include('bookings._day_logistics_panel', [
         'panelId'     => 'event',
-        'title'       => '📅 Andere ritten op eventdatum',
-        'watchNames'  => ['event_date'],
+        'title'       => '🚚 Andere ritten op bezorgdatum',
+        'watchNames'  => ['delivery_at', 'customer_pickup_at'],
         'excludeId'   => $booking->id,
-        'initialDate' => $booking->event_date?->toDateString(),
+        'initialDate' => $booking->delivery_at?->toDateString() ?? $booking->customer_pickup_at?->toDateString(),
     ])
     @include('bookings._day_logistics_panel', [
         'panelId'     => 'pickup',

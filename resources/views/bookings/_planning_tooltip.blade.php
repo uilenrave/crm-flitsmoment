@@ -48,7 +48,7 @@
     @if($adres)
     <div class="tooltip-row">
         <span class="tooltip-label">📍 Adres</span>
-        <span class="tooltip-val">{{ $adres }}</span>
+        <span class="tooltip-val">{{ $adres }} @include('partials.ze_badge', ['booking' => $booking])</span>
     </div>
     @endif
 

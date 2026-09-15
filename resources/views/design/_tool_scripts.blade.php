@@ -913,8 +913,35 @@ function dgDeselectText() {
 
 // ── Custom font-dropdown (native <select>-opties stylen per item werkt onbetrouwbaar in browsers) ──
 
+// Fonts lazy laden: pas het font-family van een picker-item toe zodra het in beeld scrollt,
+// i.p.v. alle ~90 fonts tegelijk bij het openen (dat tript de CDN-rate-limit).
+let dgFontObserver = null;
+function dgInitFontLazyLoad() {
+    if (dgFontObserver) return;
+    const list = document.getElementById('dg-font-picker-list');
+    if (!list || !('IntersectionObserver' in window)) {
+        // Fallback zonder observer: gewoon direct toepassen
+        list?.querySelectorAll('.dg-font-picker-item').forEach(el => {
+            if (el.dataset.font) el.style.fontFamily = "'" + el.dataset.font + "', sans-serif";
+        });
+        return;
+    }
+    dgFontObserver = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+            if (e.isIntersecting) {
+                const el = e.target;
+                if (el.dataset.font) el.style.fontFamily = "'" + el.dataset.font + "', sans-serif";
+                dgFontObserver.unobserve(el);
+            }
+        });
+    }, { root: list, rootMargin: '150px' });
+    list.querySelectorAll('.dg-font-picker-item').forEach(el => dgFontObserver.observe(el));
+}
+
 function dgToggleFontPicker() {
-    document.getElementById('dg-font-picker-list')?.classList.toggle('open');
+    const list = document.getElementById('dg-font-picker-list');
+    list?.classList.toggle('open');
+    if (list?.classList.contains('open')) dgInitFontLazyLoad();
 }
 
 function dgPickFont(slug, label) {

@@ -514,6 +514,33 @@ class MailTemplateSeeder extends Seeder
                 '),
             ],
 
+            [
+                'key'            => 'customer_invoice_ready',
+                'name'           => 'Factuur staat klaar',
+                'description'    => 'Verstuurd om de klant te laten weten dat de factuur klaarstaat in het portaal (handmatig vanuit het CRM na het aanmaken van een factuur).',
+                'recipient_type' => 'customer',
+                'subject'        => 'Je factuur staat klaar — {{boeking_nummer}}',
+                'body'           => $this->wrap('Je factuur staat klaar 🧾', '
+<p>Hallo <strong>{{klant_voornaam}}</strong>,</p>
+<p>Je factuur voor boeking <strong>{{boeking_nummer}}</strong> staat klaar. Je kunt hem bekijken en downloaden in je persoonlijke portaal.</p>
+
+{{#toon_prijs}}
+<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 20px;margin:18px 0;">
+  <p style="margin:0 0 6px;font-weight:700;color:#15803d;">Openstaand bedrag</p>
+  <p style="margin:0;font-size:18px;font-weight:700;">{{openstaand_bedrag}}</p>
+</div>
+{{/toon_prijs}}
+
+<p style="text-align:center;margin:26px 0;">
+  <a href="{{portal_link}}" style="background:#2563eb;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block;">Naar mijn portaal</a>
+</p>
+
+<p>In het portaal vind je de knop om je factuur te downloaden{{#toon_prijs}} en kun je eenvoudig betalen{{/toon_prijs}}.</p>
+<p>Vragen over je factuur? Laat het ons gerust weten.</p>
+<p>Met vriendelijke groet,<br><strong>{{bedrijf_naam}}</strong></p>
+                '),
+            ],
+
             // ─── Offerte mails ──────────────────────────────────────
 
             [

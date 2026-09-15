@@ -164,6 +164,21 @@
             </div>
         </div>
 
+        @php($durs = $account->shiftDurations())
+        <div class="form-group" style="margin-top:1.5rem;">
+            <label>Basis-werktijden shifts <span style="font-weight:400;color:#94a3b8;">— minuten per klus, aanpasbaar per shift</span></label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:460px;margin-top:.4rem;">
+                <div><small style="color:#64748b;">🚚 Opbouwen (Full Service)</small>
+                    <input type="number" name="shift_durations[opbouwen]" min="0" step="5" value="{{ old('shift_durations.opbouwen', $durs['opbouwen']) }}"></div>
+                <div><small style="color:#64748b;">🧹 Afbouwen (Full Service)</small>
+                    <input type="number" name="shift_durations[afbouwen]" min="0" step="5" value="{{ old('shift_durations.afbouwen', $durs['afbouwen']) }}"></div>
+                <div><small style="color:#64748b;">📦 Afgeven (To Go)</small>
+                    <input type="number" name="shift_durations[afgeven]" min="0" step="5" value="{{ old('shift_durations.afgeven', $durs['afgeven']) }}"></div>
+                <div><small style="color:#64748b;">↩️ Aannemen (To Go)</small>
+                    <input type="number" name="shift_durations[aannemen]" min="0" step="5" value="{{ old('shift_durations.aannemen', $durs['aannemen']) }}"></div>
+            </div>
+        </div>
+
         <div style="margin-top:1.5rem;">
             <button type="submit" class="btn btn-primary">Opslaan</button>
         </div>

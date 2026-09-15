@@ -333,10 +333,10 @@
 <div class="day-logistics-stack">
     @include('bookings._day_logistics_panel', [
         'panelId'     => 'event',
-        'title'       => '📅 Andere ritten op eventdatum',
-        'watchNames'  => ['event_date'],
+        'title'       => '🚚 Andere ritten op bezorgdatum',
+        'watchNames'  => ['delivery_at', 'customer_pickup_at'],
         'excludeId'   => 0,
-        'initialDate' => old('event_date', $lead?->event_date?->toDateString()),
+        'initialDate' => null,
     ])
     @include('bookings._day_logistics_panel', [
         'panelId'     => 'pickup',

@@ -330,7 +330,7 @@ class BookingController extends Controller
             $booking->update(['public_token' => \Illuminate\Support\Str::random(48)]);
         }
 
-        $booking->load(['lead', 'payments', 'items', 'account', 'deliveryStaff', 'pickupStaff', 'stripTemplate']);
+        $booking->load(['lead', 'payments', 'items', 'account', 'deliveryStaff', 'pickupStaff', 'deliveryStaff2', 'pickupStaff2', 'stripTemplate']);
 
         return view('bookings.show', compact('booking'));
     }
@@ -459,10 +459,20 @@ class BookingController extends Controller
             'mockup'               => ['nullable', 'boolean'],
             'delivery_staff_id'    => ['nullable', 'exists:staff,id'],
             'pickup_staff_id'      => ['nullable', 'exists:staff,id'],
+            'delivery_staff_id_2'  => ['nullable', 'exists:staff,id'],
+            'pickup_staff_id_2'    => ['nullable', 'exists:staff,id'],
             'hide_prices'          => ['nullable', 'boolean'],
         ]);
 
         $data['hide_prices'] = $request->boolean('hide_prices');
+
+        // 2e persoon mag niet dezelfde zijn als de 1e, en zonder 1e persoon geen 2e
+        if (empty($data['delivery_staff_id']) || ($data['delivery_staff_id_2'] ?? null) == $data['delivery_staff_id']) {
+            $data['delivery_staff_id_2'] = null;
+        }
+        if (empty($data['pickup_staff_id']) || ($data['pickup_staff_id_2'] ?? null) == $data['pickup_staff_id']) {
+            $data['pickup_staff_id_2'] = null;
+        }
 
         // To Go heeft geen bezorg/ophaal door ons — altijd leegmaken om stale data te voorkomen
         if (($data['booking_type'] ?? $booking->booking_type) === 'to_go') {
@@ -982,6 +992,53 @@ class BookingController extends Controller
         );
     }
 
+    /** Mail "je factuur staat klaar in het portaal" versturen */
+    public function sendInvoiceReadyMail(Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        if (! $booking->customer_email) {
+            return back()->with('error', 'Deze boeking heeft geen e-mailadres van de klant.');
+        }
+        if (! $booking->eboekhouden_invoice_id && ! $booking->eboekhouden_invoice_number) {
+            return back()->with('error', 'Er is nog geen factuur aangemaakt voor deze boeking.');
+        }
+
+        $booking->load('account');
+        $sent = app(\App\Services\MailService::class)->send('customer_invoice_ready', $booking, $booking->customer_email);
+
+        return back()->with(
+            $sent ? 'success' : 'error',
+            $sent
+                ? '✅ Mail "factuur staat klaar" verstuurd naar ' . $booking->customer_email . '.'
+                : 'Versturen mislukt — controleer of de mailtemplate "Factuur staat klaar" actief is in /mail-templates.'
+        );
+    }
+
+    /** Herinnering "lever je fotostrip-ontwerp of input aan" versturen */
+    public function sendStripReminderMail(Booking $booking): RedirectResponse
+    {
+        abort_if($booking->account_id !== auth()->user()->account_id, 403);
+
+        if (! $booking->customer_email) {
+            return back()->with('error', 'Deze boeking heeft geen e-mailadres van de klant.');
+        }
+        // Alleen zinvol zolang de klant nog geen ontwerp/input heeft aangeleverd
+        if (! in_array($booking->strip_status, [null, 'waiting_input', 'awaiting_customer_design', 'customer_self_designing'], true)) {
+            return back()->with('error', 'Er is al een ontwerp of input aangeleverd — een herinnering is niet nodig.');
+        }
+
+        $booking->load('account');
+        $sent = app(\App\Services\MailService::class)->send('customer_strip_choice_reminder', $booking, $booking->customer_email);
+
+        return back()->with(
+            $sent ? 'success' : 'error',
+            $sent
+                ? '✅ Herinnering fotostrip-ontwerp verstuurd naar ' . $booking->customer_email . '.'
+                : 'Versturen mislukt — controleer of de template "Fotostrip keuze herinnering (klant)" actief is in /mail-templates.'
+        );
+    }
+
     /** Boekingsbevestiging opnieuw sturen */
     public function resendConfirmation(Booking $booking): RedirectResponse
     {
@@ -1153,7 +1210,7 @@ class BookingController extends Controller
     {
         $staffMembers = Staff::where('is_active', true)->orderBy('name')->get();
 
-        $bookings = Booking::with(['deliveryStaff', 'pickupStaff'])
+        $bookings = Booking::with(['deliveryStaff', 'pickupStaff', 'deliveryStaff2', 'pickupStaff2'])
             ->whereIn('status', ['confirmed'])
             ->where('event_date', '>=', now()->toDateString())
             ->orderBy('event_date')
@@ -1649,7 +1706,7 @@ class BookingController extends Controller
         $allStaff = Staff::where('is_active', true)->orderBy('name')->get();
 
         // Alle boekingen in dit bereik met staff-koppeling
-        $staffBookings = Booking::with(['deliveryStaff', 'pickupStaff'])
+        $staffBookings = Booking::with(['deliveryStaff', 'pickupStaff', 'deliveryStaff2', 'pickupStaff2'])
             ->whereIn('status', ['confirmed', 'completed'])
             ->where(function ($q) use ($startDate, $endDate) {
                 $q->whereNotNull('delivery_staff_id')
@@ -1663,9 +1720,9 @@ class BookingController extends Controller
         $teamRows = [];
         foreach ($allStaff as $member) {
             // Bezorger: delivery_at dag (of event_date als fallback)
-            $deliveryBookings = $staffBookings->filter(fn($b) => $b->delivery_staff_id === $member->id);
+            $deliveryBookings = $staffBookings->filter(fn($b) => ($b->delivery_staff_id === $member->id || $b->delivery_staff_id_2 === $member->id));
             // Ophaler: pickup_at dag
-            $pickupBookings   = $staffBookings->filter(fn($b) => $b->pickup_staff_id === $member->id);
+            $pickupBookings   = $staffBookings->filter(fn($b) => ($b->pickup_staff_id === $member->id || $b->pickup_staff_id_2 === $member->id));
 
             // Bouw gesegmenteerde rij
             $buildRow = function (string $roleLabel, $roleBookings, string $color) use ($days, $ganttDates, $member): array {
@@ -1723,7 +1780,7 @@ class BookingController extends Controller
             $dayIndex  = 0;
             $segments  = [];
             $allMemberBookings = $staffBookings->filter(fn($b) =>
-                $b->delivery_staff_id === $member->id || $b->pickup_staff_id === $member->id
+                ($b->delivery_staff_id === $member->id || $b->delivery_staff_id_2 === $member->id) || ($b->pickup_staff_id === $member->id || $b->pickup_staff_id_2 === $member->id)
             )->sortBy('event_date')->values();
 
             while ($dayIndex < $totalDays) {
@@ -1733,7 +1790,7 @@ class BookingController extends Controller
 
                 foreach ($allMemberBookings as $b) {
                     // Bezorger/afgever: op delivery_at dag
-                    if ($b->delivery_staff_id === $member->id) {
+                    if (($b->delivery_staff_id === $member->id || $b->delivery_staff_id_2 === $member->id)) {
                         $segDay = $b->delivery_at
                             ? Carbon::parse($b->delivery_at)->startOfDay()
                             : ($b->booking_type === 'to_go' && $b->customer_pickup_at
@@ -1746,7 +1803,7 @@ class BookingController extends Controller
                         }
                     }
                     // Ophaler: op pickup_at dag (FS) of customer_return_at dag (To Go)
-                    if ($b->pickup_staff_id === $member->id) {
+                    if (($b->pickup_staff_id === $member->id || $b->pickup_staff_id_2 === $member->id)) {
                         if ($b->booking_type === 'to_go') {
                             $segDay = $b->customer_return_at
                                 ? Carbon::parse($b->customer_return_at)->startOfDay()
@@ -1825,7 +1882,7 @@ class BookingController extends Controller
         abort_if(! $account, 404);
 
         // Boekingen: 3 maanden terug t/m 2 jaar vooruit
-        $bookings = Booking::with(['deliveryStaff', 'pickupStaff'])
+        $bookings = Booking::with(['deliveryStaff', 'pickupStaff', 'deliveryStaff2', 'pickupStaff2'])
             ->where('account_id', $account->id)
             ->whereIn('status', ['confirmed', 'completed'])
             ->where('event_date', '>=', now()->subMonths(3)->toDateString())
@@ -1833,10 +1890,30 @@ class BookingController extends Controller
             ->orderBy('event_date')
             ->get();
 
-        // Helper: eerste letter van medewerker of 🔴 als niemand ingepland
-        $staffPrefix = function ($staff): string {
-            if (! $staff) return '🔴';
-            return mb_strtoupper(mb_substr($staff->name, 0, 1));
+        // Shifts in hetzelfde bereik (Shift heeft geen AccountScope-fallback zonder login → expliciet filteren)
+        $shifts = \App\Models\Shift::where('account_id', $account->id)
+            ->whereBetween('shift_date', [now()->subMonths(3)->toDateString(), now()->addYears(2)->toDateString()])
+            ->with(['staff', 'staff2', 'jobs.booking'])
+            ->orderBy('shift_date')
+            ->get();
+
+        // Welke logistieke momenten (boeking + actie) zitten al in een shift?
+        $inShift = [];
+        foreach ($shifts as $sh) {
+            foreach ($sh->jobs as $j) {
+                if ($j->booking_id) {
+                    $inShift[$j->booking_id . ':' . $j->action] = true;
+                }
+            }
+        }
+
+        // Helper: initialen van de ingeplande medewerker(s), of 🔴 als niemand ingepland (J of J+P)
+        $staffPrefix = function ($staff, $staff2 = null): string {
+            $initials = collect([$staff, $staff2])
+                ->filter()
+                ->map(fn ($s) => mb_strtoupper(mb_substr($s->name, 0, 1)))
+                ->all();
+            return empty($initials) ? '🔴' : implode('+', $initials);
         };
 
         // Hulpfunctie: naive datetime (opgeslagen als Amsterdamse lokale tijd) → UTC iCal string
@@ -1921,73 +1998,130 @@ class BookingController extends Controller
                 'END:VEVENT',
             ]);
 
-            // ── 2. Bezorging (full_service) ───────────────────────────
-            if ($booking->booking_type === 'full_service' && $booking->delivery_at) {
+            // ── 2. Bezorging/opbouw (full_service) — alleen als NIET in een shift ──
+            if ($booking->booking_type === 'full_service' && $booking->delivery_at && ! isset($inShift[$booking->id . ':opbouwen'])) {
                 $dStart  = $utc($booking->delivery_at);
                 $dEnd    = $utc($booking->delivery_at->copy()->addHour());
-                $dPrefix = $staffPrefix($booking->deliveryStaff);
+                $dPrefix = $staffPrefix($booking->deliveryStaff, $booking->deliveryStaff2);
                 $lines = array_merge($lines, [
                     'BEGIN:VEVENT',
                     'UID:booking-' . $booking->id . '-delivery@crm.flitsmoment.nl',
                     'DTSTAMP:' . $now,
                     'DTSTART:' . $dStart,
                     'DTEND:' . $dEnd,
-                    'SUMMARY:' . $this->icalEscape("🚚 {$dPrefix} | Bezorging: {$name}"),
+                    'SUMMARY:' . $this->icalEscape("⚠️ Nog in te plannen — 🚚 {$dPrefix} | Opbouw: {$name}"),
                 ], $logistics($bn, 'Naar', $addr, $booking->customer_phone), [
                     'END:VEVENT',
                 ]);
             }
 
-            // ── 3. Ophaling (full_service) ────────────────────────────
-            if ($booking->booking_type === 'full_service' && $booking->pickup_at) {
+            // ── 3. Ophaling/afbouw (full_service) — alleen als NIET in een shift ──
+            if ($booking->booking_type === 'full_service' && $booking->pickup_at && ! isset($inShift[$booking->id . ':afbouwen'])) {
                 $pStart  = $utc($booking->pickup_at);
                 $pEnd    = $utc($booking->pickup_at->copy()->addHour());
-                $pPrefix = $staffPrefix($booking->pickupStaff);
+                $pPrefix = $staffPrefix($booking->pickupStaff, $booking->pickupStaff2);
                 $lines = array_merge($lines, [
                     'BEGIN:VEVENT',
                     'UID:booking-' . $booking->id . '-pickup@crm.flitsmoment.nl',
                     'DTSTAMP:' . $now,
                     'DTSTART:' . $pStart,
                     'DTEND:' . $pEnd,
-                    'SUMMARY:' . $this->icalEscape("↩️ {$pPrefix} | Ophaling: {$name}"),
+                    'SUMMARY:' . $this->icalEscape("⚠️ Nog in te plannen — ↩️ {$pPrefix} | Afbouw: {$name}"),
                 ], $logistics($bn, 'Van', $addr, $booking->customer_phone), [
                     'END:VEVENT',
                 ]);
             }
 
-            // ── 4. Klant haalt op (to_go) ─────────────────────────────
-            if ($booking->booking_type === 'to_go' && $booking->customer_pickup_at) {
+            // ── 4. Klant haalt op (to_go) — alleen als NIET in een shift ──
+            if ($booking->booking_type === 'to_go' && $booking->customer_pickup_at && ! isset($inShift[$booking->id . ':afgeven'])) {
                 $cpStart  = $utc($booking->customer_pickup_at);
                 $cpEnd    = $utc($booking->customer_pickup_at->copy()->addHour());
-                $cpPrefix = $staffPrefix($booking->deliveryStaff);
+                $cpPrefix = $staffPrefix($booking->deliveryStaff, $booking->deliveryStaff2);
                 $lines = array_merge($lines, [
                     'BEGIN:VEVENT',
                     'UID:booking-' . $booking->id . '-customer-pickup@crm.flitsmoment.nl',
                     'DTSTAMP:' . $now,
                     'DTSTART:' . $cpStart,
                     'DTEND:' . $cpEnd,
-                    'SUMMARY:' . $this->icalEscape("📦 {$cpPrefix} | Afhalen: {$name}"),
+                    'SUMMARY:' . $this->icalEscape("⚠️ Nog in te plannen — 📦 {$cpPrefix} | Afgeven: {$name}"),
                     'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}"),
                     'END:VEVENT',
                 ]);
             }
 
-            // ── 5. Klant brengt terug (to_go) ────────────────────────
-            if ($booking->booking_type === 'to_go' && $booking->customer_return_at) {
+            // ── 5. Klant brengt terug (to_go) — alleen als NIET in een shift ──
+            if ($booking->booking_type === 'to_go' && $booking->customer_return_at && ! isset($inShift[$booking->id . ':aannemen'])) {
                 $crStart  = $utc($booking->customer_return_at);
                 $crEnd    = $utc($booking->customer_return_at->copy()->addHour());
-                $crPrefix = $staffPrefix($booking->pickupStaff);
+                $crPrefix = $staffPrefix($booking->pickupStaff, $booking->pickupStaff2);
                 $lines = array_merge($lines, [
                     'BEGIN:VEVENT',
                     'UID:booking-' . $booking->id . '-customer-return@crm.flitsmoment.nl',
                     'DTSTAMP:' . $now,
                     'DTSTART:' . $crStart,
                     'DTEND:' . $crEnd,
-                    'SUMMARY:' . $this->icalEscape("↩️ {$crPrefix} | Retour: {$name}"),
+                    'SUMMARY:' . $this->icalEscape("⚠️ Nog in te plannen — ↩️ {$crPrefix} | Aannemen: {$name}"),
                     'DESCRIPTION:' . $this->icalEscape("Boeking: {$bn}"),
                     'END:VEVENT',
                 ]);
             }
+        }
+
+        // ── Shifts: één agenda-item per shift (vervangt de losse opbouw/afbouw voor ingeplande klussen) ──
+        $actionMeta = \App\Models\ShiftJob::ACTIONS;
+        foreach ($shifts as $sh) {
+            if ($sh->jobs->isEmpty()) {
+                continue;
+            }
+
+            $staffNames = collect([$sh->staff, $sh->staff2])->filter()->map(fn ($s) => $s->name)->all();
+            $who = empty($staffNames) ? '🔴 geen medewerker' : implode(' + ', $staffNames);
+
+            // Kop: start → eind + totale duur
+            $rc       = $sh->route_cache ?? [];
+            $startTxt = $sh->start_at ? $sh->start_at->format('H:i') : '—';
+            $endTxt   = $sh->end_at ? $sh->end_at->format('H:i') : '—';
+            $total    = $rc['total_minutes'] ?? null;
+            $totalTxt = $total !== null ? intdiv($total, 60) . 'u ' . ($total % 60) . 'm' : '—';
+
+            // Klus-regels voor de omschrijving (met berekende aankomsttijden + wachttijd uit route_cache)
+            $rcJobs = collect($rc['jobs'] ?? [])->keyBy('id');
+            $descLines = [
+                "Medewerker: {$who}",
+                "Shift: {$startTxt} – {$endTxt} (totaal {$totalTxt})",
+                '',
+            ];
+            foreach ($sh->jobs as $j) {
+                $meta  = $actionMeta[$j->action] ?? $actionMeta['opbouwen'];
+                $r     = $rcJobs->get($j->id);
+                $tijd  = ! empty($r['arrive_at']) ? Carbon::parse($r['arrive_at'])->format('H:i') : '—';
+                $klant = $j->booking ? $j->booking->customer_name : '';
+                $loc   = $meta['location'] === 'depot' ? 'Depot' : ($j->booking?->event_city ?: '');
+                $wacht = (! empty($r['wait_seconds']) && $r['wait_seconds'] > 0) ? ' [wacht ' . round($r['wait_seconds'] / 60) . 'm]' : '';
+                $descLines[] = trim("{$tijd} {$meta['icon']} {$meta['label']} {$klant}" . ($loc ? " ({$loc})" : '') . $wacht);
+            }
+            if ($rc['return_leg'] ?? null) {
+                $descLines[] = '↩️ Terug naar eindlocatie: ' . round(($rc['return_leg']['travel_seconds'] ?? 0) / 60) . 'm';
+            }
+            $desc = $this->icalEscape(implode("\n", $descLines));
+
+            $line = [
+                'BEGIN:VEVENT',
+                'UID:shift-' . $sh->id . '@crm.flitsmoment.nl',
+                'DTSTAMP:' . $now,
+            ];
+            if ($sh->start_at && $sh->end_at) {
+                $line[] = 'DTSTART:' . $utc($sh->start_at);
+                $line[] = 'DTEND:' . $utc($sh->end_at);
+            } else {
+                // Geen berekende tijd (bv. shift zonder klus met vaste tijd) → heel-dag op de shiftdatum
+                $line[] = 'DTSTART;VALUE=DATE:' . $sh->shift_date->format('Ymd');
+                $line[] = 'DTEND;VALUE=DATE:' . $sh->shift_date->copy()->addDay()->format('Ymd');
+            }
+            $line[] = 'SUMMARY:' . $this->icalEscape("🚐 Shift: {$who}");
+            $line[] = 'DESCRIPTION:' . $desc;
+            $line[] = 'END:VEVENT';
+            $lines = array_merge($lines, $line);
         }
 
         $lines[] = 'END:VCALENDAR';

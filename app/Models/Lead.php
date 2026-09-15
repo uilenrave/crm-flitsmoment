@@ -31,6 +31,31 @@ class Lead extends Model
         'conversion_chance' => 'integer',
     ];
 
+    /**
+     * Telefoonnummer als WhatsApp-nummer (alleen cijfers, landcode voorop).
+     * Geeft null als er geen bruikbaar nummer is.
+     */
+    public function whatsappNummer(): ?string
+    {
+        if (! $this->phone) return null;
+
+        $cijfers = preg_replace('/\D/', '', $this->phone);
+
+        if (str_starts_with($cijfers, '00')) $cijfers = substr($cijfers, 2);
+        if (str_starts_with($cijfers, '0'))  $cijfers = '31' . substr($cijfers, 1);
+        if (str_starts_with($cijfers, '6') && strlen($cijfers) === 9) $cijfers = '31' . $cijfers;
+
+        return strlen($cijfers) >= 9 ? $cijfers : null;
+    }
+
+    /** Hoeveel dagen de opvolgdatum verlopen is (0 = vandaag) */
+    public function dagenVerlopen(): ?int
+    {
+        if (! $this->follow_up_at) return null;
+
+        return (int) $this->follow_up_at->startOfDay()->diffInDays(now()->startOfDay());
+    }
+
     public function isArchived(): bool
     {
         return $this->archived_at !== null;

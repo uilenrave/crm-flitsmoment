@@ -346,6 +346,7 @@ document.addEventListener('change', function(e) {
                     📍
                     @if($boeking->event_location)<strong>{{ $boeking->event_location }}</strong>@endif
                     @if($volledigAdres) <span class="addr">{{ $volledigAdres }}</span>@endif
+                    @include('partials.ze_badge', ['booking' => $boeking])
                 </span>
                 @endif
                 @if($deliverAt)

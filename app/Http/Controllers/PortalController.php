@@ -8,6 +8,9 @@ use App\Models\DesignMask;
 use App\Models\DesignPromptSetting;
 use App\Models\DesignSession;
 use App\Models\Payment;
+use App\Models\Asset;
+use App\Models\BookingItem;
+use App\Services\AvailabilityService;
 use App\Models\CanvaTemplate;
 use App\Scopes\AccountScope;
 use App\Services\DesignGenerationService;
@@ -42,7 +45,26 @@ class PortalController extends Controller
             ->orderBy('id')
             ->get();
 
-        return view('portal.booking', compact('booking', 'canvaTemplates'));
+        // Beschikbare upsells: actieve upsell-assets met actietarief, nog niet toegevoegd, op voorraad voor de datum.
+        $avail = app(AvailabilityService::class);
+        $addedUpsellAssetIds = $booking->items->pluck('asset_id')->all(); // alles wat al op de boeking staat
+        $availableUpsells = Asset::withoutGlobalScope(AccountScope::class)
+            ->where('account_id', $booking->account_id)
+            ->where('is_active', true)->where('is_upsell', true)
+            ->whereNotNull('upsell_price')
+            ->orderBy('name')->get()
+            ->reject(fn ($a) => in_array($a->id, $addedUpsellAssetIds))
+            ->filter(fn ($a) => $avail->availableToAdd($a, $booking) >= 1)
+            ->values();
+
+        // Melding-vlaggen voor het portaalmenu (waar actie nodig is).
+        $notify = [
+            'betaling'  => $booking->amount_due > 0,
+            'fotostrip' => $booking->strip_status === 'review' && $booking->strip_design_url,
+            'contact'   => $booking->booking_type === 'full_service' && empty($booking->location_contact_phone),
+        ];
+
+        return view('portal.booking', compact('booking', 'canvaTemplates', 'availableUpsells', 'notify'));
     }
 
     /** Klant downloadt factuur PDF via e-boekhouden */
@@ -812,6 +834,83 @@ class PortalController extends Controller
         $list = implode('', array_map(fn ($i) => "<li style='margin:.2rem 0;'>{$i['html']}</li>", $items));
 
         return "<p style='font-weight:600;margin-top:1.25rem;'>📅 Andere momenten op deze dag(en):</p><ul style='font-size:14px;color:#374151;padding-left:1.1rem;'>{$list}</ul>";
+    }
+
+    /** Klant voegt een upsell toe aan de boeking (actietarief, telt op bij het openstaande bedrag). */
+    public function addUpsell(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)->with('items', 'payments')->firstOrFail();
+
+        $data  = $request->validate(['asset_id' => ['required', 'integer']]);
+        $asset = Asset::withoutGlobalScope(AccountScope::class)
+            ->where('account_id', $booking->account_id)->where('id', $data['asset_id'])
+            ->where('is_active', true)->where('is_upsell', true)->whereNotNull('upsell_price')->first();
+
+        if (! $asset) {
+            return back()->with('error', 'Deze upsell is niet (meer) beschikbaar.');
+        }
+        if ($booking->items->where('asset_id', $asset->id)->isNotEmpty()) {
+            return back()->with('info', 'Dit staat al op je boeking.');
+        }
+        if (app(AvailabilityService::class)->availableToAdd($asset, $booking) < 1) {
+            return back()->with('error', 'Helaas net niet meer beschikbaar op jouw datum.');
+        }
+
+        BookingItem::create([
+            'booking_id'     => $booking->id,
+            'asset_id'       => $asset->id,
+            'name_snapshot'  => $asset->name,
+            'price_snapshot' => $asset->upsell_price,
+            'quantity'       => 1,
+            'via_upsell'     => true,
+        ]);
+
+        $this->applyUpsellPriceChange($booking->fresh(['payments']), (float) $asset->upsell_price);
+
+        return back()->with('success', '✅ ' . $asset->name . ' toegevoegd aan je boeking.');
+    }
+
+    /** Klant verwijdert een zelf-toegevoegde upsell (zolang er nog niet volledig betaald is). */
+    public function removeUpsell(Request $request, string $token): RedirectResponse
+    {
+        $booking = Booking::withoutGlobalScope(AccountScope::class)
+            ->where('public_token', $token)->with('payments')->firstOrFail();
+
+        $data = $request->validate(['item_id' => ['required', 'integer']]);
+        $item = BookingItem::where('id', $data['item_id'])
+            ->where('booking_id', $booking->id)->where('via_upsell', true)->first();
+
+        if (! $item) {
+            return back()->with('error', 'Item niet gevonden.');
+        }
+        $paid = (float) $booking->payments->where('status', 'paid')->sum('amount');
+        if ($paid > 0 && $booking->amount_due <= 0) {
+            return back()->with('error', 'Dit is al betaald — neem contact met ons op om het te wijzigen.');
+        }
+
+        $amount = (float) $item->price_snapshot * (int) $item->quantity;
+        $item->delete();
+        $this->applyUpsellPriceChange($booking->fresh(['payments']), -$amount);
+
+        return back()->with('success', 'Upsell verwijderd.');
+    }
+
+    /** Herbereken totaal + betaalstatus na een upsell-wijziging. */
+    private function applyUpsellPriceChange(Booking $booking, float $delta): void
+    {
+        $newTotal = max(0, (float) $booking->total_price + $delta);
+        $paid     = (float) $booking->payments->where('status', 'paid')->sum('amount');
+        $status   = $booking->payment_status;
+
+        if (! in_array($status, ['cancelled', 'refunded'])) {
+            if ($paid > 0) {
+                $status = $paid >= $newTotal ? 'paid' : 'partial';
+            }
+            // Handmatig op "betaald" gezet zonder geregistreerde betaling: laten staan (admin-edge).
+        }
+
+        $booking->forceFill(['total_price' => $newTotal, 'payment_status' => $status])->save();
     }
 
     /** Start een Mollie betaling */

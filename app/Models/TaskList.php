@@ -47,6 +47,28 @@ class TaskList extends Model
         return $this->hasMany(Task::class);
     }
 
+    /**
+     * De lijst waar losse items in landen als er geen lijst is gekozen
+     * (snelle invoer, en alles wat de CRM-sync aanmaakt).
+     */
+    public static function defaultFor(int $accountId): self
+    {
+        $list = static::withoutGlobalScopes()
+            ->where('account_id', $accountId)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->first();
+
+        if ($list) return $list;
+
+        return static::withoutGlobalScopes()->create([
+            'account_id' => $accountId,
+            'title'      => 'Flitsmoment',
+            'color'      => '#f59e0b',
+            'sort_order' => 0,
+        ]);
+    }
+
     /** Aantal openstaande taken (voor badge in sidebar) */
     public function getPendingCountAttribute(): int
     {

@@ -9,11 +9,12 @@ class BookingItem extends Model
 {
     protected $fillable = [
         'booking_id', 'asset_id',
-        'name_snapshot', 'price_snapshot', 'quantity', 'unit_number',
+        'name_snapshot', 'price_snapshot', 'quantity', 'unit_number', 'via_upsell',
     ];
 
     protected $casts = [
         'price_snapshot' => 'decimal:2',
+        'via_upsell'     => 'boolean',
     ];
 
     public function booking(): BelongsTo

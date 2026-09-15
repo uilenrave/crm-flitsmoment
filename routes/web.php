@@ -13,8 +13,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\PortalController;
 use App\Http\Controllers\TravelCostController;
 use App\Http\Controllers\WebhookController;
-use App\Http\Controllers\TaskController;
-use App\Http\Controllers\TaskListController;
+use App\Http\Controllers\TodoController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StaffPortalController;
 use App\Http\Controllers\StaffHoursController;
@@ -28,6 +27,7 @@ Route::get('/ical/{token}.ics', [BookingController::class, 'ical'])->name('booki
 // Medewerker planning (geen login, token-beveiligd)
 Route::get('/medewerker/{token}', [StaffPortalController::class, 'show'])->name('staff.portal');
 Route::post('/medewerker/{token}/uren', [StaffPortalController::class, 'submitHours'])->name('staff.portal.hours.submit');
+Route::post('/medewerker/{token}/shift-uren', [StaffPortalController::class, 'submitShiftHours'])->name('staff.portal.shift-hours.submit');
 Route::post('/medewerker/{token}/uren/combineer', [StaffPortalController::class, 'markCombined'])->name('staff.portal.hours.combine');
 Route::post('/medewerker/{token}/uren/{hoursId}/combineer-terug', [StaffPortalController::class, 'unmarkCombined'])->name('staff.portal.hours.uncombine');
 Route::post('/medewerker/{token}/aanmelden', [StaffPortalController::class, 'signup'])->name('staff.portal.signup');
@@ -65,6 +65,8 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::post('/boeking/{token}/return-time', [PortalController::class, 'requestReturnTime'])->name('portal.return-time');
     Route::post('/boeking/{token}/contactpersoon', [PortalController::class, 'saveLocationContact'])->name('portal.location-contact');
     Route::post('/boeking/{token}/wijziging-aanvragen', [PortalController::class, 'requestTimeChange'])->name('portal.request-time-change');
+    Route::post('/boeking/{token}/upsell', [PortalController::class, 'addUpsell'])->name('portal.upsell.add');
+    Route::post('/boeking/{token}/upsell/verwijderen', [PortalController::class, 'removeUpsell'])->name('portal.upsell.remove');
     Route::get('/boeking/{token}/factuur', [PortalController::class, 'factuurDownload'])->name('portal.factuur-download');
 
     // Intake flow (klant vult in na bevestiging)
@@ -121,6 +123,17 @@ Route::middleware('auth')->group(function () {
     Route::get('bookings/planning', [BookingController::class, 'planning'])->name('bookings.planning');
     Route::get('bookings/staff-planning', [BookingController::class, 'staffPlanning'])->name('bookings.staff-planning');
     Route::post('bookings/staff-planning/open-all', [BookingController::class, 'openAllUnassigned'])->name('bookings.open-all-rides');
+
+    // Shifts — medewerkers plannen op shifts met meerdere klussen + route
+    Route::get('shifts', [\App\Http\Controllers\ShiftController::class, 'index'])->name('shifts.index');
+    Route::post('shifts', [\App\Http\Controllers\ShiftController::class, 'store'])->name('shifts.store');
+    Route::patch('shifts/{shift}', [\App\Http\Controllers\ShiftController::class, 'update'])->name('shifts.update');
+    Route::delete('shifts/{shift}', [\App\Http\Controllers\ShiftController::class, 'destroy'])->name('shifts.destroy');
+    Route::post('shifts/{shift}/jobs', [\App\Http\Controllers\ShiftController::class, 'attachJob'])->name('shifts.jobs.attach');
+    Route::post('shifts/{shift}/reorder', [\App\Http\Controllers\ShiftController::class, 'reorder'])->name('shifts.reorder');
+    Route::post('shifts/{shift}/recompute', [\App\Http\Controllers\ShiftController::class, 'recompute'])->name('shifts.recompute');
+    Route::delete('shift-jobs/{job}', [\App\Http\Controllers\ShiftController::class, 'detachJob'])->name('shifts.jobs.detach');
+    Route::patch('shift-jobs/{job}', [\App\Http\Controllers\ShiftController::class, 'updateJob'])->name('shifts.jobs.update');
     Route::post('bookings/{booking}/assign-staff', [BookingController::class, 'assignStaff'])->name('bookings.assign-staff');
     Route::post('bookings/{booking}/toggle-ride-open', [BookingController::class, 'toggleRideOpen'])->name('bookings.toggle-ride-open');
     Route::get('bookings/archive', [BookingController::class, 'archive'])->name('bookings.archive');
@@ -141,6 +154,8 @@ Route::middleware('auth')->group(function () {
     Route::post('bookings/{booking}/resend-gallery-mail', [BookingController::class, 'resendGalleryMail'])->name('bookings.resend-gallery-mail');
     Route::post('bookings/{booking}/return-time-request', [BookingController::class, 'handleReturnTimeRequest'])->name('bookings.return-time-request');
     Route::post('bookings/{booking}/verstuur-tijden-mail', [BookingController::class, 'sendTimesMail'])->name('bookings.send-times-mail');
+    Route::post('bookings/{booking}/verstuur-factuur-mail', [BookingController::class, 'sendInvoiceReadyMail'])->name('bookings.send-invoice-mail');
+    Route::post('bookings/{booking}/verstuur-strip-herinnering', [BookingController::class, 'sendStripReminderMail'])->name('bookings.send-strip-reminder');
     Route::post('bookings/{booking}/strip-design', [BookingController::class, 'uploadStripDesign'])->name('bookings.strip-design');
     Route::delete('bookings/{booking}/strip-design', [BookingController::class, 'deleteStripDesign'])->name('bookings.strip-design-delete');
     Route::delete('bookings/{booking}/delivery-image', [BookingController::class, 'deleteDeliveryImage'])->name('bookings.delivery-image-delete');
@@ -216,17 +231,8 @@ Route::middleware('auth')->group(function () {
     Route::post('staff-uren/{staffHours}/terugdraaien', [StaffHoursController::class, 'revert'])->name('staff-hours.revert');
     Route::delete('staff-uren/{staffHours}', [StaffHoursController::class, 'destroy'])->name('staff-hours.destroy');
 
-    // Taken (task manager)
-    Route::get('taken',                         [TaskController::class, 'index'])->name('tasks.index');
-    Route::post('taken/reorder',                [TaskController::class, 'reorder'])->name('tasks.reorder');
-    Route::post('taken',                        [TaskController::class, 'store'])->name('tasks.store');
-    Route::patch('taken/{task}',                [TaskController::class, 'update'])->name('tasks.update');
-    Route::delete('taken/{task}',               [TaskController::class, 'destroy'])->name('tasks.destroy');
-    Route::post('taken/{task}/toggle',          [TaskController::class, 'toggle'])->name('tasks.toggle');
-    Route::post('taken/{task}/flag',            [TaskController::class, 'flag'])->name('tasks.flag');
-    Route::post('takenlijsten',                 [TaskListController::class, 'store'])->name('task-lists.store');
-    Route::patch('takenlijsten/{taskList}',     [TaskListController::class, 'update'])->name('task-lists.update');
-    Route::delete('takenlijsten/{taskList}',    [TaskListController::class, 'destroy'])->name('task-lists.destroy');
+    // Taken wonen nu in de takenapp — oude links en bladwijzers gaan daarheen
+    Route::get('taken', fn () => redirect()->away(\App\Helpers\TodoHelper::url()))->name('tasks.index');
 
     // Mailtemplates
     Route::get('mail-templates', [MailTemplateController::class, 'index'])->name('mail-templates.index');
@@ -243,3 +249,68 @@ Route::middleware('auth')->group(function () {
     Route::get('admin/instellingen', [AdminController::class, 'settings'])->name('admin.settings');
     Route::put('admin/instellingen/{account}', [AdminController::class, 'updateSettings'])->name('admin.settings.update');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Takenapp — todo.flitsmoment.nl
+|--------------------------------------------------------------------------
+|
+| Zelfde codebase, eigen adres. Staat TODO_DOMAIN in .env, dan draait de app
+| in de root van dat domein. Staat het er niet (lokaal), dan hangt hij onder
+| /todo op het CRM-domein, zodat je 'm kunt testen zonder extra vhost.
+|
+| De CRM-routes hierboven zitten niet in deze groep en zijn dus niet
+| bereikbaar op het takendomein.
+|
+*/
+$todoRoutes = function () {
+    Route::get('/',              [TodoController::class, 'vandaag'])->name('vandaag');
+    Route::get('binnenkort',     [TodoController::class, 'binnenkort'])->name('binnenkort');
+    Route::get('kopen',          [TodoController::class, 'kopen'])->name('kopen');
+    Route::get('leren',          [TodoController::class, 'leren'])->name('leren');
+    Route::get('crm',            [TodoController::class, 'crm'])->name('crm');
+    Route::get('klaar',          [TodoController::class, 'klaar'])->name('klaar');
+    Route::get('zoeken',         [TodoController::class, 'zoeken'])->name('zoeken');
+    Route::get('lijst/{taskList}', [TodoController::class, 'lijst'])->name('lijst');
+
+    Route::get('manifest.webmanifest', function () {
+        return response()->json([
+            'name'             => 'Taken — Flitsmoment',
+            'short_name'       => 'Taken',
+            'start_url'        => '/',
+            'scope'            => '/',
+            'display'          => 'standalone',
+            'background_color' => '#fdfdfc',
+            'theme_color'      => '#fdfdfc',
+            'icons'            => [
+                ['src' => '/favicon-app.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable'],
+            ],
+        ]);
+    })->name('manifest');
+
+    Route::get('opvolgen',       [TodoController::class, 'opvolgen'])->name('opvolgen');
+    Route::post('leads/{lead}/notitie', [TodoController::class, 'leadNotitie'])->name('leads.notitie');
+    Route::post('leads/{lead}/contact', [TodoController::class, 'leadContact'])->name('leads.contact');
+    Route::patch('leads/{lead}/datum',  [TodoController::class, 'leadDatum'])->name('leads.datum');
+
+    Route::post('lijsten',              [TodoController::class, 'lijstOpslaan'])->name('lijsten.store');
+    Route::patch('lijsten/{taskList}',  [TodoController::class, 'lijstBijwerken'])->name('lijsten.update');
+    Route::delete('lijsten/{taskList}', [TodoController::class, 'lijstVerwijderen'])->name('lijsten.destroy');
+
+    Route::get('instellingen',   [TodoController::class, 'instellingen'])->name('instellingen');
+    Route::post('instellingen',  [TodoController::class, 'instellingenOpslaan'])->name('instellingen.opslaan');
+
+    Route::post('items',                 [TodoController::class, 'store'])->name('items.store');
+    Route::post('items/reorder',         [TodoController::class, 'reorder'])->name('items.reorder');
+    Route::patch('items/{task}',         [TodoController::class, 'update'])->name('items.update');
+    Route::delete('items/{task}',        [TodoController::class, 'destroy'])->name('items.destroy');
+    Route::post('items/{task}/toggle',   [TodoController::class, 'toggle'])->name('items.toggle');
+    Route::post('items/{task}/flag',     [TodoController::class, 'flag'])->name('items.flag');
+    Route::post('items/{task}/snooze',   [TodoController::class, 'snooze'])->name('items.snooze');
+};
+
+if ($todoDomain = config('todo.domain')) {
+    Route::domain($todoDomain)->middleware('auth')->name('todo.')->group($todoRoutes);
+} else {
+    Route::prefix('todo')->middleware('auth')->name('todo.')->group($todoRoutes);
+}

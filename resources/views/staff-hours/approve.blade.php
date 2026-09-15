@@ -16,11 +16,16 @@
         <div>
             <h3 style="margin:0 0 .25rem;font-size:1.1rem;font-weight:700;">{{ $staffHours->staff->name }}</h3>
             <div style="font-size:.85rem;color:#64748b;">
+                @if($staffHours->booking)
                 Boeking
                 <a href="{{ route('bookings.show', $staffHours->booking_id) }}" style="color:#3b82f6;font-weight:600;text-decoration:none;">
-                    {{ $staffHours->booking->booking_number ?? '—' }}
+                    {{ $staffHours->booking->booking_number }}
                 </a>
-                — {{ $staffHours->booking->customer_name ?? '' }}
+                — {{ $staffHours->booking->customer_name }}
+                @elseif($staffHours->shift)
+                🚐 Shift {{ $staffHours->shift->shift_date->translatedFormat('l j F Y') }}
+                — {{ $staffHours->shift->jobs->map(fn($j) => $j->label() . ($j->booking ? ' ' . $j->booking->customer_name : ''))->implode(' · ') }}
+                @endif
             </div>
         </div>
         @if($staffHours->status === 'pending')
@@ -37,7 +42,9 @@
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
         <div style="background:#f8fafc;border-radius:.75rem;padding:.875rem 1rem;">
             <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.04em;margin-bottom:.3rem;">Rol</div>
-            @if($staffHours->role === 'delivery')
+            @if(! $staffHours->role && $staffHours->shift)
+                <span style="font-size:.8rem;background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;padding:.2rem .55rem;border-radius:999px;font-weight:700;">🚐 Hele shift</span>
+            @elseif($staffHours->role === 'delivery')
                 <span style="font-size:.8rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:.2rem .55rem;border-radius:999px;font-weight:700;">⬇ Bezorging</span>
             @elseif($staffHours->role === 'handover')
                 <span style="font-size:.8rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;padding:.2rem .55rem;border-radius:999px;font-weight:700;">🤝 Afgifte</span>
@@ -195,7 +202,7 @@
         <h3 style="font-size:1rem;font-weight:700;margin-bottom:.5rem;color:#1e293b;">Urenverzoek verwijderen?</h3>
         <p style="font-size:.875rem;color:#64748b;margin-bottom:1.5rem;">
             Je verwijdert het verzoek van <strong>{{ $staffHours->staff->name }}</strong>
-            voor boeking <strong>{{ $staffHours->booking->booking_number ?? '?' }}</strong>.
+            voor boeking <strong>{{ $staffHours->booking?->booking_number ?? '?' }}</strong>.
             Dit kan niet ongedaan worden gemaakt.
         </p>
         <div style="display:flex;gap:.75rem;justify-content:flex-end;">

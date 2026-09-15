@@ -155,7 +155,6 @@
                     <th>{!! $sortLink('name', 'Naam') !!}</th>
                     <th>{!! $sortLink('email', 'E-mail') !!}</th>
                     <th>{!! $sortLink('event_date', 'Event datum') !!}</th>
-                    <th>Status</th>
                     <th>{!! $sortLink('conversion_chance', 'Kans') !!}</th>
                     @if($tab === 'archief')
                     <th>Reden</th>
@@ -185,13 +184,6 @@
                     </td>
                     <td data-label="E-mail">{{ $lead->email ?? '—' }}</td>
                     <td data-label="Eventdatum">{{ $lead->event_date?->format('d M Y') ?? '—' }}</td>
-                    <td data-label="Status">
-                        @if($lead->status)
-                            <span class="badge" style="background:{{ $lead->status->color }}20;color:{{ $lead->status->color }};">
-                                {{ $lead->status->display_name }}
-                            </span>
-                        @endif
-                    </td>
                     <td data-label="Kans">
                         <select class="kans-select" data-url="{{ route('leads.kans', $lead) }}" onchange="kansChange(this)">
                             <option value="">—</option>
@@ -291,7 +283,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="9" style="text-align:center;padding:2rem;color:#64748b;">
+                    <td colspan="8" style="text-align:center;padding:2rem;color:#64748b;">
                         {{ $tab === 'archief' ? 'Geen gearchiveerde leads.' : 'Geen actieve leads.' }}
                     </td>
                 </tr>

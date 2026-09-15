@@ -12,11 +12,14 @@ class Asset extends Model
 {
     protected $fillable = [
         'account_id', 'name', 'category', 'description', 'price', 'stock', 'ignore_stock', 'is_active',
+        'is_upsell', 'upsell_price',
     ];
 
     protected $casts = [
         'is_active'    => 'boolean',
         'ignore_stock' => 'boolean',
+        'is_upsell'    => 'boolean',
+        'upsell_price' => 'decimal:2',
         'price'     => 'decimal:2',
     ];
 

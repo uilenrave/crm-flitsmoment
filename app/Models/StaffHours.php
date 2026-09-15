@@ -11,7 +11,7 @@ class StaffHours extends Model
     protected $table = 'staff_hours';
 
     protected $fillable = [
-        'account_id', 'staff_id', 'booking_id', 'combined_with_booking_id', 'combined_with_role', 'role',
+        'account_id', 'staff_id', 'booking_id', 'shift_id', 'combined_with_booking_id', 'combined_with_role', 'role',
         'hours', 'hours_approved', 'km', 'status',
         'staff_note', 'admin_note',
         'submitted_at', 'approved_at', 'paid_at',
@@ -57,6 +57,11 @@ class StaffHours extends Model
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class)->withoutGlobalScopes();
+    }
+
+    public function shift(): BelongsTo
+    {
+        return $this->belongsTo(Shift::class)->withoutGlobalScopes();
     }
 
     public function combinedWithBooking(): BelongsTo

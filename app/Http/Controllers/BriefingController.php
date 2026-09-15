@@ -108,7 +108,7 @@ class BriefingController extends Controller
 
         $bookings = Booking::with(['items.asset'])
             ->where(function ($q) use ($staffId) {
-                $q->where('delivery_staff_id', $staffId)->orWhere('pickup_staff_id', $staffId);
+                $q->where("delivery_staff_id", $staffId)->orWhere("pickup_staff_id", $staffId)->orWhere("delivery_staff_id_2", $staffId)->orWhere("pickup_staff_id_2", $staffId);
             })
             ->whereIn('status', ['confirmed', 'completed'])
             ->where(function ($q) use ($from, $to) {
@@ -124,7 +124,7 @@ class BriefingController extends Controller
 
         foreach ($bookings as $b) {
             // Delivery / handover rit (vanuit medewerker-perspectief)
-            if ($b->delivery_staff_id === $staffId) {
+            if ($b->delivery_staff_id === $staffId || $b->delivery_staff_id_2 === $staffId) {
                 $isToGo = $b->booking_type === 'to_go';
                 $datum  = $isToGo
                     ? ($b->customer_pickup_at ?? $b->event_date)
@@ -139,7 +139,7 @@ class BriefingController extends Controller
                 }
             }
             // Pickup rit
-            if ($b->pickup_staff_id === $staffId) {
+            if ($b->pickup_staff_id === $staffId || $b->pickup_staff_id_2 === $staffId) {
                 $isToGo = $b->booking_type === 'to_go';
                 $datum  = $isToGo
                     ? ($b->customer_return_at ?? $b->event_date)

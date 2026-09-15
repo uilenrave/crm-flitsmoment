@@ -13,7 +13,7 @@ class Account extends Model
         'mollie_key', 'mollie_enabled', 'eboekhouden_enabled', 'eboekhouden_api_key',
         'origin_address', 'travel_free_km', 'travel_cost_per_km',
         'booking_sequence', 'booking_sequence_year',
-        'production_token',
+        'production_token', 'shift_durations', 'todo_settings',
     ];
 
     protected $casts = [
@@ -21,7 +21,37 @@ class Account extends Model
         'eboekhouden_enabled'  => 'boolean',
         'travel_free_km'       => 'integer',
         'travel_cost_per_km'   => 'decimal:2',
+        'shift_durations'      => 'array',
+        'todo_settings'        => 'array',
     ];
+
+    /**
+     * Drempel voor een CRM-signaal in de takenapp, met fallback naar config/todo.php.
+     * Bijv. todoSetting('offer_followup_days') → 5.
+     */
+    public function todoSetting(string $key): int
+    {
+        $stored = is_array($this->todo_settings) ? $this->todo_settings : [];
+
+        return (int) ($stored[$key] ?? config("todo.signals.{$key}"));
+    }
+
+    /**
+     * Basis-werktijden per klus-actie (minuten), account-instelling met fallback naar de defaults
+     * uit ShiftJob::ACTIONS. Vorm: ['opbouwen' => 45, 'afbouwen' => 15, 'afgeven' => 30, 'aannemen' => 15].
+     */
+    public function shiftDurations(): array
+    {
+        $defaults = collect(ShiftJob::ACTIONS)->map(fn ($m) => $m['default_minutes'])->all();
+        $stored   = is_array($this->shift_durations) ? $this->shift_durations : [];
+
+        $result = [];
+        foreach ($defaults as $action => $default) {
+            $result[$action] = (int) ($stored[$action] ?? $default);
+        }
+
+        return $result;
+    }
 
     /** Berekent reiskosten op basis van afstand in km */
     public function calculateTravelCost(float $distanceKm): float

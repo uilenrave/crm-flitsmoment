@@ -65,6 +65,7 @@ class Booking extends Model
         'customer_pickup_at', 'customer_return_at', 'customer_pickup_approved',
         'proposed_return_time', 'proposed_return_status',
         'event_location', 'event_address', 'event_postcode', 'event_city',
+        'latitude', 'longitude', 'in_ze_zone', 'ze_zone_name', 'ze_checked_at',
         'event_notes',
         'delivery_instructions', 'delivery_instructions_images',
         'strip_status', 'strip_design_url', 'strip_notes', 'strip_feedback', 'strip_feedback_at', 'strip_version', 'strip_comments', 'strip_designs', 'strip_intake_data', 'strip_format', 'strip_design_method', 'strip_self_tool', 'strip_template_id', 'gallery_url', 'gallery_token',
@@ -78,7 +79,7 @@ class Booking extends Model
         'location_contact_type', 'location_contact_phone', 'location_contact_email',
         'pending_change', 'pending_change_token',
         'review_mail_sent_at',
-        'delivery_staff_id', 'pickup_staff_id', 'delivery_open', 'pickup_open',
+        'delivery_staff_id', 'pickup_staff_id', 'delivery_staff_id_2', 'pickup_staff_id_2', 'delivery_open', 'pickup_open',
     ];
 
     protected $casts = [
@@ -109,6 +110,8 @@ class Booking extends Model
         'strip_intake_data'     => 'array',
         'delivery_instructions_images' => 'array',
         'intake_completed'      => 'boolean',
+        'in_ze_zone'            => 'boolean',
+        'ze_checked_at'         => 'datetime',
         'intake_completed_at'   => 'datetime',
         'review_mail_sent_at'   => 'datetime',
         'base_price'          => 'decimal:2',
@@ -273,6 +276,21 @@ class Booking extends Model
     public function pickupStaff(): BelongsTo
     {
         return $this->belongsTo(Staff::class, 'pickup_staff_id')->withoutGlobalScope(AccountScope::class);
+    }
+
+    public function deliveryStaff2(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'delivery_staff_id_2')->withoutGlobalScope(AccountScope::class);
+    }
+
+    public function pickupStaff2(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'pickup_staff_id_2')->withoutGlobalScope(AccountScope::class);
+    }
+
+    public function shiftJobs(): HasMany
+    {
+        return $this->hasMany(ShiftJob::class);
     }
 
     public function rideSignups(): HasMany

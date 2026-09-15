@@ -204,6 +204,21 @@
         @media (max-width: 768px) {
             .mobile-analytics-only { display: flex; }
         }
+        /* Horizontale tab-balken: labels niet afbreken, strip scrollt netjes */
+        .page-tabs, .tabs, .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .page-tabs::-webkit-scrollbar, .tabs::-webkit-scrollbar { display: none; }
+        .page-tabs > a, .page-tabs > *, .tabs > a { white-space: nowrap !important; flex-shrink: 0; }
+        @media (max-width: 768px) {
+            .page-tabs > a, .tabs > a { padding: .6rem .9rem !important; font-size: .92rem; }
+        }
+
+        /* "Meer"-knop: alleen in de mobiele onderbalk */
+        .mobile-more-only { display: none; }
+        @media (max-width: 768px) {
+            .mobile-more-only { display: flex; }
+        }
+        /* Button die als nav-item toont (reset) */
+        button.nav-item { background: none; border: none; font: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; }
 
         /* Meer button — hidden on desktop */
         .btn-meer {
@@ -243,6 +258,70 @@
         .meer-item svg { width: 1rem; height: 1rem; flex-shrink: 0; color: #64748b; }
         .meer-item.active svg { color: var(--primary-dark); }
         .meer-divider { height: 1px; background: #f1f5f9; margin: .2rem 0; }
+        /* ════════════════════════════════════════════════════════════════
+           MOBIELE OVERHAUL — globaal, geldt voor alle pagina's
+           ════════════════════════════════════════════════════════════════ */
+        @media (max-width: 768px) {
+            /* Geen horizontaal geschuif van de hele pagina */
+            html, body, .main, .content { max-width: 100%; overflow-x: hidden; }
+
+            /* Alle veel-koloms grids → 1 kolom */
+            .form-grid, .form-grid-2, .form-grid-3, .detail-grid,
+            .grid-2, .grid-3, .two-col, .cols-2, .cols-3 {
+                grid-template-columns: 1fr !important;
+                gap: .85rem !important;
+            }
+            /* Twee-koloms hoofdlayouts (boeking aanmaken/bewerken, split-panes) → gestapeld */
+            .bk-edit-layout, .split-layout, .two-pane, .sb-grid {
+                display: block !important;
+                grid-template-columns: 1fr !important;
+            }
+            .bk-edit-layout > .card, .bk-edit-layout > div { max-width: 100% !important; }
+
+            /* Inputs touch-vriendelijk + 16px zodat iOS niet inzoomt bij focus */
+            input[type=text], input[type=email], input[type=tel], input[type=date],
+            input[type=time], input[type=number], input[type=password], input[type=search],
+            input[type=url], select, textarea, .form-control, .uren-input, .pc-input, .pc-select {
+                font-size: 16px !important;
+                padding: .7rem .8rem !important;
+                min-height: 46px;
+                border-radius: .7rem;
+            }
+            textarea { min-height: 96px; }
+            label { font-size: .85rem; }
+
+            /* Knoppen: groter raakvlak; primaire acties standaard vol breed */
+            .btn { padding: .7rem 1rem; font-size: .95rem; min-height: 46px; justify-content: center; }
+            .btn-sm { padding: .45rem .8rem; font-size: .85rem; min-height: 38px; }
+            .btn-block-mobile, .card > form > .btn, .btn-primary.full { width: 100%; }
+
+            /* Kaarten iets compacter, header-acties mogen wrappen */
+            .card { padding: 1rem; border-radius: .9rem; margin-bottom: 1rem; }
+            .card-header { flex-wrap: wrap; gap: .5rem; row-gap: .5rem; }
+            .card-header .card-title, .card-header h2, .card-header h3 { font-size: 1rem; }
+
+            /* Tabellen die géén card-view hebben → horizontaal scrollen i.p.v. knijpen */
+            .content table:not(.table-card-mobile) {
+                display: block; width: 100%; overflow-x: auto;
+                -webkit-overflow-scrolling: touch; white-space: nowrap;
+            }
+            .content table:not(.table-card-mobile) th,
+            .content table:not(.table-card-mobile) td { white-space: nowrap; }
+
+            /* Modals/overlays vol breed */
+            .modal, .modal-content, .overlay-card { width: 100% !important; max-width: 100% !important; border-radius: .9rem; }
+
+            /* Typische paginakop-rij (titel + knop) stapelt */
+            .page-head, .list-head, .toolbar { flex-wrap: wrap; gap: .6rem; }
+
+            /* Grote titels iets kleiner */
+            h1 { font-size: 1.4rem; }
+            h2 { font-size: 1.15rem; }
+        }
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .btn { font-size: .9rem; }
+        }
     </style>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @stack('styles')
@@ -283,7 +362,12 @@
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             <span class="nav-label">Analytics</span>
         </a>
-        <a href="{{ route('tasks.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('tasks.*') ? 'active' : '' }}" data-tooltip="Taken">
+        {{-- "Meer" — vaste knop in de onderbalk op mobiel, opent het volledige menu --}}
+        <button type="button" class="nav-item mobile-more-only" data-meer-toggle aria-label="Meer menu">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>
+            <span class="nav-label">Meer</span>
+        </button>
+        <a href="{{ \App\Helpers\TodoHelper::url() }}" class="nav-item mobile-hidden" data-tooltip="Taken">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
             <span class="nav-label">Taken</span>
         </a>
@@ -291,6 +375,10 @@
         <a href="{{ route('bookings.staff-planning') }}" class="nav-item mobile-hidden {{ request()->routeIs('bookings.staff-planning') || request()->routeIs('staff.*') ? 'active' : '' }}" data-tooltip="Team">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
             <span class="nav-label">Team</span>
+        </a>
+        <a href="{{ route('shifts.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('shifts.*') ? 'active' : '' }}" data-tooltip="Shifts">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1"/></svg>
+            <span class="nav-label">Shifts</span>
         </a>
         <a href="{{ route('briefings.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('briefings.*') ? 'active' : '' }}" data-tooltip="Briefings">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -351,7 +439,7 @@
 <div class="meer-overlay" id="meerOverlay">
     <div class="meer-backdrop" id="meerBackdrop"></div>
     <div class="meer-panel">
-        <a href="{{ route('tasks.index') }}" class="meer-item {{ request()->routeIs('tasks.*') ? 'active' : '' }}">
+        <a href="{{ \App\Helpers\TodoHelper::url() }}" class="meer-item">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
             Taken
         </a>
@@ -370,6 +458,26 @@
         <a href="{{ route('mail-templates.index') }}" class="meer-item {{ request()->routeIs('mail-templates.*') ? 'active' : '' }}">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             Mailtemplates
+        </a>
+        <a href="{{ route('shifts.index') }}" class="meer-item {{ request()->routeIs('shifts.*') ? 'active' : '' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            Shifts
+        </a>
+        <a href="{{ route('briefings.index') }}" class="meer-item {{ request()->routeIs('briefings.*') ? 'active' : '' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Briefings
+        </a>
+        <a href="{{ route('design.index') }}" class="meer-item {{ request()->routeIs('design.*') ? 'active' : '' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+            Ontwerp-generator
+        </a>
+        <a href="{{ route('design-templates.index') }}" class="meer-item {{ request()->routeIs('design-templates.*') ? 'active' : '' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5z M4 9h16 M9 3v18"/></svg>
+            Templatebibliotheek
+        </a>
+        <a href="{{ route('production.index') }}" class="meer-item {{ request()->routeIs('production.*') ? 'active' : '' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M7 10l5 5 5-5M12 15V3"/></svg>
+            Productie
         </a>
         @if(auth()->user()->isAdmin())
         <div class="meer-divider"></div>
@@ -494,17 +602,47 @@
 </script>
 <script>
 (function(){
-    var btn = document.getElementById('btnMeer');
     var overlay = document.getElementById('meerOverlay');
     var backdrop = document.getElementById('meerBackdrop');
-    if (!btn || !overlay) return;
-    btn.addEventListener('click', function(e){
-        e.stopPropagation();
-        overlay.classList.toggle('open');
+    if (!overlay) return;
+    document.querySelectorAll('#btnMeer, [data-meer-toggle]').forEach(function(btn){
+        btn.addEventListener('click', function(e){
+            e.preventDefault(); e.stopPropagation();
+            overlay.classList.toggle('open');
+        });
     });
-    backdrop.addEventListener('click', function(){
-        overlay.classList.remove('open');
-    });
+    if (backdrop) backdrop.addEventListener('click', function(){ overlay.classList.remove('open'); });
+})();
+</script>
+
+<script>
+/* Mobiel: elk inline multi-koloms grid in de content → 1 kolom (catch-all voor pagina's
+   die inline grid-styles gebruiken). auto-fill/-fit blijven; .keep-cols is een opt-out. */
+(function(){
+    function collapse(){
+        var mobile = window.innerWidth <= 768;
+        document.querySelectorAll('.content [style*="grid-template-columns"]').forEach(function(el){
+            if (el.classList.contains('keep-cols')) return;
+            if (mobile) {
+                if (el.dataset.mcDone) return;
+                var m = (el.getAttribute('style')||'').match(/grid-template-columns\s*:\s*([^;]+)/i);
+                if (!m) return;
+                var val = m[1];
+                if (/auto-fill|auto-fit/i.test(val)) return;
+                var multi = /\brepeat\(\s*([2-9]|[1-9][0-9])/i.test(val) || val.trim().split(/\s+/).length >= 2;
+                if (!multi) return;
+                el.dataset.mcOrig = el.style.gridTemplateColumns;
+                el.dataset.mcDone = '1';
+                el.style.gridTemplateColumns = '1fr';
+            } else if (el.dataset.mcDone) {
+                el.style.gridTemplateColumns = el.dataset.mcOrig || '';
+                delete el.dataset.mcDone;
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', collapse);
+    window.addEventListener('resize', collapse);
+    if (document.readyState !== 'loading') collapse();
 })();
 </script>
 </body>

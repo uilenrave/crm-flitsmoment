@@ -86,13 +86,22 @@
                     <div style="font-weight:600;color:#1e293b;">{{ $entry->staff->name }}</div>
                 </td>
                 <td>
+                    @if($entry->booking)
                     <a href="{{ route('bookings.show', $entry->booking_id) }}" style="color:#3b82f6;font-weight:600;font-size:.85rem;text-decoration:none;">
-                        {{ $entry->booking->booking_number ?? '—' }}
+                        {{ $entry->booking->booking_number }}
                     </a>
-                    <div style="font-size:.75rem;color:#64748b;">{{ $entry->booking->customer_name ?? '' }}</div>
+                    <div style="font-size:.75rem;color:#64748b;">{{ $entry->booking->customer_name }}</div>
+                    @elseif($entry->shift)
+                    <div style="color:#0e7490;font-weight:600;font-size:.85rem;">🚐 Shift {{ $entry->shift->shift_date->format('d-m-Y') }}</div>
+                    <div style="font-size:.72rem;color:#64748b;">{{ $entry->shift->jobs->map(fn($j) => $j->label() . ($j->booking ? ' ' . $j->booking->customer_name : ''))->implode(' · ') }}</div>
+                    @else
+                    <span style="color:#94a3b8;">—</span>
+                    @endif
                 </td>
                 <td>
-                    @if($entry->role === 'delivery')
+                    @if(! $entry->role && $entry->shift)
+                        <span style="font-size:.75rem;background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;padding:.15rem .5rem;border-radius:999px;font-weight:700;">🚐 Shift</span>
+                    @elseif($entry->role === 'delivery')
                         <span style="font-size:.75rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:.15rem .5rem;border-radius:999px;font-weight:700;">⬇ Bezorging</span>
                     @elseif($entry->role === 'handover')
                         <span style="font-size:.75rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;padding:.15rem .5rem;border-radius:999px;font-weight:700;">🤝 Afgifte</span>
@@ -169,7 +178,7 @@
                             <a href="{{ route('staff-hours.show', $entry) }}" class="btn btn-secondary btn-sm">Bekijken</a>
                         @endif
                         <button type="button"
-                            onclick="openDeleteModal({{ $entry->id }}, '{{ addslashes($entry->staff->name) }}', '{{ $entry->booking->booking_number ?? '?' }}')"
+                            onclick="openDeleteModal({{ $entry->id }}, '{{ addslashes($entry->staff->name) }}', '{{ $entry->booking?->booking_number ?? '?' }}')"
                             style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:.25rem .35rem;border-radius:.375rem;line-height:1;font-size:1rem;"
                             title="Verwijderen">🗑</button>
                     </div>

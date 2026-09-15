@@ -18,6 +18,17 @@
         .section-title { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; margin-bottom: .75rem; padding-bottom: .4rem; border-bottom: 1px solid #e2e8f0; }
 
         .card { background: #fff; border: 1px solid #e2e8f0; border-radius: .75rem; margin-bottom: .75rem; overflow: hidden; }
+
+        /* Shift-kaart: duidelijk afgebakend blok per shift */
+        .shift-portal-card { border: 1px solid #cffafe; border-left: 5px solid #06b6d4; border-radius: 1rem; margin-bottom: 2rem; box-shadow: 0 6px 20px rgba(8,145,178,.12); }
+        .shift-portal-header { background: linear-gradient(90deg,#ecfeff,#f0fdff); border-bottom: 1px solid #cffafe; padding: .9rem 1.1rem; align-items: center; }
+        .shift-portal-badge { display: inline-flex; align-items: center; gap: .3rem; background: #06b6d4; color: #fff; font-weight: 800; font-size: .8rem; padding: .28rem .7rem; border-radius: 999px; }
+        .shift-portal-date { font-size: 1.05rem; font-weight: 800; color: #0e7490; margin-top: .35rem; text-transform: capitalize; }
+        .shift-portal-time { font-size: 1.25rem; font-weight: 800; color: #0e7490; }
+        .shift-portal-card .card-body { padding: 1rem 1.1rem; }
+        .klus-block { position: relative; border: 1px solid #e2e8f0; border-radius: .7rem; padding: .75rem .85rem .75rem 2.5rem; margin-bottom: .85rem; background: #fff; }
+        .klus-block:last-of-type { margin-bottom: 1rem; }
+        .klus-step { position: absolute; left: .7rem; top: .8rem; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: #0e7490; color: #fff; font-size: .8rem; font-weight: 800; display: flex; align-items: center; justify-content: center; }
         .card-header { padding: .875rem 1rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
         .card-date { font-size: .75rem; font-weight: 700; color: #64748b; }
         .card-body { padding: .875rem 1rem; }
@@ -215,7 +226,7 @@
                     <div class="detail-row">
                         <div class="detail-icon">📍</div>
                         <div class="detail-text">
-                            <div class="detail-label">Locatie</div>
+                            <div class="detail-label">Locatie @include('partials.ze_badge', ['booking' => $b])</div>
                             @if($b->event_city)<strong>{{ $b->event_city }}</strong>@endif
                             @if($adres)<br><span style="color:#64748b;">{{ $adres }}</span>@endif
                             @if($mapsUrl)<br><a href="{{ $mapsUrl }}" target="_blank" class="maps-link">🗺️ Open in Google Maps</a>@endif
@@ -277,297 +288,27 @@
         @endif
 
     @else
-    @php $ritten = $tab === 'archief' ? $pastRitten : $allRitten; @endphp
+    @php $shiftsToShow = $tab === 'archief' ? $pastShifts : $upcomingShifts; @endphp
 
-    @if($ritten->isEmpty())
+    @if($shiftsToShow->isEmpty())
         <div class="empty">
             <div class="empty-icon">{{ $tab === 'archief' ? '🗂' : '📭' }}</div>
             @if($tab === 'archief')
-                <p style="font-weight:600;margin-bottom:.25rem;">Geen afgesloten ritten</p>
-                <p style="font-size:.875rem;">Afgeronde ritten verschijnen hier.</p>
+                <p style="font-weight:600;margin-bottom:.25rem;">Geen afgesloten shifts</p>
+                <p style="font-size:.875rem;">Afgeronde shifts verschijnen hier.</p>
             @else
-                <p style="font-weight:600;margin-bottom:.25rem;">Geen aankomende ritten</p>
-                <p style="font-size:.875rem;">Er zijn nog geen boekingen aan jou gekoppeld.</p>
+                <p style="font-weight:600;margin-bottom:.25rem;">Geen aankomende shifts</p>
+                <p style="font-size:.875rem;">Er zijn nog geen shifts aan jou gekoppeld.</p>
             @endif
         </div>
     @else
         <p style="font-size:.875rem;color:#64748b;margin-bottom:1.25rem;">
-            {{ $ritten->count() }} {{ $ritten->count() === 1 ? 'rit' : 'ritten' }}
+            {{ $shiftsToShow->count() }} {{ $shiftsToShow->count() === 1 ? 'shift' : 'shifts' }}
             {{ $tab === 'archief' ? 'afgerond' : 'ingepland' }}
         </p>
 
-        @foreach($ritten as $rit)
-        @php
-            $b     = $rit['booking'];
-            $type  = $rit['type'];
-            $role  = $rit['role'];
-            $datum = $rit['datum'];
-
-            $adres = trim(implode(', ', array_filter([
-                $b->event_address,
-                $b->event_postcode,
-                $b->event_city,
-            ])));
-            $mapsUrl = $adres
-                ? 'https://www.google.com/maps/search/?api=1&query=' . urlencode($adres)
-                : null;
-
-            $hoursKey  = $b->id . '|' . $role;
-            $hoursEntry = $existingHours[$hoursKey] ?? null;
-            $isLocked  = $hoursEntry && in_array($hoursEntry->status, ['approved', 'paid']);
-        @endphp
-        <div class="card">
-            <div class="card-header">
-                <div>
-                    @if($type === 'delivery')
-                        <span class="role-badge badge-delivery">⬇ Bezorgen</span>
-                    @elseif($type === 'handover')
-                        <span class="role-badge badge-handover">🤝 Afgeven (To Go)</span>
-                    @else
-                        <span class="role-badge badge-pickup">⬆ Ophalen{{ $b->booking_type === 'to_go' ? ' (To Go)' : '' }}</span>
-                    @endif
-                </div>
-                <div style="text-align:right;">
-                    <div class="card-date">{{ $datum->translatedFormat('l j F Y') }}</div>
-                    @if($datum->format('H:i') !== '00:00')
-                    <div class="time-highlight">{{ $datum->format('H:i') }}</div>
-                    @endif
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="detail-row">
-                    <div class="detail-icon">👤</div>
-                    <div class="detail-text">
-                        <div class="detail-label">Klant</div>
-                        <strong>{{ $b->customer_name }}</strong>
-                        @if($b->customer_phone)
-                        <br><a href="tel:{{ $b->customer_phone }}" style="color:#3b82f6;font-size:.85rem;">{{ $b->customer_phone }}</a>
-                        @endif
-                    </div>
-                </div>
-
-                @if($b->location_contact_phone)
-                @php
-                    $lcLabels = ['ceremoniemeester' => 'Ceremoniemeester', 'eventmanager' => 'Eventmanager', 'eventlocatie' => 'Eventlocatie', 'wij_zelf' => 'Klant zelf', 'anders' => 'Anders'];
-                    $lcLabel  = $lcLabels[$b->location_contact_type] ?? 'Contactpersoon';
-                @endphp
-                <div class="detail-row">
-                    <div class="detail-icon">📇</div>
-                    <div class="detail-text">
-                        <div class="detail-label">Contactpersoon op locatie</div>
-                        <strong>{{ $lcLabel }}</strong>
-                        <br><a href="tel:{{ $b->location_contact_phone }}" style="color:#3b82f6;font-size:.85rem;">{{ $b->location_contact_phone }}</a>
-                        @if($b->location_contact_email)
-                        <br><a href="mailto:{{ $b->location_contact_email }}" style="color:#3b82f6;font-size:.85rem;">{{ $b->location_contact_email }}</a>
-                        @endif
-                    </div>
-                </div>
-                @endif
-
-                @if($b->event_location || $adres)
-                <div class="detail-row">
-                    <div class="detail-icon">📍</div>
-                    <div class="detail-text">
-                        <div class="detail-label">Locatie</div>
-                        @if($b->event_location)<strong>{{ $b->event_location }}</strong><br>@endif
-                        @if($adres)<span style="color:#64748b;">{{ $adres }}</span>@endif
-                        @if($mapsUrl)
-                        <br><a href="{{ $mapsUrl }}" target="_blank" class="maps-link">🗺️ Open in Google Maps</a>
-                        @endif
-                    </div>
-                </div>
-                @endif
-
-                @if($b->event_start_time)
-                <div class="detail-row">
-                    <div class="detail-icon">🎉</div>
-                    <div class="detail-text">
-                        <div class="detail-label">Evenement</div>
-                        {{ $b->event_date->translatedFormat('j F') }}
-                        van {{ substr($b->event_start_time, 0, 5) }}
-                        @if($b->event_end_time) tot {{ substr($b->event_end_time, 0, 5) }}@endif
-                    </div>
-                </div>
-                @endif
-
-                @if($type === 'pickup' && $b->pickup_contact_person)
-                <div class="detail-row">
-                    <div class="detail-icon">📞</div>
-                    <div class="detail-text">
-                        <div class="detail-label">Contactpersoon ophaal</div>
-                        {{ $b->pickup_contact_person }}
-                        @if($b->pickup_contact_time) om {{ substr($b->pickup_contact_time, 0, 5) }}@endif
-                    </div>
-                </div>
-                @endif
-
-                @if($b->event_notes)
-                <div class="detail-row">
-                    <div class="detail-icon">📝</div>
-                    <div class="detail-text">
-                        <div class="detail-label">Opmerkingen</div>
-                        <span style="white-space:pre-line;">{{ $b->event_notes }}</span>
-                    </div>
-                </div>
-                @endif
-
-                {{-- Leverinstructies (alleen tonen als ingevuld) --}}
-                @php
-                    $hasInstructions = trim((string) $b->delivery_instructions) !== ''
-                        || ! empty($b->delivery_instructions_images);
-                @endphp
-                @if($hasInstructions)
-                <div style="margin-top:.5rem;">
-                    <button type="button" class="instructions-toggle"
-                            onclick="toggleInstructions(this)"
-                            style="width:100%;display:flex;align-items:center;gap:.5rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:.5rem;padding:.55rem .75rem;font-size:.85rem;font-weight:600;color:#92400e;cursor:pointer;text-align:left;">
-                        <span style="font-size:1rem;">📋</span>
-                        <span style="flex:1;">Er zijn specifieke leverinstructies beschikbaar</span>
-                        <span class="caret" style="font-size:.7rem;transition:transform .2s;">▼</span>
-                    </button>
-                    <div class="instructions-content" style="display:none;margin-top:.5rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:.5rem;padding:.75rem .9rem;">
-                        @if(trim((string) $b->delivery_instructions) !== '')
-                        <div style="font-size:.875rem;color:#1e293b;line-height:1.5;white-space:pre-line;margin-bottom:.5rem;">{{ $b->delivery_instructions }}</div>
-                        @endif
-                        @if(! empty($b->delivery_instructions_images))
-                        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem;margin-top:.5rem;">
-                            @foreach($b->delivery_instructions_images as $img)
-                                <a href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($img) }}" target="_blank"
-                                   style="display:block;border-radius:.4rem;overflow:hidden;border:1px solid #fcd34d;">
-                                    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($img) }}"
-                                         alt="Leverinstructie"
-                                         style="width:100%;height:110px;object-fit:cover;display:block;">
-                                </a>
-                            @endforeach
-                        </div>
-                        <div style="font-size:.7rem;color:#92400e;margin-top:.4rem;">Tik op een foto om te vergroten.</div>
-                        @endif
-                    </div>
-                </div>
-                @endif
-            </div>
-
-            {{-- Wat moet je meenemen — alleen relevant voor bezorging/afgifte, niet bij ophalen --}}
-            @if($type === 'delivery' && $b->items && $b->items->isNotEmpty())
-            @php
-                $catIcons = [
-                    'photobooth' => '📷',
-                    'background' => '🖼',
-                    'prop_box'   => '🎩',
-                    'extra'      => '✨',
-                ];
-                $itemsByCat = $b->items->filter(fn($i) => $i->asset)->groupBy(fn($i) => $i->asset->category);
-            @endphp
-            @if($itemsByCat->isNotEmpty())
-            <div class="assets-block">
-                <div class="assets-block-title">📦 Wat neem je mee</div>
-                <div class="assets-list">
-                    @foreach($itemsByCat as $cat => $items)
-                        @foreach($items as $it)
-                        <div class="asset-row">
-                            <span class="icon">{{ $catIcons[$cat] ?? '📦' }}</span>
-                            <span>{{ $it->asset->name }}@if($it->unit_number) — unit {{ $it->unit_number }}@endif</span>
-                            @if($it->quantity > 1)<span class="qty">×{{ $it->quantity }}</span>@endif
-                        </div>
-                        @endforeach
-                    @endforeach
-                </div>
-            </div>
-            @endif
-            @endif
-
-            {{-- Uren sectie --}}
-            <div class="uren-section">
-                <div class="uren-title">⏱ Gewerkte uren</div>
-
-                @if($isLocked)
-                    {{-- Goedgekeurd of uitbetaald: readonly tonen --}}
-                    @if($hoursEntry->status === 'paid')
-                    <div class="uren-status-paid">
-                        💸 <strong>{{ number_format($hoursEntry->effective_hours, 2, ',', '') }} uur uitbetaald</strong>
-                    </div>
-                    @else
-                    <div class="uren-status-approved">
-                        ✅ <strong>{{ number_format($hoursEntry->effective_hours, 2, ',', '') }} uur goedgekeurd</strong>
-                    </div>
-                    @endif
-
-                @elseif($hoursEntry && $hoursEntry->status === 'combined')
-                    {{-- Combinatierit: gemarkeerd, uren al ingediend bij andere rit --}}
-                    @php
-                        $linkedBooking = $hoursEntry->combinedWithBooking;
-                        $linkedRoleLabel = $hoursEntry->combinedWithRoleLabel();
-                    @endphp
-                    <div class="uren-status-combined">
-                        🔗 <span><strong>Gecombineerde rit</strong> — uren al ingediend bij
-                        @if($linkedBooking)
-                            @if($linkedRoleLabel) <strong>{{ $linkedRoleLabel }}</strong> van @endif
-                            boeking <strong>{{ $linkedBooking->booking_number }}</strong>{{ $linkedBooking->customer_name ? ' ('.$linkedBooking->customer_name.')' : '' }}
-                        @else
-                            een andere rit
-                        @endif</span>
-                    </div>
-                    <form method="POST" action="{{ route('staff.portal.hours.uncombine', ['token' => $staff->public_token, 'hoursId' => $hoursEntry->id]) }}" style="margin-top:.4rem;">
-                        @csrf
-                        <button type="submit" class="combineer-link" style="font-size:.78rem;">↩ Terugdraaien</button>
-                    </form>
-
-                @elseif($hoursEntry && $hoursEntry->status === 'pending')
-                    {{-- Pending: toon status + mogelijkheid tot bijwerken --}}
-                    <div class="uren-status-pending" style="margin-bottom:.625rem;">
-                        ⏳ <span>{{ number_format($hoursEntry->hours, 2, ',', '') }} uur
-                        @if($hoursEntry->km > 0) · {{ number_format($hoursEntry->km, 0) }} km @endif
-                        ingediend — wacht op goedkeuring</span>
-                    </div>
-                    <form method="POST" action="{{ route('staff.portal.hours.submit', $staff->public_token) }}">
-                        @csrf
-                        <input type="hidden" name="booking_id" value="{{ $b->id }}">
-                        <input type="hidden" name="role" value="{{ $role }}">
-                        <div class="uren-form">
-                            <div>
-                                <div style="font-size:.7rem;color:#64748b;margin-bottom:.2rem;">Uren</div>
-                                <input type="number" name="hours" step="0.25" min="0.25" max="24" class="uren-input"
-                                       value="{{ number_format($hoursEntry->hours, 2, '.', '') }}" placeholder="2.50" required>
-                            </div>
-                            <div>
-                                <div style="font-size:.7rem;color:#64748b;margin-bottom:.2rem;">Privé km</div>
-                                <input type="number" name="km" step="1" min="0" max="9999" class="uren-input"
-                                       value="{{ $hoursEntry->km ? number_format($hoursEntry->km, 0, '.', '') : '' }}"
-                                       placeholder="0" oninput="updateKmPreview(this)">
-                            </div>
-                            <button type="submit" class="uren-btn">Bijwerken</button>
-                        </div>
-                        <div class="km-preview" style="display:none;font-size:.75rem;color:#64748b;margin-top:.4rem;">= €<span class="km-amount">0,00</span> km-vergoeding</div>
-                    </form>
-
-                    @include('staff._combineer_form', ['booking' => $b, 'role' => $role, 'staff' => $staff, 'allStaffRitten' => $allStaffRitten])
-
-                @else
-                    {{-- Nog niet ingediend --}}
-                    <form method="POST" action="{{ route('staff.portal.hours.submit', $staff->public_token) }}">
-                        @csrf
-                        <input type="hidden" name="booking_id" value="{{ $b->id }}">
-                        <input type="hidden" name="role" value="{{ $role }}">
-                        <div class="uren-form">
-                            <div>
-                                <div style="font-size:.7rem;color:#64748b;margin-bottom:.2rem;">Uren</div>
-                                <input type="number" name="hours" step="0.25" min="0.25" max="24" class="uren-input"
-                                       placeholder="2.50" required>
-                            </div>
-                            <div>
-                                <div style="font-size:.7rem;color:#64748b;margin-bottom:.2rem;">Privé km</div>
-                                <input type="number" name="km" step="1" min="0" max="9999" class="uren-input"
-                                       placeholder="0" oninput="updateKmPreview(this)">
-                            </div>
-                            <button type="submit" class="uren-btn">Indienen</button>
-                        </div>
-                        <div class="km-preview" style="display:none;font-size:.75rem;color:#64748b;margin-top:.4rem;">= €<span class="km-amount">0,00</span> km-vergoeding</div>
-                    </form>
-
-                    @include('staff._combineer_form', ['booking' => $b, 'role' => $role, 'staff' => $staff, 'allStaffRitten' => $allStaffRitten])
-                @endif
-            </div>
-        </div>
+        @foreach($shiftsToShow as $shift)
+            @include('staff._shift_card', ['shift' => $shift, 'staff' => $staff, 'shiftHours' => $shiftHours])
         @endforeach
     @endif
     @endif

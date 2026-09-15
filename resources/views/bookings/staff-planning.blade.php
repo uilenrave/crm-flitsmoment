@@ -196,7 +196,7 @@
                 <td>
                     @php $loc = $b->event_city ?: ($b->event_location ?: '—'); @endphp
                     <div class="booking-loc" title="{{ $b->event_location }}{{ $b->event_address ? ', '.$b->event_address : '' }}">
-                        {{ $loc }}
+                        {{ $loc }} @include('partials.ze_badge', ['booking' => $b])
                     </div>
                 </td>
                 <td>

@@ -125,9 +125,9 @@
                             @endphp
                             <a href="{{ $event['url'] }}"
                                class="cal-event" style="display:block;padding:0.375rem 0.5rem;background:{{ $event['color'] }};color:{{ $isMultiDay ? '#000' : '#fff' }};font-size:0.75rem;border-radius:0.25rem;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all 0.2s;border:{{ $isMultiDay ? '2px solid #d4a000' : 'none' }};font-weight:{{ $isMultiDay ? '600' : 'normal' }};"
-                               title="{{ $event['title'] }}"
+                               title="{{ ($event['in_ze_zone'] ?? false) ? '⚡ Zero-emissiezone — ' : '' }}{{ $event['title'] }}"
                                class="hover:opacity-80">
-                                {{ $isMultiDay ? '📅 ' : '' }}{{ substr($event['title'], 0, 25) }}...
+                                @if($event['in_ze_zone'] ?? false)⚡ @endif{{ $isMultiDay ? '📅 ' : '' }}{{ substr($event['title'], 0, 25) }}...
                             </a>
                         @endforeach
                     </div>

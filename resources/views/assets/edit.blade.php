@@ -56,6 +56,19 @@
                     Actief (zichtbaar bij boekingen)
                 </label>
             </div>
+            <div class="form-group" style="grid-column:span 2;border-top:1px solid #e2e8f0;padding-top:1rem;">
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:600;">
+                    <input type="hidden" name="is_upsell" value="0">
+                    <input type="checkbox" name="is_upsell" value="1" id="is_upsell" {{ old('is_upsell', $asset->is_upsell) ? 'checked' : '' }}
+                        style="width:16px;height:16px;" onchange="document.getElementById('upsell_price_wrap').style.display=this.checked?'block':'none';">
+                    ⭐ Upsell &mdash; klant kan dit zelf toevoegen in het portaal
+                </label>
+                <div id="upsell_price_wrap" style="margin-top:.6rem;{{ old('is_upsell', $asset->is_upsell) ? '' : 'display:none;' }}">
+                    <label>Actietarief (&euro;)</label>
+                    <input type="number" name="upsell_price" value="{{ old('upsell_price', $asset->upsell_price) }}" step="0.01" min="0" placeholder="bijv. 25.00">
+                    <div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem;">Speciale portaalprijs. Alleen zichtbaar als het product op de eventdatum op voorraad is.</div>
+                </div>
+            </div>
         </div>
 
         <div style="display:flex;gap:.75rem;margin-top:.5rem;">

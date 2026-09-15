@@ -127,7 +127,7 @@
                 @endif
 
                 <div style="grid-column:span 2;">
-                    <label>Locatie</label>
+                    <label>Locatie @include('partials.ze_badge', ['booking' => $booking])</label>
                     <p style="font-size:.875rem;">
                         @if($booking->event_location){{ $booking->event_location }}@endif
                         @if($booking->event_address)
@@ -169,6 +169,9 @@
                         @if($booking->deliveryStaff->phone)
                         <a href="tel:{{ $booking->deliveryStaff->phone }}" style="margin-left:.5rem;font-size:.8rem;color:#3b82f6;text-decoration:none;">{{ $booking->deliveryStaff->phone }}</a>
                         @endif
+                        @if($booking->deliveryStaff2)
+                        <div style="margin-top:.2rem;"><span style="font-size:.875rem;font-weight:600;color:#1e293b;">👤 {{ $booking->deliveryStaff2->name }}</span>@if($booking->deliveryStaff2->phone)<a href="tel:{{ $booking->deliveryStaff2->phone }}" style="margin-left:.5rem;font-size:.8rem;color:#3b82f6;text-decoration:none;">{{ $booking->deliveryStaff2->phone }}</a>@endif</div>
+                        @endif
                     </div>
                     @endif
                     @if($booking->pickupStaff)
@@ -179,6 +182,9 @@
                         <span style="font-size:.875rem;font-weight:600;color:#1e293b;">👤 {{ $booking->pickupStaff->name }}</span>
                         @if($booking->pickupStaff->phone)
                         <a href="tel:{{ $booking->pickupStaff->phone }}" style="margin-left:.5rem;font-size:.8rem;color:#3b82f6;text-decoration:none;">{{ $booking->pickupStaff->phone }}</a>
+                        @endif
+                        @if($booking->pickupStaff2)
+                        <div style="margin-top:.2rem;"><span style="font-size:.875rem;font-weight:600;color:#1e293b;">👤 {{ $booking->pickupStaff2->name }}</span>@if($booking->pickupStaff2->phone)<a href="tel:{{ $booking->pickupStaff2->phone }}" style="margin-left:.5rem;font-size:.8rem;color:#3b82f6;text-decoration:none;">{{ $booking->pickupStaff2->phone }}</a>@endif</div>
                         @endif
                     </div>
                     @endif
@@ -281,6 +287,17 @@
                             </div>
                         </div>
                     </div>
+                @endif
+
+                {{-- Handmatige herinnering: alleen zolang klant nog geen ontwerp/input aanleverde --}}
+                @if(in_array($booking->strip_status, [null, 'waiting_input', 'awaiting_customer_design', 'customer_self_designing']))
+                <form method="POST" action="{{ route('bookings.send-strip-reminder', $booking) }}" style="margin-top:1rem;"
+                      onsubmit="return confirm('Herinnering \'lever je fotostrip-ontwerp of input aan\' naar {{ $booking->customer_name }} sturen?');">
+                    @csrf
+                    <button type="submit" style="width:100%;display:flex;align-items:center;justify-content:center;gap:.4rem;padding:.6rem .75rem;background:#fff;border:1px solid #d97706;color:#b45309;border-radius:.5rem;font-size:.85rem;font-weight:600;cursor:pointer;">
+                        📨 Herinnering fotostrip-ontwerp sturen
+                    </button>
+                </form>
                 @endif
             </div>
         </div>
@@ -541,7 +558,7 @@
 
                 <form id="approve-pickup-form">
                     @csrf
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem;">
+                    <div class="form-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem;">
                         <div>
                             <label style="display:block;font-size:.8rem;font-weight:600;margin-bottom:.35rem;">Ophalen</label>
                             <input type="text" name="customer_pickup_at" class="form-input fp-datetime-show" autocomplete="off"
@@ -776,6 +793,14 @@
                             </div>
                         </div>
                     </div>
+                    {{-- Mail: factuur staat klaar in het portaal --}}
+                    <form method="POST" action="{{ route('bookings.send-invoice-mail', $booking) }}" style="margin-bottom:0.75rem;"
+                          onsubmit="return confirm('Mail \'Je factuur staat klaar in het portaal\' naar {{ $booking->customer_name }} sturen?');">
+                        @csrf
+                        <button type="submit" style="width:100%;display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:0.55rem 0.75rem;background:#fff;border:1px solid #2563EB;color:#2563EB;border-radius:0.5rem;font-size:0.8rem;font-weight:600;cursor:pointer;">
+                            🧾 Mail: factuur staat klaar in portaal
+                        </button>
+                    </form>
                     {{-- Factuurnummer aanpassen (alleen bij handmatig ingevoerd) --}}
                     @if($isManual)
                     <div id="edit-invoice-form" style="display:none;margin-bottom:0.75rem;">

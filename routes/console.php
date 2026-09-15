@@ -115,3 +115,14 @@ Schedule::call(function () {
         });
 
 })->hourly()->name('review-mail-automatisering')->withoutOverlapping();
+
+/**
+ * Elk uur: CRM-signalen omzetten in taken voor todo.flitsmoment.nl
+ *
+ * Maakt taken aan voor offertes zonder reactie, klussen zonder galerij en
+ * shifts met open plekken — en vinkt ze weer af zodra het CRM ze oplost.
+ */
+Schedule::command('taken:sync')
+    ->hourly()
+    ->name('crm-signalen-naar-taken')
+    ->withoutOverlapping();

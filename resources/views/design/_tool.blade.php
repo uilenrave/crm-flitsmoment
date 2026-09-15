@@ -413,7 +413,7 @@
                             </button>
                             <div id="dg-font-picker-list" class="dg-font-picker-list">
                                 @foreach($googleFonts as $slug => $label)
-                                    <div class="dg-font-picker-item" data-slug="{{ $slug }}" style="font-family:'{{ $label }}', sans-serif;" onclick="dgPickFont('{{ $slug }}', {{ Js::from($label) }})">{{ $label }}</div>
+                                    <div class="dg-font-picker-item" data-slug="{{ $slug }}" data-font="{{ $label }}" onclick="dgPickFont('{{ $slug }}', {{ Js::from($label) }})">{{ $label }}</div>
                                 @endforeach
                             </div>
                         </div>

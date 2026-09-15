@@ -37,3 +37,14 @@ Nooit losse bestanden uploaden via SCP zonder eerst een backup te maken.
 
 ### Automatische status-overgangen
 - Boeking wordt automatisch `completed` zodra `gallery_url` wordt ingevuld
+
+### Takenapp (todo.flitsmoment.nl)
+- Draait op **dezelfde codebase**: `Route::domain(config('todo.domain'))` in `routes/web.php`.
+  Staat `TODO_DOMAIN` leeg (lokaal), dan hangt de app onder `/todo`.
+- Eigen, kale layout in `resources/views/todo/` — niet `layouts/app.blade.php`.
+- Zelfde tabellen als `/taken` in het CRM. `tasks.type` is `taak | kopen | leren`,
+  `tasks.source` is `handmatig | crm | mail`.
+- CRM-signalen: `php artisan taken:sync` (elk uur via de scheduler) in
+  `app/Services/TodoSignalService.php`. Elk signaal heeft een vaste `signal_key`;
+  een afgevinkte taak komt nooit terug, en het CRM vinkt zelf af zodra het opgelost is.
+- Drempels per account in `accounts.todo_settings`, met fallback op `config/todo.php`.

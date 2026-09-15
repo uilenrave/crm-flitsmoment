@@ -13,7 +13,7 @@ class StaffHoursController extends Controller
     {
         $status = $request->input('status', 'all');
 
-        $query = StaffHours::with(['staff', 'booking', 'combinedWithBooking'])
+        $query = StaffHours::with(['staff', 'booking', 'combinedWithBooking', 'shift.jobs.booking'])
             ->orderBy('submitted_at', 'desc');
 
         if ($status !== 'all') {

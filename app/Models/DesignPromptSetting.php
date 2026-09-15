@@ -25,7 +25,7 @@ class DesignPromptSetting extends Model
     public const DEFAULTS = [
         'background' => [
             'label'  => 'Achtergrond',
-            'prompt' => "Ontwerp een verticale achtergrondafbeelding voor een fotostrip-mockup, in portretformaat (verhouding ongeveer 2:3). Speelse, sfeervolle stijl passend bij het thema hieronder. Houd het midden van de afbeelding rustig/leeg, want daar komt straks de fotostrip met foto's overheen. Geen tekst, geen logo's, geen mensen. Hoge resolutie, scherp, geschikt om af te drukken.\n\nThema: {beschrijving}",
+            'prompt' => "Ontwerp een sfeervolle, naadloze decoratieve achtergrond in staand portretformaat (verhouding ongeveer 2:3), als een geschilderde achtergronddoek of behang passend bij het thema hieronder. Het is één doorlopend, zacht beeld dat van rand tot rand doorloopt. Zet de versiering vooral langs de boven- en onderrand en laat die subtiel naar binnen uitvloeien; houd het midden zacht en open met rustige, lichte kleuren, zodat er later foto's overheen geplaatst kunnen worden. Het is puur achtergrond: geen omlijsting, geen uitgesneden vakken of rechthoeken, geen lege kaders, geen strepen of scheidingslijnen — alsof je naar een egale geschilderde muur kijkt. Geen tekst, geen logo's, geen mensen. Hoge resolutie, scherp, geschikt om af te drukken.\n\nThema: {beschrijving}",
         ],
     ];
 

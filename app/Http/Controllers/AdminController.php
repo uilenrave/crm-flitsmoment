@@ -174,10 +174,19 @@ class AdminController extends Controller
             'origin_address'       => ['nullable', 'string', 'max:255'],
             'travel_free_km'       => ['nullable', 'integer', 'min:0'],
             'travel_cost_per_km'   => ['nullable', 'numeric', 'min:0'],
+            'shift_durations'      => ['nullable', 'array'],
+            'shift_durations.*'    => ['nullable', 'integer', 'min:0', 'max:1440'],
         ]);
 
         $data['mollie_enabled']      = $request->boolean('mollie_enabled');
         $data['eboekhouden_enabled'] = $request->boolean('eboekhouden_enabled');
+
+        // Basis-werktijden per shift-klus: alleen bekende acties, als integers
+        if (isset($data['shift_durations'])) {
+            $allowed = array_keys(\App\Models\ShiftJob::ACTIONS);
+            $data['shift_durations'] = collect($data['shift_durations'])
+                ->only($allowed)->map(fn ($v) => (int) $v)->all();
+        }
 
         // Lege keys = terugvallen op globale key
         if (empty($data['mollie_key'])) {

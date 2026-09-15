@@ -80,4 +80,33 @@
         </tbody>
     </table>
 </div>
+
+<script>
+(function () {
+    // De server-firewall (mod_security) blokkeert uploads met bepaalde tekens in de bestands-
+    // naam (o.a. een apostrof, die als SQL-injectie wordt gelezen) met een 403. De server
+    // verzint zelf een naam, dus we hernoemen het gekozen bestand vlak voor verzenden naar een
+    // veilige naam — alleen letters, cijfers, _ en -.
+    function safeName(name) {
+        var base = String(name || 'upload').replace(/\.[^.]+$/, '');
+        base = base.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'upload';
+        return base + '.png';
+    }
+    document.querySelectorAll('.prod-upload-form').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            if (form.dataset.renamed === '1') return;             // al hernoemd -> laat door
+            var input = form.querySelector('input[name="production_file"]');
+            if (!input || !input.files || !input.files.length) return;
+            var f = input.files[0];
+            form.dataset.renamed = '1';
+            if (f.name === safeName(f.name)) return;               // naam al veilig
+            try {
+                var dt = new DataTransfer();
+                dt.items.add(new File([f], safeName(f.name), { type: f.type || 'image/png' }));
+                input.files = dt.files;                            // synchroon vóór verzenden
+            } catch (e) { /* oudere browser: laat origineel gaan */ }
+        });
+    });
+})();
+</script>
 @endsection

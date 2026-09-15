@@ -31,10 +31,14 @@ class AssetController extends Controller
             'stock'        => ['required', 'integer', 'min:0'],
             'ignore_stock' => ['nullable', 'boolean'],
             'is_active'    => ['nullable', 'boolean'],
+            'is_upsell'    => ['nullable', 'boolean'],
+            'upsell_price' => ['nullable', 'numeric', 'min:0', 'required_if:is_upsell,1'],
         ]);
 
         $data['is_active']    = $request->boolean('is_active', true);
         $data['ignore_stock'] = $request->boolean('ignore_stock', false);
+        $data['is_upsell'] = $request->boolean('is_upsell', false);
+        if (! $data['is_upsell']) $data['upsell_price'] = null;
 
         Asset::create($data);
 
@@ -61,10 +65,14 @@ class AssetController extends Controller
             'stock'        => ['required', 'integer', 'min:0'],
             'ignore_stock' => ['nullable', 'boolean'],
             'is_active'    => ['nullable', 'boolean'],
+            'is_upsell'    => ['nullable', 'boolean'],
+            'upsell_price' => ['nullable', 'numeric', 'min:0', 'required_if:is_upsell,1'],
         ]);
 
         $data['is_active']    = $request->boolean('is_active', false);
         $data['ignore_stock'] = $request->boolean('ignore_stock', false);
+        $data['is_upsell'] = $request->boolean('is_upsell', false);
+        if (! $data['is_upsell']) $data['upsell_price'] = null;
 
         $asset->update($data);
 
