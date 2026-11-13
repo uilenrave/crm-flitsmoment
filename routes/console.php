@@ -126,3 +126,13 @@ Schedule::command('taken:sync')
     ->hourly()
     ->name('crm-signalen-naar-taken')
     ->withoutOverlapping();
+
+/**
+ * Dagelijks 07:30 (NL-tijd): samenvatting van alle booths per account → account-mailadres.
+ * Handmatig testen: php artisan booth:daily-digest
+ */
+Schedule::command('booth:daily-digest')
+    ->dailyAt('07:30')
+    ->timezone('Europe/Amsterdam')
+    ->name('booth-dagoverzicht')
+    ->withoutOverlapping();

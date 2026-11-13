@@ -415,6 +415,12 @@
         </a>
         @if(auth()->user()->isAdmin())
         <span class="nav-section">Admin</span>
+        @if(auth()->user()->account?->type === 'headquarters')
+        <a href="{{ route('booths.index') }}" class="nav-item mobile-hidden {{ request()->routeIs('booths.*') ? 'active' : '' }}" data-tooltip="Booths">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <span class="nav-label">Booths</span>
+        </a>
+        @endif
         <a href="{{ route('admin.users') }}" class="nav-item mobile-hidden {{ request()->routeIs('admin.users*') ? 'active' : '' }}" data-tooltip="Gebruikers">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
             <span class="nav-label">Gebruikers</span>
@@ -477,6 +483,12 @@
         </a>
         <a href="{{ route('production.index') }}" class="meer-item {{ request()->routeIs('production.*') ? 'active' : '' }}">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M7 10l5 5 5-5M12 15V3"/></svg>
+        @if(auth()->user()->account?->type === 'headquarters')
+        <a href="{{ route('booths.index') }}" class="meer-item {{ request()->routeIs('booths.*') ? 'active' : '' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Booths
+        </a>
+        @endif
             Productie
         </a>
         @if(auth()->user()->isAdmin())

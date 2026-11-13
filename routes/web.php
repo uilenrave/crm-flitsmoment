@@ -271,6 +271,11 @@ $todoRoutes = function () {
     Route::get('crm',            [TodoController::class, 'crm'])->name('crm');
     Route::get('klaar',          [TodoController::class, 'klaar'])->name('klaar');
     Route::get('zoeken',         [TodoController::class, 'zoeken'])->name('zoeken');
+    // Booths (eigen photobooth-software: koppelen, updatekanaal, functies, status)
+    Route::get('admin/booths', [\App\Http\Controllers\BoothController::class, 'index'])->name('booths.index');
+    Route::post('admin/booths', [\App\Http\Controllers\BoothController::class, 'store'])->name('booths.store');
+    Route::put('admin/booths/{booth}', [\App\Http\Controllers\BoothController::class, 'update'])->name('booths.update')->whereNumber('booth');
+    Route::post('admin/booths/{booth}/intrekken', [\App\Http\Controllers\BoothController::class, 'revoke'])->name('booths.revoke')->whereNumber('booth');
     Route::get('lijst/{taskList}', [TodoController::class, 'lijst'])->name('lijst');
 
     Route::get('manifest.webmanifest', function () {
