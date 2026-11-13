@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Models\BoothRelease;
 use App\Models\BoothToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -88,6 +89,7 @@ class BoothApiController extends Controller
             'selftest'        => ['nullable', 'array'],
             'selftest.*'      => ['boolean'],
             'prints_total'    => ['nullable', 'integer', 'min:0'],
+            'diagnostics'     => ['nullable', 'array'],
             'media_remaining' => ['nullable', 'integer', 'min:0'],
             'disk_free_gb'    => ['nullable', 'numeric', 'min:0'],
         ]);
@@ -104,6 +106,7 @@ class BoothApiController extends Controller
                 'selftest'        => $selftest,
                 'media_remaining' => $data['media_remaining'] ?? null,
                 'disk_free_gb'    => $data['disk_free_gb'] ?? null,
+                'diagnostics'     => $this->cappedDiagnostics($data['diagnostics'] ?? null),
             ],
             'prints_total'      => $data['prints_total'] ?? $booth->prints_total,
         ])->save();
@@ -114,6 +117,49 @@ class BoothApiController extends Controller
         }
 
         return response()->json(['data' => $booth->deviceConfig()]);
+    }
+
+    /** Diagnose (printers, logregels) alleen bewaren als die klein genoeg is; anders een korte melding. */
+    private function cappedDiagnostics(?array $diagnostics): ?array
+    {
+        if ($diagnostics === null) {
+            return null;
+        }
+
+        return strlen(json_encode($diagnostics)) <= 40000
+            ? $diagnostics
+            : ['error' => 'Diagnose te groot, niet opgeslagen.'];
+    }
+
+    /**
+     * GET /api/booth/update/latest.yml — de updatefeed. De CRM bepaalt welke versie deze booth
+     * hoort te draaien (vastgezet of nieuwste van het kanaal) en geeft die terug in het formaat
+     * van electron-updater.
+     */
+    public function updateFeed(Request $request, ?string $version = null)
+    {
+        /** @var BoothToken $booth */
+        $booth = $request->attributes->get('booth');
+
+        // Met een versie in de URL vraagt de booth om precies die versie (automatische rollback).
+        $release = $version
+            ? BoothRelease::where('version', $version)->first()
+            : $booth->targetRelease();
+
+        abort_if(! $release, 404, 'Geen versie beschikbaar.');
+
+        return response($release->toUpdateYml(), 200, ['Content-Type' => 'text/yaml; charset=utf-8']);
+    }
+
+    /** GET /api/booth/update/files/{filename} — de installer van een geregistreerde versie. */
+    public function updateFile(Request $request, string $filename)
+    {
+        $release = BoothRelease::where('filename', $filename)->firstOrFail();
+        $disk    = Storage::disk('local');
+
+        abort_if(! $disk->exists($release->storagePath()), 404, 'Installer ontbreekt op de server.');
+
+        return $disk->download($release->storagePath(), $release->filename);
     }
 
     /** POST /api/booth/events — de booth meldt een gebeurtenis (update geslaagd/mislukt, rollback, …). */

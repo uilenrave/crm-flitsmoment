@@ -128,6 +128,12 @@
                         </div>
                     </form>
                     <form id="booth-revoke-{{ $b->id }}" method="POST" action="{{ route('booths.revoke', $b->id) }}">@csrf</form>
+                    @if(! empty($status['diagnostics']))
+                        <details style="margin-top:1rem;">
+                            <summary style="cursor:pointer;font-size:.85rem;color:#475569;">Diagnose van de booth</summary>
+                            <pre style="margin:.5rem 0 0;padding:.75rem;background:#0f172a;color:#e2e8f0;border-radius:6px;font-size:.75rem;max-height:320px;overflow:auto;white-space:pre-wrap;">{{ json_encode($status['diagnostics'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</pre>
+                        </details>
+                    @endif
                 </td>
             </tr>
         @endforeach
@@ -155,6 +161,46 @@
         </div>
         <button type="submit" class="btn btn-primary">Token aanmaken</button>
     </form>
+</div>
+
+<div class="card" style="margin-bottom:1rem;">
+    <h3 style="margin:0 0 .75rem 0;font-size:1rem;">Versies</h3>
+    @if($releases->isEmpty())
+        <p style="color:#64748b;margin:0;">Nog geen versies gepubliceerd.</p>
+    @else
+    <table>
+        <thead><tr><th>Versie</th><th>Kanaal</th><th>Gepubliceerd</th><th>Omschrijving</th><th></th></tr></thead>
+        <tbody>
+        @foreach($releases as $r)
+            <tr>
+                <td><strong>{{ $r->version }}</strong> <span style="color:#64748b;font-size:.78rem;">{{ round($r->size / 1048576) }} MB</span></td>
+                <td>
+                    @if($r->channel === 'stable')
+                        <span class="badge" style="background:#dcfce7;color:#16a34a;">Stable — alle booths</span>
+                    @else
+                        <span class="badge" style="background:#fef3c7;color:#92400e;">Beta — alleen testbooth</span>
+                    @endif
+                </td>
+                <td>{{ $r->created_at->setTimezone($tz)->format('d-m-Y H:i') }}</td>
+                <td style="color:#64748b;">{{ $r->notes }}</td>
+                <td style="text-align:right;">
+                    <form method="POST" action="{{ route('booths.release-channel', $r) }}">
+                        @csrf
+                        @if($r->channel === 'stable')
+                            <input type="hidden" name="channel" value="beta">
+                            <button type="submit" class="btn btn-sm btn-secondary">Terug naar beta</button>
+                        @else
+                            <input type="hidden" name="channel" value="stable">
+                            <button type="submit" class="btn btn-sm btn-primary"
+                                    onclick="return confirm('Versie {{ $r->version }} uitrollen naar alle booths? Elke booth update zodra hij aan staat en er binnen 24 uur geen boeking is.')">Uitrollen naar alle booths</button>
+                        @endif
+                    </form>
+                </td>
+            </tr>
+        @endforeach
+        </tbody>
+    </table>
+    @endif
 </div>
 
 <div class="card">

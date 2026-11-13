@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Asset;
 use App\Models\BoothEvent;
+use App\Models\BoothRelease;
 use App\Models\BoothToken;
 use App\Services\BoothFleetService;
 use Illuminate\Http\RedirectResponse;
@@ -72,6 +73,7 @@ class BoothController extends Controller
             'latest'       => $latest,
             'events'       => $events,
             'boothOptions' => $this->boothOptions(),
+            'releases'     => BoothRelease::all()->sort(fn ($x, $y) => version_compare($y->version, $x->version))->values(),
             'channels'     => config('booth.channels'),
             'features'     => config('booth.features'),
         ]);
@@ -144,6 +146,21 @@ class BoothController extends Controller
         $model->update(['revoked_at' => now()]);
 
         return redirect()->route('booths.index')->with('success', "Token van \"{$model->name}\" ingetrokken.");
+    }
+
+    /** Een versie naar een ander kanaal zetten (beta → stable om hem naar alle booths uit te rollen). */
+    public function releaseChannel(Request $request, BoothRelease $release): RedirectResponse
+    {
+        $this->accountId();
+
+        $data = $request->validate([
+            'channel' => ['required', Rule::in(array_keys(config('booth.channels')))],
+        ]);
+
+        $release->update(['channel' => $data['channel']]);
+
+        return redirect()->route('booths.index')
+            ->with('success', "Versie {$release->version} staat nu op {$data['channel']}.");
     }
 
     /** @return array{0: ?int, 1: ?int} */

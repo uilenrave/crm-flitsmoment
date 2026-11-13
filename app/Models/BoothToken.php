@@ -165,6 +165,21 @@ class BoothToken extends Model
         ];
     }
 
+    /**
+     * De versie die deze booth hoort te draaien: de vastgezette versie (als die bestaat),
+     * anders de nieuwste van zijn kanaal. Null als er nog geen versies geregistreerd zijn.
+     */
+    public function targetRelease(?\Illuminate\Support\Collection $releases = null): ?BoothRelease
+    {
+        $releases = $releases ?? BoothRelease::all();
+
+        if ($this->pinned_version) {
+            return $releases->firstWhere('version', $this->pinned_version);
+        }
+
+        return BoothRelease::latestFor($this->channel(), $releases);
+    }
+
     /** Configuratie die de booth-app bij elke sync/heartbeat terugkrijgt. */
     public function deviceConfig(): array
     {
@@ -178,6 +193,7 @@ class BoothToken extends Model
             'update' => array_merge([
                 'channel'        => $this->channel(),
                 'pinned_version' => $this->pinned_version,
+                'target_version' => $this->targetRelease()?->version,
             ], $this->updatePolicy()),
             'features'    => $this->effectiveFeatures(),
             'server_time' => now()->toIso8601String(),

@@ -6,6 +6,7 @@ use App\Mail\BoothDailyDigest;
 use App\Mail\BoothEventNotification;
 use App\Models\Account;
 use App\Models\BoothEvent;
+use App\Models\BoothRelease;
 use App\Models\BoothToken;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -30,8 +31,8 @@ class BoothFleetService
     }
 
     /**
-     * Hoogste gemelde app-versie per kanaal. Die geldt als "de nieuwste": een booth met een
-     * lagere versie op hetzelfde kanaal loopt achter.
+     * Nieuwste versie per kanaal. Bron is de versielijst (booth_releases); zolang een kanaal
+     * daar nog geen versie heeft, geldt de hoogste versie die een booth op dat kanaal meldt.
      *
      * @return array<string, string>
      */
@@ -45,6 +46,13 @@ class BoothFleetService
             $channel = $booth->channel();
             if (! isset($latest[$channel]) || version_compare($booth->app_version, $latest[$channel], '>')) {
                 $latest[$channel] = $booth->app_version;
+            }
+        }
+
+        $releases = BoothRelease::all();
+        foreach (array_keys(config('booth.channels')) as $channel) {
+            if ($release = BoothRelease::latestFor($channel, $releases)) {
+                $latest[$channel] = $release->version;
             }
         }
 

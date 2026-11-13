@@ -24,7 +24,7 @@ class BoothDeviceApiTest extends TestCase
     {
         parent::setUp();
 
-        foreach (['booth_events', 'booth_tokens', 'booking_items', 'bookings', 'assets', 'accounts'] as $t) {
+        foreach (['booth_releases', 'booth_events', 'booth_tokens', 'booking_items', 'bookings', 'assets', 'accounts'] as $t) {
             Schema::dropIfExists($t);
         }
 
@@ -102,7 +102,27 @@ class BoothDeviceApiTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('booth_releases', function (Blueprint $table) {
+            $table->id();
+            $table->string('version', 30)->unique();
+            $table->string('filename');
+            $table->string('sha512', 120);
+            $table->unsignedBigInteger('size');
+            $table->string('channel', 20)->default('beta');
+            $table->text('notes')->nullable();
+            $table->timestamps();
+        });
+
         Mail::fake();
+    }
+
+    /** Zet een nep-installer in de opslag en registreert hem via het artisan-commando. */
+    private function release(string $version, string $channel): void
+    {
+        $file = "Flitsmoment-Booth-Setup-{$version}.exe";
+        \Illuminate\Support\Facades\Storage::disk('local')->put("booth-updates/{$file}", "installer-{$version}");
+
+        $this->artisan('booth:release', ['version' => $version, 'filename' => $file, '--channel' => $channel])->assertSuccessful();
     }
 
     private function account(string $name = 'Test'): Account
@@ -298,5 +318,73 @@ class BoothDeviceApiTest extends TestCase
         // De mail-views renderen zonder fouten.
         $html = (new BoothDailyDigest($account, $fleet->digestData($account)))->render();
         $this->assertStringContainsString('Booth 1', $html);
+    }
+
+    public function test_updatefeed_geeft_per_booth_de_juiste_versie(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $account = $this->account();
+        [, $stable] = $this->booth($account, ['name' => 'Stable']);
+        [, $beta]   = $this->booth($account, ['name' => 'Beta', 'unit_number' => 2, 'update_channel' => 'beta']);
+        [, $pinned] = $this->booth($account, ['name' => 'Vast', 'unit_number' => 3, 'pinned_version' => '0.1.0']);
+
+        // Nog geen versies → 404, en geen target in de config.
+        $this->get('/api/booth/update/latest.yml', $this->auth($stable))->assertNotFound();
+        $this->getJson('/api/booth/config', $this->auth($stable))->assertJsonPath('data.update.target_version', null);
+
+        $this->release('0.1.0', 'stable');
+        $this->release('0.2.0', 'stable');
+        $this->release('0.10.0', 'beta');
+
+        $yml = $this->get('/api/booth/update/latest.yml', $this->auth($stable))->assertOk()->getContent();
+        $this->assertStringContainsString('version: 0.2.0', $yml);
+        $this->assertMatchesRegularExpression('#url: https?://[^\s]+/api/booth/update/files/Flitsmoment-Booth-Setup-0\.2\.0\.exe#', $yml);
+        $this->assertStringContainsString('sha512: ' . base64_encode(hash('sha512', 'installer-0.2.0', true)), $yml);
+        $this->assertStringContainsString('size: ' . strlen('installer-0.2.0'), $yml);
+
+        $this->assertStringContainsString('version: 0.10.0', $this->get('/api/booth/update/latest.yml', $this->auth($beta))->getContent());
+        $this->assertStringContainsString('version: 0.1.0', $this->get('/api/booth/update/latest.yml', $this->auth($pinned))->getContent());
+
+        // Rollback: de booth vraagt expliciet om een oudere versie.
+        $this->assertStringContainsString('version: 0.1.0', $this->get('/api/booth/update/v/0.1.0/latest.yml', $this->auth($beta))->assertOk()->getContent());
+        $this->get('/api/booth/update/v/9.9.9/latest.yml', $this->auth($beta))->assertNotFound();
+
+        $this->getJson('/api/booth/config', $this->auth($beta))->assertJsonPath('data.update.target_version', '0.10.0');
+        $this->getJson('/api/booth/config', $this->auth($pinned))->assertJsonPath('data.update.target_version', '0.1.0');
+    }
+
+    public function test_installer_download_vereist_token_en_bestaande_versie(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $account = $this->account();
+        [, $plain] = $this->booth($account);
+        $this->release('0.2.0', 'stable');
+        \Illuminate\Support\Facades\Storage::disk('local')->put('booth-updates/geheim.exe', 'niet geregistreerd');
+
+        $url = '/api/booth/update/files/Flitsmoment-Booth-Setup-0.2.0.exe';
+        $this->get($url)->assertStatus(401);
+        $this->assertSame('installer-0.2.0', $this->get($url, $this->auth($plain))->assertOk()->streamedContent());
+        $this->get('/api/booth/update/files/geheim.exe', $this->auth($plain))->assertNotFound();
+    }
+
+    public function test_versielijst_bepaalt_wie_achterloopt_en_heartbeat_bewaart_diagnose(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $account = $this->account();
+        [$booth, $plain] = $this->booth($account, ['app_version' => '0.1.0']);
+        $this->release('0.2.0', 'stable');
+
+        $fleet  = app(BoothFleetService::class);
+        $latest = $fleet->latestVersions($fleet->booths($account->id));
+        $this->assertSame('0.2.0', $latest['stable']);
+        $this->assertTrue($fleet->isBehind($booth, $latest));
+
+        $this->postJson('/api/booth/heartbeat', [
+            'app_version' => '0.2.0',
+            'diagnostics' => ['printers' => [['name' => 'DS620']], 'log' => ['regel 1']],
+        ], $this->auth($plain))->assertOk();
+
+        $this->assertSame('DS620', $booth->refresh()->last_status['diagnostics']['printers'][0]['name']);
+        $this->assertFalse($fleet->isBehind($booth, $fleet->latestVersions($fleet->booths($account->id))));
     }
 }
