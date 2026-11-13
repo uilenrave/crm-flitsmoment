@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use App\Services\BoothFleetService;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
 class BoothApiController extends Controller
@@ -43,6 +44,23 @@ class BoothApiController extends Controller
         $data = $query->get()->map(fn (Booking $b) => $this->transform($b))->all();
 
         return response()->json(['data' => $data]);
+    }
+
+    /** GET /api/booth/bookings/{id}/production-file — het productiebestand (overlay-PNG) van een boeking van dit account. */
+    public function productionFile(Request $request, int $id)
+    {
+        /** @var BoothToken $booth */
+        $booth = $request->attributes->get('booth');
+
+        $booking = Booking::withoutGlobalScopes()
+            ->where('account_id', $booth->account_id)
+            ->whereKey($id)
+            ->firstOrFail();
+
+        $disk = Storage::disk('public');
+        abort_if(! $booking->production_file_path || ! $disk->exists($booking->production_file_path), 404, 'Geen productiebestand beschikbaar.');
+
+        return $disk->response($booking->production_file_path);
     }
 
     /** GET /api/booth/config — identiteit, updatekanaal + of updaten nu mag, en functieschakelaars. */
@@ -156,6 +174,12 @@ class BoothApiController extends Controller
                 'template_id'     => $b->strip_template_id,
                 'design_url'      => $this->absoluteUrl($b->strip_design_url),
                 'design_filename' => $this->designFilename($b),
+            ],
+            // Het print-klare overlay-bestand (PNG met transparante fotovakken) dat de booth laadt.
+            'production'      => [
+                'available'  => (bool) $b->production_file_path,
+                'updated_at' => optional($b->production_file_at)->toIso8601String(),
+                'url'        => $b->production_file_path ? URL::to("/api/booth/bookings/{$b->id}/production-file") : null,
             ],
         ];
     }

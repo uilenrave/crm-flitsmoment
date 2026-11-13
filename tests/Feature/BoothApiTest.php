@@ -46,6 +46,8 @@ class BoothApiTest extends TestCase
             $table->string('strip_format', 10)->nullable();
             $table->unsignedBigInteger('strip_template_id')->nullable();
             $table->string('gallery_token', 32)->nullable();
+            $table->string('production_file_path')->nullable();
+            $table->timestamp('production_file_at')->nullable();
             $table->timestamps();
         });
 
@@ -239,5 +241,31 @@ class BoothApiTest extends TestCase
         $this->assertNull($row['strip']['status']);
         $this->assertNull($row['strip']['design_url']);
         $this->assertNull($row['strip']['design_filename']);
+    }
+
+    public function test_productiebestand_alleen_voor_eigen_account(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        \Illuminate\Support\Facades\Storage::disk('public')->put('production/strip.png', 'PNGDATA');
+
+        $a = $this->account('A');
+        $b = $this->account('B');
+        [, $plainA] = $this->token($a);
+        [, $plainB] = $this->token($b);
+
+        $booking = $this->booking($a, ['production_file_path' => 'production/strip.png', 'production_file_at' => now()]);
+        $without = $this->booking($a);
+
+        $row = collect($this->callApi($plainA)->assertOk()->json('data'))->firstWhere('id', $booking->id);
+        $this->assertTrue($row['production']['available']);
+        $this->assertStringEndsWith("/api/booth/bookings/{$booking->id}/production-file", $row['production']['url']);
+
+        $url = "/api/booth/bookings/{$booking->id}/production-file";
+        $res = $this->get($url, ['Authorization' => 'Bearer ' . $plainA])->assertOk();
+        $this->assertSame('PNGDATA', $res->streamedContent());
+
+        $this->get($url, ['Authorization' => 'Bearer ' . $plainB])->assertNotFound();
+        $this->get("/api/booth/bookings/{$without->id}/production-file", ['Authorization' => 'Bearer ' . $plainA])->assertNotFound();
+        $this->get($url)->assertStatus(401);
     }
 }
